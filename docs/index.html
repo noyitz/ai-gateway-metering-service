@@ -6,46 +6,106 @@
 <title>AI Gateway Metering Service</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0b0e11;--c1:#141820;--c2:#1a2030;--bdr:#2e3848;--t:#e2e6ec;--t2:#8090a8;--blu:#4da0f8;--grn:#3dcc6e;--org:#eba830;--cyn:#38d4c2;--pur:#a88cf8}
-body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;line-height:1.6}
-.container{max-width:960px;margin:0 auto;padding:40px 24px}
-h1{font-size:36px;font-weight:800;margin-bottom:8px}
-h1 span{color:var(--grn)}
-.subtitle{color:var(--t2);font-size:16px;margin-bottom:40px}
-h2{font-size:22px;font-weight:700;margin-top:48px;margin-bottom:16px;color:var(--blu)}
-h3{font-size:16px;font-weight:700;margin-top:24px;margin-bottom:8px}
+:root{--bg:#0b0e11;--c1:#141820;--c2:#1a2030;--bdr:#2e3848;--t:#e2e6ec;--t2:#8090a8;--blu:#4da0f8;--grn:#3dcc6e;--org:#eba830;--red:#e8554e;--cyn:#38d4c2;--pur:#a88cf8}
+body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;line-height:1.6;overflow-x:hidden}
+.container{max-width:1000px;margin:0 auto;padding:40px 24px}
+
+/* Nav */
+.nav{background:rgba(20,24,32,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--bdr);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.nav-brand{font-weight:800;font-size:15px;background:linear-gradient(135deg,var(--grn),var(--cyn));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.nav-links{display:flex;gap:20px}
+.nav-links a{color:var(--t2);font-size:13px;font-weight:500;text-decoration:none;transition:color .2s}
+.nav-links a:hover{color:var(--t)}
+
+/* Hero */
+.hero{text-align:center;padding:80px 0 40px;position:relative}
+.hero::before{content:'';position:absolute;top:20%;left:50%;transform:translate(-50%,-50%);width:600px;height:600px;background:radial-gradient(circle,rgba(61,204,110,.08) 0%,transparent 70%);pointer-events:none}
+.badges{display:flex;gap:8px;justify-content:center;margin-bottom:24px}
+.badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;animation:fadeInUp .6s ease both}
+.badge:nth-child(1){animation-delay:.1s}.badge:nth-child(2){animation-delay:.2s}.badge:nth-child(3){animation-delay:.3s}
+.badge.dp{background:rgba(61,204,110,.12);color:var(--grn);border:1px solid rgba(61,204,110,.2)}
+.badge.ce{background:rgba(77,160,248,.12);color:var(--blu);border:1px solid rgba(77,160,248,.2)}
+.badge.oss{background:rgba(168,140,248,.12);color:var(--pur);border:1px solid rgba(168,140,248,.2)}
+h1{font-size:48px;font-weight:900;margin-bottom:12px;animation:fadeInUp .6s .2s ease both}
+h1 .grad{background:linear-gradient(135deg,var(--grn),var(--cyn));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{color:var(--t2);font-size:17px;margin-bottom:32px;animation:fadeInUp .6s .3s ease both}
+.hero-cta{display:flex;gap:12px;justify-content:center;animation:fadeInUp .6s .4s ease both}
+.btn{padding:10px 24px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:var(--grn);color:#fff;border:none}
+.btn-primary:hover{background:#45d676;transform:translateY(-2px);box-shadow:0 4px 16px rgba(61,204,110,.3)}
+.btn-secondary{background:var(--c1);color:var(--t);border:1px solid var(--bdr)}
+.btn-secondary:hover{border-color:var(--blu);background:var(--c2)}
+
+/* Animated flow diagram */
+.flow-viz{background:var(--c1);border:1px solid var(--bdr);border-radius:14px;padding:32px;margin:40px 0;position:relative;overflow:hidden}
+.flow-viz::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--grn),transparent);animation:shimmer 3s infinite}
+.flow-title{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:2px;font-weight:700;text-align:center;margin-bottom:24px}
+.flow-svg{width:100%;height:120px}
+.flow-node{fill:var(--c2);stroke:var(--bdr);stroke-width:1.5;rx:8}
+.flow-node-active{fill:rgba(61,204,110,.1);stroke:var(--grn);stroke-width:2}
+.flow-node-sim{fill:rgba(235,168,48,.08);stroke:var(--org);stroke-width:2}
+.flow-label{fill:var(--t);font-size:11px;font-weight:600;font-family:Inter,sans-serif;text-anchor:middle;dominant-baseline:central}
+.flow-label-active{fill:var(--grn)}
+.flow-label-sim{fill:var(--org)}
+.flow-label-sub{fill:var(--t2);font-size:9px}
+.flow-line{stroke:var(--bdr);stroke-width:1.5;fill:none}
+.flow-line-active{stroke:var(--grn);stroke-width:2}
+.flow-dot{fill:var(--grn);filter:drop-shadow(0 0 4px var(--grn))}
+.flow-dot-ev{fill:var(--cyn);filter:drop-shadow(0 0 4px var(--cyn))}
+.flow-providers{display:flex;justify-content:center;gap:12px;margin-top:16px}
+.flow-prov{background:var(--c2);border:1px solid var(--bdr);border-radius:6px;padding:6px 14px;font-size:11px;font-weight:600;transition:all .3s}
+.flow-prov:nth-child(1){color:var(--org);border-color:var(--org);animation:pulse 2s infinite}
+.flow-prov:nth-child(2){color:var(--blu);animation:pulse 2s .5s infinite}
+.flow-prov:nth-child(3){color:var(--pur);animation:pulse 2s 1s infinite}
+.flow-prov:nth-child(4){color:var(--t2);animation:pulse 2s 1.5s infinite}
+
+/* Token counter animation */
+.counter-row{display:flex;gap:20px;justify-content:center;margin:24px 0;flex-wrap:wrap}
+.counter{text-align:center;animation:fadeInUp .6s ease both}
+.counter:nth-child(1){animation-delay:.5s}.counter:nth-child(2){animation-delay:.6s}.counter:nth-child(3){animation-delay:.7s}.counter:nth-child(4){animation-delay:.8s}
+.counter-val{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
+.counter-val.grn{color:var(--grn)}.counter-val.blu{color:var(--blu)}.counter-val.cyn{color:var(--cyn)}.counter-val.pur{color:var(--pur)}
+.counter-label{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+
+/* Section reveal */
+.reveal{opacity:0;transform:translateY(20px);transition:opacity .6s,transform .6s}
+.reveal.visible{opacity:1;transform:translateY(0)}
+
+h2{font-size:22px;font-weight:700;margin-top:56px;margin-bottom:16px;color:var(--blu)}
 p{color:var(--t2);margin-bottom:12px;font-size:14px}
-a{color:var(--blu);text-decoration:none}
-a:hover{text-decoration:underline}
+a{color:var(--blu);text-decoration:none}a:hover{text-decoration:underline}
 code{background:var(--c2);padding:2px 6px;border-radius:4px;font-size:13px;font-family:'SF Mono',Menlo,monospace}
 pre{background:var(--c1);border:1px solid var(--bdr);border-radius:8px;padding:16px;overflow-x:auto;margin:12px 0 20px;font-size:13px;line-height:1.5}
 pre code{background:none;padding:0}
-.hero{text-align:center;padding:60px 0 40px}
-.badges{display:flex;gap:8px;justify-content:center;margin-bottom:24px}
-.badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
-.badge.dp{background:rgba(61,204,110,.15);color:var(--grn)}
-.badge.ce{background:rgba(77,160,248,.15);color:var(--blu)}
-.badge.oss{background:rgba(168,140,248,.15);color:var(--pur)}
+
+/* Cards with hover glow */
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:24px 0}
-.card{background:var(--c1);border:1px solid var(--bdr);border-radius:10px;padding:20px}
-.card h3{margin-top:0;color:var(--t)}
+.card{background:var(--c1);border:1px solid var(--bdr);border-radius:12px;padding:22px;transition:all .3s;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--grn),transparent);opacity:0;transition:opacity .3s}
+.card:hover{border-color:rgba(61,204,110,.3);transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.card:hover::before{opacity:1}
+.card h3{margin-top:0;color:var(--t);font-size:15px}
 .card p{font-size:13px}
 .card .endpoint{color:var(--grn);font-family:monospace;font-size:12px;margin-bottom:8px}
-.flow{background:var(--c1);border:1px solid var(--bdr);border-radius:10px;padding:24px;margin:20px 0;text-align:center}
-.flow-row{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:12px 0}
-.flow-box{background:var(--c2);border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;font-size:13px;font-weight:600}
-.flow-box.active{border-color:var(--grn);color:var(--grn)}
-.flow-box.sim{border-color:var(--org);color:var(--org)}
-.flow-arrow{color:var(--t2);font-size:18px}
+.card .icon{font-size:28px;margin-bottom:12px;display:block}
+
+/* Table */
 table{width:100%;border-collapse:collapse;margin:12px 0 20px;font-size:13px}
 th{background:var(--c1);color:var(--t2);text-align:left;padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--bdr)}
-td{padding:10px 14px;border-bottom:1px solid var(--bdr)}
-.nav{background:var(--c1);border-bottom:1px solid var(--bdr);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
-.nav-brand{font-weight:700;font-size:15px}
-.nav-links{display:flex;gap:20px}
-.nav-links a{color:var(--t2);font-size:13px;font-weight:500}
-.nav-links a:hover{color:var(--t)}
+td{padding:10px 14px;border-bottom:1px solid var(--bdr);transition:background .2s}
+tr:hover td{background:rgba(77,160,248,.04)}
+
+/* Footer */
 footer{text-align:center;color:var(--t2);font-size:12px;padding:40px 0;border-top:1px solid var(--bdr);margin-top:60px}
+
+/* Animations */
+@keyframes fadeInUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes shimmer{0%{opacity:.3}50%{opacity:1}100%{opacity:.3}}
+@keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+@keyframes countUp{from{opacity:0}to{opacity:1}}
+@keyframes dotMove{0%{opacity:0;offset-distance:0%}10%{opacity:1}90%{opacity:1}100%{opacity:0;offset-distance:100%}}
+
+@media(max-width:600px){h1{font-size:32px}.counter-row{gap:12px}.counter-val{font-size:22px}}
 </style>
 </head>
 <body>
@@ -69,77 +129,122 @@ footer{text-align:center;color:var(--t2);font-size:12px;padding:40px 0;border-to
     <span class="badge ce">CloudEvents v1.0</span>
     <span class="badge oss">Open Source</span>
   </div>
-  <h1>AI Gateway <span>Metering</span></h1>
+  <h1>AI Gateway <span class="grad">Metering</span></h1>
   <p class="subtitle">Per-user token usage tracking, cost attribution, and billing integration<br>for the AI Inference Gateway</p>
-</div>
-
-<div class="flow">
-  <div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px;font-weight:700">Request Flow</div>
-  <div class="flow-row">
-    <div class="flow-box">Client</div>
-    <span class="flow-arrow">→</span>
-    <div class="flow-box active">external-metering plugin</div>
-    <span class="flow-arrow">→</span>
-    <div class="flow-box">Gateway → Provider</div>
-  </div>
-  <div style="font-size:11px;color:var(--t2);margin:12px 0">↓ CloudEvents v1.0</div>
-  <div class="flow-row">
-    <div class="flow-box sim">This Service (dev)</div>
-    <span class="flow-arrow">or</span>
-    <div class="flow-box">OpenMeter (staging)</div>
-    <span class="flow-arrow">or</span>
-    <div class="flow-box">Monetize360 (prod)</div>
+  <div class="hero-cta">
+    <a href="#quickstart" class="btn btn-primary">Get Started</a>
+    <a href="https://github.com/noyitz/ai-gateway-metering-service" class="btn btn-secondary">View on GitHub</a>
   </div>
 </div>
 
-<h2>What It Does</h2>
-<div class="cards">
+<!-- Animated token counters -->
+<div class="counter-row">
+  <div class="counter"><div class="counter-val grn" id="c-input">0</div><div class="counter-label">Input Tokens</div></div>
+  <div class="counter"><div class="counter-val blu" id="c-output">0</div><div class="counter-label">Output Tokens</div></div>
+  <div class="counter"><div class="counter-val cyn" id="c-cached">0</div><div class="counter-label">Cached Tokens</div></div>
+  <div class="counter"><div class="counter-val pur" id="c-saved">$0</div><div class="counter-label">Cache Savings</div></div>
+</div>
+
+<!-- Animated flow diagram with traveling dots -->
+<div class="flow-viz">
+  <div class="flow-title">Request Flow</div>
+  <svg class="flow-svg" viewBox="0 0 900 120">
+    <!-- Nodes -->
+    <rect class="flow-node" x="20" y="30" width="120" height="55"/>
+    <text class="flow-label" x="80" y="52">Client</text>
+    <text class="flow-label-sub" x="80" y="68">Claude / Codex</text>
+
+    <rect class="flow-node-active" x="220" y="20" width="180" height="75"/>
+    <text class="flow-label-active" x="310" y="45">external-metering</text>
+    <text class="flow-label-sub" x="310" y="62">balance check</text>
+    <text class="flow-label-sub" x="310" y="76">usage report</text>
+
+    <rect class="flow-node" x="480" y="30" width="160" height="55"/>
+    <text class="flow-label" x="560" y="52">Gateway</text>
+    <text class="flow-label-sub" x="560" y="68">IPP → Provider</text>
+
+    <rect class="flow-node-sim" x="720" y="30" width="160" height="55"/>
+    <text class="flow-label-sim" x="800" y="48">Metering</text>
+    <text class="flow-label-sub" x="800" y="64">Backend</text>
+
+    <!-- Lines -->
+    <line x1="140" y1="57" x2="220" y2="57" class="flow-line-active"/>
+    <line x1="400" y1="57" x2="480" y2="57" class="flow-line-active"/>
+    <path d="M 310,95 L 310,110 L 800,110 L 800,85" class="flow-line" stroke-dasharray="4,4" style="stroke:var(--cyn);stroke-width:1.5"/>
+
+    <!-- Animated dots: client → plugin -->
+    <circle r="3" class="flow-dot"><animate attributeName="cx" from="140" to="220" dur="1.8s" repeatCount="indefinite"/><animate attributeName="cy" from="57" to="57" dur="1.8s" repeatCount="indefinite"/></circle>
+    <circle r="3" class="flow-dot"><animate attributeName="cx" from="140" to="220" dur="1.8s" begin="0.6s" repeatCount="indefinite"/><animate attributeName="cy" from="57" to="57" dur="1.8s" begin="0.6s" repeatCount="indefinite"/></circle>
+
+    <!-- Animated dots: plugin → gateway -->
+    <circle r="3" class="flow-dot"><animate attributeName="cx" from="400" to="480" dur="1.5s" repeatCount="indefinite"/><animate attributeName="cy" from="57" to="57" dur="1.5s" repeatCount="indefinite"/></circle>
+
+    <!-- Animated dots: event flow to backend -->
+    <circle r="3" class="flow-dot-ev"><animateMotion dur="2.5s" repeatCount="indefinite"><mpath href="#evpath"/></animateMotion></circle>
+    <circle r="3" class="flow-dot-ev"><animateMotion dur="2.5s" begin="0.8s" repeatCount="indefinite"><mpath href="#evpath"/></animateMotion></circle>
+    <path id="evpath" d="M 310,95 L 310,110 L 800,110 L 800,85" fill="none" stroke="none"/>
+
+    <!-- CloudEvents label -->
+    <text x="555" y="106" style="fill:var(--cyn);font-size:9px;font-family:Inter,sans-serif;letter-spacing:1px;text-anchor:middle">CLOUDEVENTS v1.0</text>
+  </svg>
+  <div class="flow-providers">
+    <div class="flow-prov">This Service (dev)</div>
+    <div class="flow-prov">OpenMeter (staging)</div>
+    <div class="flow-prov">Monetize360 (prod)</div>
+    <div class="flow-prov">Custom</div>
+  </div>
+</div>
+
+<h2 class="reveal">What It Does</h2>
+<div class="cards reveal">
   <div class="card">
+    <span class="icon">&#x26A1;</span>
     <h3>Token Usage Ingestion</h3>
     <div class="endpoint">POST /api/v1/events</div>
     <p>Accepts CloudEvents v1.0 with per-request token breakdown: input, output, cached read, cache write, reasoning tokens.</p>
   </div>
   <div class="card">
+    <span class="icon">&#x1F6E1;</span>
     <h3>Balance Checks</h3>
     <div class="endpoint">GET /api/v1/customers/{id}/entitlements/{key}/value</div>
-    <p>Real-time quota enforcement. The external-metering plugin checks balance before processing each request.</p>
+    <p>Real-time quota enforcement. The plugin checks balance before processing each inference request.</p>
   </div>
   <div class="card">
+    <span class="icon">&#x1F4CA;</span>
     <h3>Usage Dashboard</h3>
     <div class="endpoint">GET /dashboard</div>
-    <p>Built-in usage dashboard with per-user, per-model token breakdown and cache-aware cost calculation.</p>
+    <p>Built-in dashboard with per-user, per-model token breakdown and cache-aware cost calculation.</p>
   </div>
 </div>
 
-<h2 id="providers">Supported Metering Providers</h2>
-<p>The <code>external-metering</code> plugin emits CloudEvents v1.0 — any backend that accepts this format works. Point the plugin at different backends for each environment:</p>
-
-<table>
+<h2 id="providers" class="reveal">Supported Metering Providers</h2>
+<p class="reveal">The <code>external-metering</code> plugin emits CloudEvents v1.0 — any backend that accepts this format works:</p>
+<table class="reveal">
   <thead><tr><th>Environment</th><th>Backend</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>Development</td><td><strong>This service</strong> — drop-in simulator with PostgreSQL + dashboard</td><td style="color:var(--grn)">Available</td></tr>
-    <tr><td>Staging</td><td><a href="https://openmeter.io">OpenMeter</a> — open-source usage metering</td><td style="color:var(--grn)">Compatible</td></tr>
-    <tr><td>Production</td><td><a href="https://www.amdocs.com/products-services/monetize360">Monetize360</a> — enterprise billing (Verizon)</td><td style="color:var(--org)">Planned</td></tr>
-    <tr><td>Custom</td><td>Any CloudEvents v1.0 endpoint</td><td style="color:var(--blu)">Extensible</td></tr>
+    <tr><td>Development</td><td><strong>This service</strong> — drop-in simulator with PostgreSQL + dashboard</td><td style="color:var(--grn)">&#x2705; Available</td></tr>
+    <tr><td>Staging</td><td><a href="https://openmeter.io">OpenMeter</a> — open-source usage metering</td><td style="color:var(--grn)">&#x2705; Compatible</td></tr>
+    <tr><td>Production</td><td><a href="https://www.amdocs.com/products-services/monetize360">Monetize360</a> — enterprise billing (Verizon)</td><td style="color:var(--org)">&#x1F6A7; Planned</td></tr>
+    <tr><td>Custom</td><td>Any CloudEvents v1.0 endpoint</td><td style="color:var(--blu)">&#x1F527; Extensible</td></tr>
   </tbody>
 </table>
 
-<h2>Token Types Tracked</h2>
-<p>Cache-aware metering — different token types have different costs:</p>
-<table>
+<h2 class="reveal">Token Types Tracked</h2>
+<p class="reveal">Cache-aware metering — different token types have different costs:</p>
+<table class="reveal">
   <thead><tr><th>Token Type</th><th>OpenAI Field</th><th>Anthropic Field</th><th>Pricing Impact</th></tr></thead>
   <tbody>
-    <tr><td>Input (new)</td><td><code>prompt_tokens</code></td><td><code>input_tokens</code></td><td>Full input rate</td></tr>
-    <tr><td>Output</td><td><code>completion_tokens</code></td><td><code>output_tokens</code></td><td>Full output rate</td></tr>
-    <tr><td>Cached read</td><td><code>prompt_tokens_details.cached_tokens</code></td><td><code>cache_read_input_tokens</code></td><td>~10x cheaper than input</td></tr>
-    <tr><td>Cache write</td><td>—</td><td><code>cache_creation_input_tokens</code></td><td>~25% more than input</td></tr>
-    <tr><td>Reasoning</td><td><code>completion_tokens_details.reasoning_tokens</code></td><td>—</td><td>Output rate</td></tr>
+    <tr><td><span style="color:var(--t)">&#x25CF;</span> Input (new)</td><td><code>prompt_tokens</code></td><td><code>input_tokens</code></td><td>Full input rate</td></tr>
+    <tr><td><span style="color:var(--grn)">&#x25CF;</span> Output</td><td><code>completion_tokens</code></td><td><code>output_tokens</code></td><td>Full output rate</td></tr>
+    <tr><td><span style="color:var(--cyn)">&#x25CF;</span> Cached read</td><td><code>cached_tokens</code></td><td><code>cache_read_input_tokens</code></td><td>~10x cheaper</td></tr>
+    <tr><td><span style="color:var(--pur)">&#x25CF;</span> Cache write</td><td>—</td><td><code>cache_creation_input_tokens</code></td><td>~25% more</td></tr>
+    <tr><td><span style="color:var(--org)">&#x25CF;</span> Reasoning</td><td><code>reasoning_tokens</code></td><td>—</td><td>Output rate</td></tr>
   </tbody>
 </table>
 
-<h2 id="cloudevents">CloudEvents Format</h2>
-<p>The standardized event format for inference metering:</p>
-<pre><code>{
+<h2 id="cloudevents" class="reveal">CloudEvents Format</h2>
+<p class="reveal">The standardized event format for inference metering:</p>
+<pre class="reveal"><code>{
   "specversion": "1.0",
   "id": "evt-a1b2c3d4",
   "source": "maas-gateway",
@@ -150,7 +255,6 @@ footer{text-align:center;color:var(--t2);font-size:12px;padding:40px 0;border-to
   "data": {
     "user": "alice",
     "group": "engineering",
-    "subscription": "premium",
     "provider": "anthropic",
     "model": "claude-opus-4-8",
     "prompt_tokens": 150,
@@ -163,20 +267,19 @@ footer{text-align:center;color:var(--t2);font-size:12px;padding:40px 0;border-to
   }
 }</code></pre>
 
-<h2 id="quickstart">Quick Start</h2>
+<h2 id="quickstart" class="reveal">Quick Start</h2>
 
-<h3>Docker Compose (local development)</h3>
-<pre><code>git clone https://github.com/noyitz/ai-gateway-metering-service
+<h3 class="reveal">Docker Compose</h3>
+<pre class="reveal"><code>git clone https://github.com/noyitz/ai-gateway-metering-service
 cd ai-gateway-metering-service
 docker compose up</code></pre>
 
-<h3>Kubernetes</h3>
-<pre><code>kubectl create namespace metering
+<h3 class="reveal">Kubernetes</h3>
+<pre class="reveal"><code>kubectl create namespace metering
 kubectl apply -f deploy/ -n metering</code></pre>
 
-<h3>Enable in AI Gateway</h3>
-<pre><code># Add to your Helm values:
-upstreamBbr:
+<h3 class="reveal">Enable in AI Gateway</h3>
+<pre class="reveal"><code>upstreamBbr:
   bbr:
     plugins:
       - type: external-metering
@@ -185,20 +288,11 @@ upstreamBbr:
           meteringURL: "http://metering-service.metering.svc:8080"
           failOpen: true</code></pre>
 
-<h2>Related Projects</h2>
-<div class="cards">
-  <div class="card">
-    <h3><a href="https://github.com/opendatahub-io/ai-gateway-payload-processing">AI Inference Gateway</a></h3>
-    <p>The gateway framework and IPP plugin chain that powers external model serving in RHOAI.</p>
-  </div>
-  <div class="card">
-    <h3><a href="https://openmeter.io">OpenMeter</a></h3>
-    <p>Open-source cloud metering for AI, usage-based billing, and entitlements.</p>
-  </div>
-  <div class="card">
-    <h3><a href="https://cloudevents.io">CloudEvents</a></h3>
-    <p>CNCF specification for describing event data in a common way.</p>
-  </div>
+<h2 class="reveal">Related Projects</h2>
+<div class="cards reveal">
+  <div class="card"><span class="icon">&#x1F680;</span><h3><a href="https://github.com/opendatahub-io/ai-gateway-payload-processing">AI Inference Gateway</a></h3><p>Gateway framework and IPP plugin chain for external model serving in RHOAI.</p></div>
+  <div class="card"><span class="icon">&#x1F4B0;</span><h3><a href="https://openmeter.io">OpenMeter</a></h3><p>Open-source cloud metering for AI, usage-based billing, and entitlements.</p></div>
+  <div class="card"><span class="icon">&#x2601;</span><h3><a href="https://cloudevents.io">CloudEvents</a></h3><p>CNCF specification for describing event data in a common way.</p></div>
 </div>
 
 </div>
@@ -206,8 +300,43 @@ upstreamBbr:
 <footer>
   AI Gateway Metering Service — Apache 2.0 License<br>
   <a href="https://github.com/noyitz/ai-gateway-metering-service">GitHub</a> ·
-  <a href="https://redhat.atlassian.net/browse/RHAISTRAT-1919">RHAISTRAT-1919</a>
+  <a href="https://redhat.atlassian.net/browse/RHAISTRAT-1919">RHAISTRAT-1919</a> ·
+  Built with <a href="https://noyitz.github.io/flowstory/">FlowStory</a>
 </footer>
+
+<script>
+// Animated counters
+function animateCounter(el, target, prefix, suffix, duration) {
+  var start = 0, startTime = null;
+  function step(ts) {
+    if (!startTime) startTime = ts;
+    var progress = Math.min((ts - startTime) / duration, 1);
+    var eased = 1 - Math.pow(1 - progress, 3);
+    var current = Math.floor(eased * target);
+    el.textContent = prefix + current.toLocaleString() + suffix;
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+setTimeout(function() {
+  animateCounter(document.getElementById('c-input'), 2847, '', 'K', 2000);
+  animateCounter(document.getElementById('c-output'), 1523, '', 'K', 2200);
+  animateCounter(document.getElementById('c-cached'), 8914, '', 'K', 2400);
+  animateCounter(document.getElementById('c-saved'), 347, '$', '', 2600);
+}, 600);
+
+// Scroll reveal
+var reveals = document.querySelectorAll('.reveal');
+function checkReveal() {
+  reveals.forEach(function(el) {
+    var top = el.getBoundingClientRect().top;
+    if (top < window.innerHeight - 60) el.classList.add('visible');
+  });
+}
+window.addEventListener('scroll', checkReveal);
+checkReveal();
+</script>
 
 </body>
 </html>
