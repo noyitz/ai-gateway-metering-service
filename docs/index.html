@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Gateway Metering Service</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0b0e11;--c1:#141820;--c2:#1a2030;--bdr:#2e3848;--t:#e2e6ec;--t2:#8090a8;--blu:#4da0f8;--grn:#3dcc6e;--org:#eba830;--cyn:#38d4c2;--pur:#a88cf8}
+body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;line-height:1.6}
+.container{max-width:960px;margin:0 auto;padding:40px 24px}
+h1{font-size:36px;font-weight:800;margin-bottom:8px}
+h1 span{color:var(--grn)}
+.subtitle{color:var(--t2);font-size:16px;margin-bottom:40px}
+h2{font-size:22px;font-weight:700;margin-top:48px;margin-bottom:16px;color:var(--blu)}
+h3{font-size:16px;font-weight:700;margin-top:24px;margin-bottom:8px}
+p{color:var(--t2);margin-bottom:12px;font-size:14px}
+a{color:var(--blu);text-decoration:none}
+a:hover{text-decoration:underline}
+code{background:var(--c2);padding:2px 6px;border-radius:4px;font-size:13px;font-family:'SF Mono',Menlo,monospace}
+pre{background:var(--c1);border:1px solid var(--bdr);border-radius:8px;padding:16px;overflow-x:auto;margin:12px 0 20px;font-size:13px;line-height:1.5}
+pre code{background:none;padding:0}
+.hero{text-align:center;padding:60px 0 40px}
+.badges{display:flex;gap:8px;justify-content:center;margin-bottom:24px}
+.badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
+.badge.dp{background:rgba(61,204,110,.15);color:var(--grn)}
+.badge.ce{background:rgba(77,160,248,.15);color:var(--blu)}
+.badge.oss{background:rgba(168,140,248,.15);color:var(--pur)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:24px 0}
+.card{background:var(--c1);border:1px solid var(--bdr);border-radius:10px;padding:20px}
+.card h3{margin-top:0;color:var(--t)}
+.card p{font-size:13px}
+.card .endpoint{color:var(--grn);font-family:monospace;font-size:12px;margin-bottom:8px}
+.flow{background:var(--c1);border:1px solid var(--bdr);border-radius:10px;padding:24px;margin:20px 0;text-align:center}
+.flow-row{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:12px 0}
+.flow-box{background:var(--c2);border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;font-size:13px;font-weight:600}
+.flow-box.active{border-color:var(--grn);color:var(--grn)}
+.flow-box.sim{border-color:var(--org);color:var(--org)}
+.flow-arrow{color:var(--t2);font-size:18px}
+table{width:100%;border-collapse:collapse;margin:12px 0 20px;font-size:13px}
+th{background:var(--c1);color:var(--t2);text-align:left;padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--bdr)}
+td{padding:10px 14px;border-bottom:1px solid var(--bdr)}
+.nav{background:var(--c1);border-bottom:1px solid var(--bdr);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.nav-brand{font-weight:700;font-size:15px}
+.nav-links{display:flex;gap:20px}
+.nav-links a{color:var(--t2);font-size:13px;font-weight:500}
+.nav-links a:hover{color:var(--t)}
+footer{text-align:center;color:var(--t2);font-size:12px;padding:40px 0;border-top:1px solid var(--bdr);margin-top:60px}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-brand">AI Gateway Metering</span>
+  <div class="nav-links">
+    <a href="https://github.com/noyitz/ai-gateway-metering-service">GitHub</a>
+    <a href="https://github.com/opendatahub-io/ai-gateway-payload-processing">AI Gateway</a>
+    <a href="#quickstart">Quick Start</a>
+    <a href="#providers">Providers</a>
+    <a href="#cloudevents">CloudEvents</a>
+  </div>
+</nav>
+
+<div class="container">
+
+<div class="hero">
+  <div class="badges">
+    <span class="badge dp">Dev Preview</span>
+    <span class="badge ce">CloudEvents v1.0</span>
+    <span class="badge oss">Open Source</span>
+  </div>
+  <h1>AI Gateway <span>Metering</span></h1>
+  <p class="subtitle">Per-user token usage tracking, cost attribution, and billing integration<br>for the AI Inference Gateway</p>
+</div>
+
+<div class="flow">
+  <div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px;font-weight:700">Request Flow</div>
+  <div class="flow-row">
+    <div class="flow-box">Client</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-box active">external-metering plugin</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-box">Gateway → Provider</div>
+  </div>
+  <div style="font-size:11px;color:var(--t2);margin:12px 0">↓ CloudEvents v1.0</div>
+  <div class="flow-row">
+    <div class="flow-box sim">This Service (dev)</div>
+    <span class="flow-arrow">or</span>
+    <div class="flow-box">OpenMeter (staging)</div>
+    <span class="flow-arrow">or</span>
+    <div class="flow-box">Monetize360 (prod)</div>
+  </div>
+</div>
+
+<h2>What It Does</h2>
+<div class="cards">
+  <div class="card">
+    <h3>Token Usage Ingestion</h3>
+    <div class="endpoint">POST /api/v1/events</div>
+    <p>Accepts CloudEvents v1.0 with per-request token breakdown: input, output, cached read, cache write, reasoning tokens.</p>
+  </div>
+  <div class="card">
+    <h3>Balance Checks</h3>
+    <div class="endpoint">GET /api/v1/customers/{id}/entitlements/{key}/value</div>
+    <p>Real-time quota enforcement. The external-metering plugin checks balance before processing each request.</p>
+  </div>
+  <div class="card">
+    <h3>Usage Dashboard</h3>
+    <div class="endpoint">GET /dashboard</div>
+    <p>Built-in usage dashboard with per-user, per-model token breakdown and cache-aware cost calculation.</p>
+  </div>
+</div>
+
+<h2 id="providers">Supported Metering Providers</h2>
+<p>The <code>external-metering</code> plugin emits CloudEvents v1.0 — any backend that accepts this format works. Point the plugin at different backends for each environment:</p>
+
+<table>
+  <thead><tr><th>Environment</th><th>Backend</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Development</td><td><strong>This service</strong> — drop-in simulator with PostgreSQL + dashboard</td><td style="color:var(--grn)">Available</td></tr>
+    <tr><td>Staging</td><td><a href="https://openmeter.io">OpenMeter</a> — open-source usage metering</td><td style="color:var(--grn)">Compatible</td></tr>
+    <tr><td>Production</td><td><a href="https://www.amdocs.com/products-services/monetize360">Monetize360</a> — enterprise billing (Verizon)</td><td style="color:var(--org)">Planned</td></tr>
+    <tr><td>Custom</td><td>Any CloudEvents v1.0 endpoint</td><td style="color:var(--blu)">Extensible</td></tr>
+  </tbody>
+</table>
+
+<h2>Token Types Tracked</h2>
+<p>Cache-aware metering — different token types have different costs:</p>
+<table>
+  <thead><tr><th>Token Type</th><th>OpenAI Field</th><th>Anthropic Field</th><th>Pricing Impact</th></tr></thead>
+  <tbody>
+    <tr><td>Input (new)</td><td><code>prompt_tokens</code></td><td><code>input_tokens</code></td><td>Full input rate</td></tr>
+    <tr><td>Output</td><td><code>completion_tokens</code></td><td><code>output_tokens</code></td><td>Full output rate</td></tr>
+    <tr><td>Cached read</td><td><code>prompt_tokens_details.cached_tokens</code></td><td><code>cache_read_input_tokens</code></td><td>~10x cheaper than input</td></tr>
+    <tr><td>Cache write</td><td>—</td><td><code>cache_creation_input_tokens</code></td><td>~25% more than input</td></tr>
+    <tr><td>Reasoning</td><td><code>completion_tokens_details.reasoning_tokens</code></td><td>—</td><td>Output rate</td></tr>
+  </tbody>
+</table>
+
+<h2 id="cloudevents">CloudEvents Format</h2>
+<p>The standardized event format for inference metering:</p>
+<pre><code>{
+  "specversion": "1.0",
+  "id": "evt-a1b2c3d4",
+  "source": "maas-gateway",
+  "type": "inference.tokens.used",
+  "subject": "alice",
+  "time": "2026-06-10T12:00:00Z",
+  "datacontenttype": "application/json",
+  "data": {
+    "user": "alice",
+    "group": "engineering",
+    "subscription": "premium",
+    "provider": "anthropic",
+    "model": "claude-opus-4-8",
+    "prompt_tokens": 150,
+    "completion_tokens": 80,
+    "total_tokens": 230,
+    "cached_input_tokens": 12000,
+    "cache_creation_tokens": 100,
+    "reasoning_tokens": 0,
+    "duration_ms": 1200
+  }
+}</code></pre>
+
+<h2 id="quickstart">Quick Start</h2>
+
+<h3>Docker Compose (local development)</h3>
+<pre><code>git clone https://github.com/noyitz/ai-gateway-metering-service
+cd ai-gateway-metering-service
+docker compose up</code></pre>
+
+<h3>Kubernetes</h3>
+<pre><code>kubectl create namespace metering
+kubectl apply -f deploy/ -n metering</code></pre>
+
+<h3>Enable in AI Gateway</h3>
+<pre><code># Add to your Helm values:
+upstreamBbr:
+  bbr:
+    plugins:
+      - type: external-metering
+        name: external-metering
+        json:
+          meteringURL: "http://metering-service.metering.svc:8080"
+          failOpen: true</code></pre>
+
+<h2>Related Projects</h2>
+<div class="cards">
+  <div class="card">
+    <h3><a href="https://github.com/opendatahub-io/ai-gateway-payload-processing">AI Inference Gateway</a></h3>
+    <p>The gateway framework and IPP plugin chain that powers external model serving in RHOAI.</p>
+  </div>
+  <div class="card">
+    <h3><a href="https://openmeter.io">OpenMeter</a></h3>
+    <p>Open-source cloud metering for AI, usage-based billing, and entitlements.</p>
+  </div>
+  <div class="card">
+    <h3><a href="https://cloudevents.io">CloudEvents</a></h3>
+    <p>CNCF specification for describing event data in a common way.</p>
+  </div>
+</div>
+
+</div>
+
+<footer>
+  AI Gateway Metering Service — Apache 2.0 License<br>
+  <a href="https://github.com/noyitz/ai-gateway-metering-service">GitHub</a> ·
+  <a href="https://redhat.atlassian.net/browse/RHAISTRAT-1919">RHAISTRAT-1919</a>
+</footer>
+
+</body>
+</html>

@@ -55,6 +55,11 @@ func (h *EventsHandler) HandleEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if event.ID == "" || event.Data.User == "" || event.Data.Model == "" {
+		http.Error(w, "missing required fields: id, data.user, data.model", http.StatusBadRequest)
+		return
+	}
+
 	ts, err := time.Parse(time.RFC3339, event.Time)
 	if err != nil {
 		ts = time.Now()
@@ -82,6 +87,10 @@ func (h *EventsHandler) HandleEvent(w http.ResponseWriter, r *http.Request) {
 		Source:              event.Source,
 	}
 
+	if h.store == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if err := h.store.InsertEvent(r.Context(), usageEvent); err != nil {
 		slog.Error("failed to insert event", "error", err, "event_id", event.ID)
 		http.Error(w, "internal error", http.StatusInternalServerError)

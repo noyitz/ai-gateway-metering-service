@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MaaS Dogfood Environment</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0b0e11;--bg-card:#181b1f;--bg-hover:#22262c;--border:#2c3138;
+  --text:#e0e3e8;--text2:#8b949e;--blue:#58a6ff;--green:#3fb950;
+  --orange:#d29922;--red:#f85149;--purple:#bc8cff;--cyan:#39d2c0;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px;max-width:1400px;margin:0 auto}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+header h1{font-size:22px;font-weight:600;color:var(--blue)}
+header h1 span{color:var(--text2);font-weight:400;font-size:14px;margin-left:8px}
+.range-btns{display:flex;gap:4px}
+.range-btns button{background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;transition:all .15s}
+.range-btns button:hover{background:var(--bg-hover);color:var(--text)}
+.range-btns button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+#last-refresh{color:var(--text2);font-size:12px}
+
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;text-align:center}
+.kpi-label{display:block;font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+.kpi-value{display:block;font-size:32px;font-weight:700}
+.kpi-value.blue{color:var(--blue)}.kpi-value.green{color:var(--green)}.kpi-value.orange{color:var(--orange)}.kpi-value.purple{color:var(--purple)}
+
+h2{font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text)}
+h2 .filter-tag{font-size:12px;color:var(--blue);background:rgba(88,166,255,.15);padding:2px 8px;border-radius:4px;margin-left:8px;cursor:pointer}
+
+.three-col{grid-template-columns:1fr 1fr 1fr!important}
+.three-col .chart-box canvas{max-height:220px}
+
+.section{margin-bottom:24px}
+table{width:100%;border-collapse:collapse;background:var(--bg-card);border-radius:10px;overflow:hidden;border:1px solid var(--border)}
+th{background:#14171a;color:var(--text2);font-size:12px;text-transform:uppercase;letter-spacing:.5px;padding:10px 14px;text-align:left;cursor:pointer;user-select:none;white-space:nowrap}
+th:hover{color:var(--text)}
+th.sorted-asc::after{content:' ▲';font-size:10px}
+th.sorted-desc::after{content:' ▼';font-size:10px}
+td{padding:10px 14px;font-size:13px;border-top:1px solid var(--border)}
+tr:hover td{background:var(--bg-hover)}
+tr.top5 td:first-child{border-left:3px solid var(--green)}
+tr.bottom5 td:first-child{border-left:3px solid var(--red)}
+tr.clickable{cursor:pointer}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+.chart-box{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.chart-box canvas{max-height:280px}
+
+.tl-toggle{display:flex;gap:4px;margin-bottom:12px}
+.tl-toggle button{background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px}
+.tl-toggle button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+
+.timeline-box{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:24px}
+.timeline-box canvas{max-height:300px}
+
+.expand-detail{padding:4px 0}
+.expand-detail table{border:none!important}
+.expand-detail td,.expand-detail th{padding:8px 14px;font-size:12px}
+.expand-loading{padding:12px 20px;color:var(--text2);font-size:13px}
+.bar-bg{background:var(--border);border-radius:3px;height:8px;width:100%}
+.bar-fill{height:8px;border-radius:3px;transition:width .3s}
+
+.recent-scroll{max-height:230px;overflow-y:auto;border-radius:10px}
+.recent-scroll table{border-radius:0}
+.recent-scroll thead{position:sticky;top:0;z-index:1}
+.recent-scroll::-webkit-scrollbar{width:6px}
+.recent-scroll::-webkit-scrollbar-track{background:var(--bg-card)}
+.recent-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+@media(max-width:1100px){.charts-row{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){.kpi-row{grid-template-columns:repeat(2,1fr)}.charts-row{grid-template-columns:1fr}}
+@media(max-width:600px){.kpi-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div class="tabs" style="display:flex;gap:4px;margin-bottom:16px">
+  <a href="/dashboard" style="background:var(--blue);color:#fff;border:1px solid var(--blue);padding:8px 20px;border-radius:6px;font-size:14px;text-decoration:none">Usage</a>
+  <a href="/admin2" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:14px;text-decoration:none">Optimizer</a>
+</div>
+
+<header>
+  <h1>MaaS Dogfood Environment<span id="last-refresh"></span></h1>
+  <button id="refresh-btn" onclick="refresh()" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;transition:all .15s">Refresh</button>
+</header>
+
+<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+  <span style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:600;flex-shrink:0">Filters</span>
+
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:11px;color:var(--text2);flex-shrink:0">Time:</span>
+    <div class="range-btns" id="range-btns">
+      <button data-range="24h">24h</button>
+      <button data-range="7d" class="active">7d</button>
+      <button data-range="30d">30d</button>
+    </div>
+    <input type="date" id="date-from" max="" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 6px;border-radius:5px;font-size:11px;width:130px;color-scheme:dark" onchange="setCustomRange()">
+    <span style="font-size:11px;color:var(--text2)">to</span>
+    <input type="date" id="date-to" max="" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 6px;border-radius:5px;font-size:11px;width:130px;color-scheme:dark" onchange="setCustomRange()">
+  </div>
+
+  <div style="height:20px;border-left:1px solid var(--border)"></div>
+
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:11px;color:var(--text2)">Group:</span>
+    <select id="group-filter-select" onchange="groupFilter=this.value;refresh()" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:5px;font-size:12px;cursor:pointer">
+      <option value="">All</option>
+    </select>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:11px;color:var(--text2)">Model:</span>
+    <select id="model-filter-select" onchange="setModelFilter(this.value)" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:5px;font-size:12px;cursor:pointer">
+      <option value="">All</option>
+    </select>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:6px;position:relative">
+    <span style="font-size:11px;color:var(--text2)">User:</span>
+    <input type="text" id="user-filter-input" placeholder="Search..." autocomplete="off"
+      style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:5px;font-size:12px;width:130px"
+      oninput="showUserSuggestions(this.value)" onfocus="showUserSuggestions(this.value)">
+    <div id="user-suggestions" style="display:none;position:absolute;top:100%;left:30px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;max-height:180px;overflow-y:auto;width:160px;z-index:50;margin-top:2px;box-shadow:0 6px 20px rgba(0,0,0,.5)"></div>
+  </div>
+
+  <div style="height:20px;border-left:1px solid var(--border)"></div>
+  <button onclick="clearAllFilters()" style="background:none;border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;transition:all .15s" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--red)'" onmouseout="this.style.color='var(--text2)';this.style.borderColor='var(--border)'">Clear All</button>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi"><span class="kpi-label">Total Requests</span><span id="kpi-requests" class="kpi-value blue">--</span></div>
+  <div class="kpi"><span class="kpi-label">Total Tokens</span><span id="kpi-tokens" class="kpi-value green">--</span></div>
+  <div class="kpi"><span class="kpi-label">Estimated Cost</span><span id="kpi-cost" class="kpi-value orange">--</span></div>
+  <div class="kpi"><span class="kpi-label">Active Users</span><span id="kpi-users" class="kpi-value purple">--</span></div>
+</div>
+
+<div class="charts-row three-col">
+  <div class="chart-box">
+    <h2>By Model</h2>
+    <div class="tl-toggle" id="model-metric-toggle">
+      <button data-mm="cost" class="active">Cost</button>
+      <button data-mm="tokens">Tokens</button>
+      <button data-mm="requests">Requests</button>
+    </div>
+    <canvas id="token-chart"></canvas>
+  </div>
+  <div class="chart-box">
+    <h2>By Token Type</h2>
+    <div class="tl-toggle" id="token-type-toggle">
+      <button data-tt="tokens" class="active">Tokens</button>
+      <button data-tt="cost">Cost</button>
+    </div>
+    <div id="token-type-bars"></div>
+  </div>
+  <div class="chart-box">
+    <h2>By User (Top 10)</h2>
+    <div class="tl-toggle" id="user-metric-toggle">
+      <button data-um="cost" class="active">Cost</button>
+      <button data-um="tokens">Tokens</button>
+      <button data-um="requests">Requests</button>
+    </div>
+    <canvas id="user-cost-chart"></canvas>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Recent Activity <span style="font-size:12px;color:var(--text2);font-weight:400">(live)</span></h2>
+  <div class="recent-scroll">
+    <table>
+      <thead><tr>
+        <th style="cursor:default">Time</th>
+        <th style="cursor:default">User</th>
+        <th style="cursor:default">Group</th>
+        <th style="cursor:default">Model</th>
+        <th style="cursor:default">Provider</th>
+        <th style="cursor:default" class="num">Input</th>
+        <th style="cursor:default" class="num">Output</th>
+        <th style="cursor:default" class="num">Cached</th>
+        <th style="cursor:default" class="num">Total</th>
+        <th style="cursor:default" class="num">Cost</th>
+      </tr></thead>
+      <tbody id="recent-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Users</h2>
+  <table>
+    <thead><tr id="users-thead"></tr></thead>
+    <tbody id="users-tbody"></tbody>
+  </table>
+</div>
+
+<div class="timeline-box">
+  <h2>Tokens Over Time</h2>
+  <div class="tl-toggle" id="tl-toggle">
+    <button data-gb="model" class="active">By Model</button>
+    <button data-gb="user">By User</button>
+  </div>
+  <canvas id="timeline-chart"></canvas>
+</div>
+
+<script>
+let range='7d', groupFilter='', userFilter='', modelFilter='', tlGroupBy='model';
+let tokenTypeMetric='tokens', modelMetric='cost', userPieMetric='cost';
+let tokenChart=null, tokenTypeChart=null, userCostChart=null, tlChart=null;
+let currentSort='total_tokens', currentOrder='desc';
+let cachedGroups=[], cachedModels=[], cachedUsers=[];
+
+const COLORS=['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#39d2c0','#f778ba','#79c0ff','#7ee787','#e3b341','#ff9a8c','#d2a8ff','#56d4dd','#ffa657','#a5d6ff'];
+
+function fmtN(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return n.toString()}
+function fmtC(n){return '$'+n.toFixed(2)}
+
+async function api(path){const r=await fetch(path);if(!r.ok)throw new Error(r.statusText);return r.json()}
+
+async function refresh(){
+  var r=range;
+  if(r==='custom'&&customFrom&&customTo)r='custom&from='+customFrom+'&to='+customTo;
+  var uf=userFilter?'&user='+encodeURIComponent(userFilter):'';
+  var gf=groupFilter?'&group='+encodeURIComponent(groupFilter):'';
+  var mf=modelFilter?'&model='+encodeURIComponent(modelFilter):'';
+  var filters='range='+r+gf+uf;
+  const [ov,gr,us,mo,tl,rc]=await Promise.all([
+    api('/api/v1/dashboard/overview?'+filters),
+    api('/api/v1/dashboard/groups?range='+r),
+    api('/api/v1/dashboard/users?'+filters+mf+'&sort='+currentSort+'&order='+currentOrder),
+    api('/api/v1/dashboard/models?'+filters),
+    api('/api/v1/dashboard/timeline?range='+r+'&group_by='+tlGroupBy),
+    api('/api/v1/dashboard/recent?limit=20')
+  ]);
+  cachedGroups=gr;
+  cachedModels=modelFilter?mo.filter(function(m){return m.model===modelFilter}):mo;
+  cachedUsers=us;
+  renderKPI(ov);
+  renderGroupFilterBtns(gr);
+  populateFilterDropdowns(mo, us);
+  renderUsers(us);
+  renderRecent(rc);
+  renderModelChart();
+  renderTokenTypeChart();
+  renderUserCostChart();
+  renderTimeline(tl);
+  document.getElementById('last-refresh').textContent=' • '+new Date().toLocaleTimeString();
+}
+
+function timeAgo(ts){
+  const s=Math.floor((Date.now()-new Date(ts))/1000);
+  if(s<60)return s+'s ago';
+  if(s<3600)return Math.floor(s/60)+'m ago';
+  if(s<86400)return Math.floor(s/3600)+'h ago';
+  return Math.floor(s/86400)+'d ago';
+}
+
+function renderRecent(data){
+  const tbody=document.getElementById('recent-tbody');
+  tbody.innerHTML=data.map(r=>{
+    const provColor=r.provider==='anthropic'?'var(--orange)':r.provider==='openai'?'var(--green)':'var(--cyan)';
+    return `<tr>
+      <td style="white-space:nowrap;color:var(--text2)">${timeAgo(r.timestamp)}</td>
+      <td><strong>${r.username}</strong></td>
+      <td>${r.group_name}</td>
+      <td>${r.model}</td>
+      <td style="color:${provColor}">${r.provider}</td>
+      <td class="num">${fmtN(r.prompt_tokens)}</td>
+      <td class="num">${fmtN(r.completion_tokens)}</td>
+      <td class="num" style="color:var(--cyan)">${fmtN(r.cached_input_tokens||0)}</td>
+      <td class="num">${fmtN(r.total_tokens)}</td>
+      <td class="num">${fmtC(r.cost_usd)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderKPI(d){
+  document.getElementById('kpi-requests').textContent=fmtN(d.total_requests);
+  document.getElementById('kpi-tokens').textContent=fmtN(d.total_tokens);
+  document.getElementById('kpi-cost').textContent=fmtC(d.total_cost_usd);
+  document.getElementById('kpi-users').textContent=d.active_users;
+}
+
+function renderGroupFilterBtns(data){}
+
+const COLS=[
+  {key:'username',label:'User',cls:''},
+  {key:'group_name',label:'Group',cls:''},
+  {key:'requests',label:'Requests',cls:'num'},
+  {key:'prompt_tokens',label:'Prompt Tokens',cls:'num'},
+  {key:'completion_tokens',label:'Completion Tokens',cls:'num'},
+  {key:'total_tokens',label:'Total Tokens',cls:'num'},
+  {key:'cost_usd',label:'Cost ($)',cls:'num'}
+];
+
+let expandedUser='';
+
+function renderUsers(data){
+  const thead=document.getElementById('users-thead');
+  thead.innerHTML='<th style="width:30px;cursor:default"></th>'+COLS.map(c=>{
+    let cls='';
+    if(currentSort===c.key)cls=currentOrder==='asc'?'sorted-asc':'sorted-desc';
+    return `<th class="${cls}" onclick="sortBy('${c.key}')">${c.label}</th>`;
+  }).join('');
+
+  const tbody=document.getElementById('users-tbody');
+  const len=data.length;
+  tbody.innerHTML=data.map((u,i)=>{
+    let cls='clickable';
+    if(i<5&&len>10)cls+=' top5';
+    if(i>=len-5&&len>10)cls+=' bottom5';
+    const isExpanded=expandedUser===u.username;
+    const arrow=isExpanded?'&#9660;':'&#9654;';
+    let row=`<tr class="${cls}" onclick="toggleExpand('${u.username}')">
+      <td style="color:var(--text2);font-size:10px">${arrow}</td>
+      <td>${u.username}</td>
+      <td>${u.group_name}</td>
+      <td class="num">${fmtN(u.requests)}</td>
+      <td class="num">${fmtN(u.prompt_tokens)}</td>
+      <td class="num">${fmtN(u.completion_tokens)}</td>
+      <td class="num">${fmtN(u.total_tokens)}</td>
+      <td class="num">${fmtC(u.cost_usd)}</td>
+    </tr>`;
+    if(isExpanded)row+=`<tr id="expand-${u.username}"><td colspan="8" style="padding:0"><div class="expand-loading" id="expand-content-${u.username}">Loading...</div></td></tr>`;
+    return row;
+  }).join('');
+
+  if(expandedUser)loadUserModels(expandedUser);
+}
+
+async function toggleExpand(username){
+  if(expandedUser===username){expandedUser='';refresh();return;}
+  expandedUser=username;
+  refresh();
+}
+
+async function loadUserModels(username){
+  const el=document.getElementById('expand-content-'+username);
+  if(!el)return;
+  try{
+    const models=await api(`/api/v1/dashboard/models?range=${range}&user=${username}`);
+    if(!models.length){el.innerHTML='<div style="padding:12px;color:var(--text2)">No model data</div>';return;}
+    const total=models.reduce((s,m)=>s+m.total_tokens,0);
+    el.innerHTML=`<div class="expand-detail">
+      <table style="margin:0;border:none;background:var(--bg)">
+        <thead><tr>
+          <th style="cursor:default">Model</th>
+          <th style="cursor:default">Provider</th>
+          <th style="cursor:default" class="num">Requests</th>
+          <th style="cursor:default" class="num">Input</th>
+          <th style="cursor:default" class="num">Output</th>
+          <th style="cursor:default" class="num">Cached</th>
+          <th style="cursor:default" class="num">Cache Write</th>
+          <th style="cursor:default" class="num">Total</th>
+          <th style="cursor:default" class="num">Cost</th>
+          <th style="cursor:default;width:80px" class="num">%</th>
+        </tr></thead>
+        <tbody>${models.map(m=>{
+          const pct=total>0?((m.total_tokens/total)*100):0;
+          const provColor=m.provider==='anthropic'?'var(--orange)':m.provider==='openai'?'var(--green)':'var(--cyan)';
+          const newInput=Math.max((m.prompt_tokens||0)-(m.cached_input_tokens||0),0);
+          return `<tr>
+            <td><strong>${m.model}</strong></td>
+            <td style="color:${provColor}">${m.provider}</td>
+            <td class="num">${fmtN(m.requests)}</td>
+            <td class="num">${fmtN(newInput)}</td>
+            <td class="num">${fmtN(m.completion_tokens||0)}</td>
+            <td class="num" style="color:var(--cyan)">${fmtN(m.cached_input_tokens||0)}</td>
+            <td class="num" style="color:var(--purple)">${fmtN(m.cache_creation_tokens||0)}</td>
+            <td class="num">${fmtN(m.total_tokens)}</td>
+            <td class="num">${fmtC(m.cost_usd)}</td>
+            <td class="num">${pct.toFixed(1)}%</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+  }catch(e){el.innerHTML='<div style="padding:12px;color:var(--red)">Error loading</div>';}
+}
+
+function pieVal(d,metric){
+  if(metric==='cost')return d.cost_usd;
+  if(metric==='tokens')return d.total_tokens;
+  if(metric==='requests')return d.requests;
+  return d[metric]||0;
+}
+function pieFmt(v,metric){
+  if(metric==='cost'||metric==='cost_usd')return fmtC(v);
+  return fmtN(v);
+}
+function pieUnit(metric){
+  if(metric==='cost'||metric==='cost_usd')return '';
+  if(metric==='tokens'||metric==='total_tokens')return ' tokens';
+  if(metric==='requests')return ' reqs';
+  if(metric==='user_count')return ' users';
+  return '';
+}
+
+var MODEL_PRICING_JS={
+  'claude-opus-4-8':{i:5,o:25,cr:0.5,cw:6.25},'claude-opus-4-6':{i:5,o:25,cr:0.5,cw:6.25},
+  'claude-sonnet-4-6':{i:3,o:15,cr:0.3,cw:3.75},'claude-sonnet-4-20250514':{i:3,o:15,cr:0.3,cw:3.75},
+  'claude-haiku-4-5':{i:1,o:5,cr:0.1,cw:1.25},'claude-haiku-4-5-20251001':{i:1,o:5,cr:0.1,cw:1.25},
+  'gpt-5.5':{i:5,o:30,cr:0.5,cw:0},'gpt-5.4':{i:2.5,o:15,cr:0,cw:0},'gpt-5.4-mini':{i:0.3,o:1.2,cr:0.075,cw:0},
+  'gpt-5.3-codex':{i:1.5,o:6,cr:0,cw:0},'gpt-4o':{i:2.5,o:10,cr:0,cw:0}
+};
+function renderModelChart(){
+  const data=cachedModels;
+  const m=modelMetric;
+  const vals=data.map(d=>pieVal(d,m));
+  const labels=data.map((d,i)=>`${d.model} — ${pieFmt(vals[i],m)}`);
+  const colors=data.map((_,i)=>COLORS[i%COLORS.length]);
+  if(tokenChart)tokenChart.destroy();
+  tokenChart=new Chart(document.getElementById('token-chart'),{
+    type:'doughnut',data:{labels,datasets:[{data:vals,backgroundColor:colors,borderWidth:0}]},
+    options:{responsive:true,plugins:{legend:{position:'right',labels:{color:'#8b949e',font:{size:12},padding:12}},
+      tooltip:{callbacks:{label:function(ctx){const tot=vals.reduce((a,b)=>a+b,0);return data[ctx.dataIndex].model+': '+pieFmt(ctx.raw,m)+pieUnit(m)+' ('+((ctx.raw/tot)*100).toFixed(1)+'%)';}}}
+    }}
+  });
+}
+
+
+function renderTokenTypeChart(){
+  var data=cachedModels;
+  var totNewInput=0, totOutput=0, totCacheRead=0, totCacheWrite=0;
+  var costInput=0, costOutput=0, costCR=0, costCW=0;
+  data.forEach(function(m){
+    var ni=Math.max((m.prompt_tokens||0)-(m.cached_input_tokens||0),0);
+    totNewInput+=ni; totOutput+=(m.completion_tokens||0);
+    totCacheRead+=(m.cached_input_tokens||0); totCacheWrite+=(m.cache_creation_tokens||0);
+    var p=MODEL_PRICING_JS[m.model]||{i:5,o:25,cr:0.5,cw:0};
+    costInput+=ni*p.i/1e6; costOutput+=(m.completion_tokens||0)*p.o/1e6;
+    costCR+=(m.cached_input_tokens||0)*p.cr/1e6; costCW+=(m.cache_creation_tokens||0)*p.cw/1e6;
+  });
+  var isCost=tokenTypeMetric==='cost';
+  var items=[
+    {label:'New Input',color:'#e2e6ec',tok:totNewInput,cost:costInput,rate:'input'},
+    {label:'Output',color:'var(--green)',tok:totOutput,cost:costOutput,rate:'output'},
+    {label:'Cache Read',color:'var(--cyan)',tok:totCacheRead,cost:costCR,rate:'cache read'},
+    {label:'Cache Write',color:'var(--purple)',tok:totCacheWrite,cost:costCW,rate:'cache write'}
+  ];
+  var total=items.reduce(function(s,x){return s+(isCost?x.cost:x.tok);},0);
+
+  var el=document.getElementById('token-type-bars');
+  el.innerHTML=items.map(function(x){
+    var val=isCost?x.cost:x.tok;
+    var share=total>0?((val/total)*100).toFixed(1):'0';
+    var pct=parseFloat(share);
+    var display=isCost?fmtC(val):fmtN(val);
+    return '<div style="margin:10px 0">'
+      +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">'
+      +'<span style="font-size:12px;font-weight:600;color:var(--text)">'+x.label+'</span>'
+      +'<span style="font-size:12px;font-weight:700;color:var(--text)">'+display+' <span style="color:var(--text2);font-weight:400;font-size:11px">('+share+'%)</span></span>'
+      +'</div>'
+      +'<div style="background:var(--border);border-radius:4px;height:18px;overflow:hidden">'
+      +'<div style="background:'+x.color+';height:100%;width:'+pct+'%;border-radius:4px;transition:width .4s"></div>'
+      +'</div></div>';
+  }).join('');
+}
+
+function populateFilterDropdowns(models, users){
+  var ms=document.getElementById('model-filter-select');
+  if(ms){
+    var cur=ms.value;
+    ms.innerHTML='<option value="">All</option>'+models.map(function(m){return '<option value="'+m.model+'"'+(m.model===cur?' selected':'')+'>'+m.model+'</option>';}).join('');
+  }
+  var gs=document.getElementById('group-filter-select');
+  if(gs){
+    var curG=gs.value;
+    var groups=[...new Set(users.map(function(u){return u.group_name}).filter(Boolean))];
+    gs.innerHTML='<option value="">All</option>'+groups.map(function(g){return '<option value="'+g+'"'+(g===curG?' selected':'')+'>'+g+'</option>';}).join('');
+  }
+  allUsers=users;
+  var inp=document.getElementById('user-filter-input');
+  if(inp&&userFilter){inp.value=userFilter;}
+}
+
+var allUsers=[];
+function showUserSuggestions(q){
+  var box=document.getElementById('user-suggestions');
+  if(!q){
+    box.style.display='none';
+    if(userFilter){userFilter='';refresh();}
+    return;
+  }
+  var matches=allUsers.filter(function(u){return u.username.toLowerCase().indexOf(q.toLowerCase())>=0;}).slice(0,10);
+  if(!matches.length){box.style.display='none';return;}
+  box.style.display='block';
+  box.innerHTML=matches.map(function(u){
+    return '<div style="padding:6px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border)" onmousedown="selectUserFilter(\''+u.username+'\')">'+u.username+'</div>';
+  }).join('');
+}
+function selectUserFilter(u){
+  userFilter=u;
+  document.getElementById('user-filter-input').value=u;
+  document.getElementById('user-suggestions').style.display='none';
+  refresh();
+}
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#user-filter-input')&&!e.target.closest('#user-suggestions')){
+    document.getElementById('user-suggestions').style.display='none';
+  }
+});
+
+function setModelFilter(v){modelFilter=v;refresh();}
+function clearUserFilter(){userFilter='';var inp=document.getElementById('user-filter-input');if(inp)inp.value='';refresh();}
+
+var customFrom='',customTo='';
+
+function syncDateInputs(){
+  var today=new Date().toISOString().split('T')[0];
+  var df=document.getElementById('date-from');
+  var dt=document.getElementById('date-to');
+  df.max=today;dt.max=today;
+  if(range!=='custom'){
+    var now=new Date();
+    var from=new Date(now);
+    if(range==='24h')from.setDate(from.getDate()-1);
+    else if(range==='7d')from.setDate(from.getDate()-7);
+    else if(range==='30d')from.setDate(from.getDate()-30);
+    df.value=from.toISOString().split('T')[0];
+    dt.value=today;
+  }
+}
+
+function setCustomRange(){
+  var from=document.getElementById('date-from').value;
+  var to=document.getElementById('date-to').value;
+  if(from&&to){
+    range='custom';customFrom=from;customTo=to;
+    document.querySelectorAll('#range-btns .active').forEach(function(b){b.classList.remove('active');});
+    refresh();
+  }
+}
+
+function clearAllFilters(){
+  range='7d';groupFilter='';modelFilter='';userFilter='';customFrom='';customTo='';
+  document.querySelectorAll('#range-btns .active').forEach(function(b){b.classList.remove('active');});
+  var b7=document.querySelector('#range-btns button[data-range="7d"]');if(b7)b7.classList.add('active');
+  var gs=document.getElementById('group-filter-select');if(gs)gs.value='';
+  var ms=document.getElementById('model-filter-select');if(ms)ms.value='';
+  var ui=document.getElementById('user-filter-input');if(ui)ui.value='';
+  syncDateInputs();
+  refresh();
+}
+
+function renderUserCostChart(){
+  const data=cachedUsers.slice(0,10);
+  const m=userPieMetric;
+  const vals=data.map(d=>pieVal(d,m));
+  const labels=data.map((d,i)=>`${d.username} — ${pieFmt(vals[i],m)}`);
+  const colors=data.map((_,i)=>COLORS[i%COLORS.length]);
+  if(userCostChart)userCostChart.destroy();
+  userCostChart=new Chart(document.getElementById('user-cost-chart'),{
+    type:'doughnut',data:{labels,datasets:[{data:vals,backgroundColor:colors,borderWidth:0}]},
+    options:{responsive:true,plugins:{legend:{position:'right',labels:{color:'#8b949e',font:{size:11},padding:8}},
+      tooltip:{callbacks:{label:function(ctx){const tot=vals.reduce((a,b)=>a+b,0);return data[ctx.dataIndex].username+': '+pieFmt(ctx.raw,m)+pieUnit(m)+' ('+((ctx.raw/tot)*100).toFixed(1)+'%)';}}}
+    }}
+  });
+}
+
+function renderTimeline(data){
+  const seriesSet=[...new Set(data.map(d=>d.series))];
+  const bucketsSet=[...new Set(data.map(d=>d.bucket))].sort();
+  const map={};
+  data.forEach(d=>{map[d.bucket+'|'+d.series]=d.total_tokens});
+
+  const datasets=seriesSet.map((s,i)=>({
+    label:s,
+    data:bucketsSet.map(b=>map[b+'|'+s]||0),
+    backgroundColor:COLORS[i%COLORS.length]+'40',
+    borderColor:COLORS[i%COLORS.length],
+    borderWidth:1.5,
+    fill:true,
+    tension:0.3,
+    pointRadius:0
+  }));
+
+  if(tlChart)tlChart.destroy();
+  tlChart=new Chart(document.getElementById('timeline-chart'),{
+    type:'line',
+    data:{labels:bucketsSet.map(b=>new Date(b).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})),datasets},
+    options:{
+      responsive:true,
+      scales:{
+        x:{ticks:{color:'#8b949e',maxRotation:45,font:{size:11}},grid:{color:'#2c3138'}},
+        y:{stacked:true,ticks:{color:'#8b949e',callback:v=>fmtN(v)},grid:{color:'#2c3138'}}
+      },
+      plugins:{legend:{labels:{color:'#8b949e',font:{size:11}}}}
+    }
+  });
+}
+
+function setGroupFilter(g){groupFilter=g;userFilter='';expandedUser='';refresh()}
+function clearGroupFilter(){groupFilter='';userFilter='';expandedUser='';refresh()}
+function setUserFilter(u){userFilter=userFilter===u?'':u;refresh()}
+function clearUserFilter(){userFilter='';refresh()}
+function sortBy(col){if(currentSort===col)currentOrder=currentOrder==='desc'?'asc':'desc';else{currentSort=col;currentOrder='desc'}refresh()}
+
+document.getElementById('range-btns').addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  document.querySelectorAll('#range-btns .active').forEach(function(b){b.classList.remove('active');});
+  e.target.classList.add('active');
+  range=e.target.dataset.range;
+  syncDateInputs();
+  refresh();
+});
+
+
+document.getElementById('token-type-toggle').addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  document.querySelector('#token-type-toggle .active').classList.remove('active');
+  e.target.classList.add('active');
+  tokenTypeMetric=e.target.dataset.tt;
+  renderTokenTypeChart();
+});
+
+document.getElementById('model-metric-toggle').addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  document.querySelector('#model-metric-toggle .active').classList.remove('active');
+  e.target.classList.add('active');
+  modelMetric=e.target.dataset.mm;
+  renderModelChart();
+});
+
+document.getElementById('user-metric-toggle').addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  document.querySelector('#user-metric-toggle .active').classList.remove('active');
+  e.target.classList.add('active');
+  userPieMetric=e.target.dataset.um;
+  renderUserCostChart();
+});
+
+document.getElementById('tl-toggle').addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  document.querySelector('#tl-toggle .active').classList.remove('active');
+  e.target.classList.add('active');
+  tlGroupBy=e.target.dataset.gb;
+  refresh();
+});
+
+syncDateInputs();
+refresh();
+setInterval(refresh,30000);
+</script>
+</body>
+</html>
