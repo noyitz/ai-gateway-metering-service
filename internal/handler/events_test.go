@@ -1,0 +1,72 @@
+package handler
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestHandleEvent_ParsesCloudEvent(t *testing.T) {
+	event := cloudEvent{
+		SpecVersion:     "1.0",
+		ID:              "evt-test-123",
+		Source:          "maas-gateway",
+		Type:            "inference.tokens.used",
+		Subject:         "noy",
+		Time:            "2026-05-28T10:30:00Z",
+		DataContentType: "application/json",
+		Data: cloudEventData{
+			User:             "noy",
+			Group:            "engineering",
+			Subscription:     "premium",
+			Provider:         "anthropic",
+			Model:            "claude-opus-4-6",
+			PromptTokens:     100,
+			CompletionTokens: 50,
+			TotalTokens:      150,
+		},
+	}
+
+	body, _ := json.Marshal(event)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	var parsed cloudEvent
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("failed to parse: %v", err)
+	}
+
+	if parsed.Data.User != "noy" {
+		t.Errorf("user: got %q, want %q", parsed.Data.User, "noy")
+	}
+	if parsed.Data.PromptTokens != 100 {
+		t.Errorf("prompt_tokens: got %d, want %d", parsed.Data.PromptTokens, 100)
+	}
+	if parsed.Data.Provider != "anthropic" {
+		t.Errorf("provider: got %q, want %q", parsed.Data.Provider, "anthropic")
+	}
+}
+
+func TestHandleEvent_RejectsGet(t *testing.T) {
+	h := &EventsHandler{}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	w := httptest.NewRecorder()
+	h.HandleEvent(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status: got %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestHandleEvent_RejectsInvalidJSON(t *testing.T) {
+	h := &EventsHandler{}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte("not json")))
+	w := httptest.NewRecorder()
+	h.HandleEvent(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status: got %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
