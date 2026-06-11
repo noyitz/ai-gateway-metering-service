@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MaaS Admin — Model Routing</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0b0e11;
+  --c1:#141820;
+  --c2:#1a2030;
+  --c3:#232d40;
+  --bdr:#2e3848;
+  --t:#e2e6ec;
+  --t2:#8090a8;
+  --blu:#4da0f8;
+  --grn:#3dcc6e;
+  --org:#eba830;
+  --red:#e8554e;
+  --pur:#a88cf8;
+  --cyn:#38d4c2;
+}
+body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;font-size:13px;line-height:1.5}
+.pg{max-width:1800px;margin:0 auto;padding:20px 40px}
+
+/* Header */
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px}
+.hdr-left{display:flex;align-items:center;gap:28px}
+.tabs{display:flex;background:var(--c1);border-radius:8px;padding:2px}
+.tabs a{color:var(--t2);padding:8px 24px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px;transition:all .2s}
+.tabs a.on{background:var(--blu);color:#fff}
+.tabs a:hover:not(.on){background:var(--c2)}
+.page-title{font-size:18px;font-weight:700;color:var(--t)}
+
+/* Main layout: 3 columns */
+.flow-container{
+  position:relative;
+  min-height:560px;
+}
+
+.flow{
+  display:grid;
+  grid-template-columns:250px 290px 1fr;
+  gap:30px;
+  align-items:center;
+  position:relative;
+  padding:20px 0;
+}
+
+.svg-layer{position:absolute;inset:0;pointer-events:none;z-index:0}
+.content-layer{position:relative;z-index:1}
+
+/* Models section (combined clients + ingress) */
+.models-container{
+  background:var(--c1);
+  border:1px solid var(--bdr);
+  border-radius:12px;
+  padding:20px 16px;
+  max-width:240px;
+}
+.models-title{
+  font-size:10px;
+  color:var(--t2);
+  text-transform:uppercase;
+  letter-spacing:2px;
+  font-weight:700;
+  margin-bottom:16px;
+  text-align:center;
+}
+.models-list{display:flex;flex-direction:column;gap:10px;align-items:stretch}
+.model-card{
+  background:var(--c2);
+  border:1px solid var(--bdr);
+  border-radius:9px;
+  padding:12px 14px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  cursor:pointer;
+  transition:all .2s;
+  opacity:.45;
+}
+.model-card:hover{border-color:var(--blu);background:var(--c3);opacity:.7}
+.model-card.selected{
+  border-color:var(--grn);
+  background:linear-gradient(135deg,rgba(61,204,110,.1),var(--c2));
+  box-shadow:0 0 20px rgba(61,204,110,.15);
+  opacity:1;
+}
+.model-icon{width:28px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.model-name{font-size:13px;font-weight:700;color:var(--t)}
+.model-card.selected .model-name{color:var(--grn)}
+
+/* Gateway section */
+.gateway-section{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+}
+.gateway{
+  background:linear-gradient(165deg,#1a2640,#0f1829);
+  max-width:280px;
+  border:2px solid var(--blu);
+  border-radius:14px;
+  padding:18px 20px;
+  box-shadow:0 0 40px rgba(77,160,248,.2);
+  width:100%;
+}
+.gw-header{
+  font-size:9px;
+  color:var(--blu);
+  text-transform:uppercase;
+  letter-spacing:3px;
+  font-weight:800;
+  text-align:center;
+  margin-bottom:18px;
+  padding-bottom:12px;
+  border-bottom:1px solid rgba(77,160,248,.2);
+}
+
+/* Plugins */
+.plugin{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:11px 16px;
+  border-radius:8px;
+  border:1px solid var(--bdr);
+  margin-bottom:6px;
+  cursor:pointer;
+  transition:all .2s;
+  position:relative;
+  background:rgba(0,0,0,.2);
+}
+.plugin:hover{
+  border-color:var(--blu);
+  background:rgba(77,160,248,.08);
+  transform:translateX(3px);
+}
+.plugin-dot{
+  width:9px;
+  height:9px;
+  border-radius:50%;
+  flex-shrink:0;
+}
+.plugin-dot.on{
+  background:var(--grn);
+  box-shadow:0 0 10px var(--grn);
+}
+.plugin-dot.off{
+  background:var(--bdr);
+}
+.plugin-name{
+  font-size:12px;
+  font-weight:600;
+  flex:1;
+}
+.plugin.active .plugin-name{color:var(--grn)}
+.plugin.inactive .plugin-name{color:var(--t2)}
+.plugin-divider{
+  border-top:1px dashed rgba(128,144,168,.3);
+  margin:10px 0;
+}
+.plugin.extra{
+  padding:9px 16px;
+  opacity:.5;
+}
+.plugin.extra:hover{opacity:.8}
+.plugin.extra .plugin-name{font-size:11px}
+
+/* Plugin info overlay */
+.plugin-info{
+  display:none;
+  position:absolute;
+  left:calc(100% + 14px);
+  top:-8px;
+  background:linear-gradient(135deg,var(--c2),var(--c3));
+  border:1px solid var(--blu);
+  border-radius:10px;
+  padding:16px 18px;
+  width:300px;
+  z-index:100;
+  box-shadow:0 10px 40px rgba(0,0,0,.7);
+}
+.plugin-info.open{display:block}
+.plugin-info-title{
+  color:var(--blu);
+  font-size:13px;
+  font-weight:700;
+  margin-bottom:8px;
+}
+.plugin-info-desc{
+  font-size:11px;
+  color:var(--t);
+  line-height:1.6;
+}
+.plugin-info-close{
+  position:absolute;
+  top:10px;
+  right:12px;
+  cursor:pointer;
+  color:var(--t2);
+  font-size:18px;
+  line-height:1;
+  transition:color .15s;
+}
+.plugin-info-close:hover{color:var(--t)}
+
+/* Model override plugin special layout */
+.plugin-override{padding:10px 16px}
+.plugin-override .plugin-content{flex:1}
+.plugin-override .override-label{font-size:10px;margin-bottom:5px;font-weight:600;color:var(--t2)}
+.plugin-override select{
+  background:rgba(0,0,0,.3);
+  color:var(--t);
+  border:1px solid var(--bdr);
+  padding:6px 12px;
+  border-radius:6px;
+  font-size:11px;
+  width:100%;
+  cursor:pointer;
+  font-family:inherit;
+}
+.plugin-override select:hover{border-color:var(--blu)}
+
+/* Providers section */
+.providers-section{
+  margin-left:auto;
+  padding-left:40px;
+}
+.providers-title{
+  font-size:10px;
+  color:var(--t2);
+  text-transform:uppercase;
+  letter-spacing:2px;
+  font-weight:700;
+  margin-bottom:16px;
+}
+.providers{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  max-width:1140px;
+}
+.provider-card{
+  background:var(--c2);
+  border:1px solid var(--bdr);
+  border-radius:9px;
+  padding:12px 16px;
+  transition:all .2s;
+  min-height:auto;
+  display:grid;
+  grid-template-columns:1fr auto;
+  grid-template-rows:auto auto;
+  gap:8px 12px;
+}
+.provider-card.active{
+  border-color:var(--grn);
+  background:linear-gradient(135deg,rgba(61,204,110,.08),var(--c2));
+  box-shadow:0 0 20px rgba(61,204,110,.15);
+}
+.provider-card.disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+.prov-header{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  grid-column:1;
+  grid-row:1;
+}
+.prov-name{font-size:15px;font-weight:700}
+.prov-price{font-size:12px;font-weight:600}
+.prov-price.free{color:var(--grn)}
+.prov-price.paid{color:var(--cyn)}
+.prov-price.na{color:var(--t2)}
+.prov-badge{
+  font-size:8px;
+  padding:3px 8px;
+  border-radius:3px;
+  text-transform:uppercase;
+  letter-spacing:.8px;
+  font-weight:700;
+  flex-shrink:0;
+  grid-column:2;
+  grid-row:1;
+  align-self:center;
+  min-width:56px;
+  text-align:center;
+}
+.prov-badge.active{background:rgba(61,204,110,.15);color:var(--grn)}
+.prov-badge.standby{background:rgba(235,168,48,.15);color:var(--org)}
+.prov-badge.nokey{background:rgba(128,144,168,.1);color:var(--t2)}
+
+/* Weight control */
+.weight-control{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  grid-column:1 / -1;
+  grid-row:2;
+}
+.weight-control label{
+  font-size:8px;
+  color:var(--t2);
+  text-transform:uppercase;
+  letter-spacing:.5px;
+  width:42px;
+  flex-shrink:0;
+}
+.weight-control input[type=range]{
+  flex:1;
+  -webkit-appearance:none;
+  height:3px;
+  border-radius:2px;
+  background:var(--bdr);
+  outline:none;
+}
+.weight-control input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:13px;
+  height:13px;
+  border-radius:50%;
+  background:var(--grn);
+  cursor:pointer;
+  border:2px solid var(--bg);
+  box-shadow:0 2px 6px rgba(0,0,0,.3);
+}
+.weight-control input[type=range]::-moz-range-thumb{
+  width:13px;
+  height:13px;
+  border-radius:50%;
+  background:var(--grn);
+  cursor:pointer;
+  border:2px solid var(--bg);
+  box-shadow:0 2px 6px rgba(0,0,0,.3);
+}
+.weight-control input[type=number]{
+  width:46px;
+  background:rgba(0,0,0,.3);
+  border:1px solid var(--bdr);
+  color:var(--t);
+  padding:4px 6px;
+  border-radius:4px;
+  font-size:10px;
+  text-align:center;
+  font-family:inherit;
+  font-weight:600;
+}
+.weight-control input[type=number]:hover{border-color:var(--blu)}
+
+/* Actions */
+.actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:12px;
+  margin-top:28px;
+}
+.actions button{
+  padding:10px 32px;
+  border-radius:8px;
+  font-size:12px;
+  cursor:pointer;
+  border:none;
+  font-weight:600;
+  font-family:inherit;
+  transition:all .2s;
+}
+.btn-reset{
+  background:var(--c1);
+  color:var(--t2);
+  border:1px solid var(--bdr)!important;
+}
+.btn-reset:hover{background:var(--c2);border-color:var(--blu)!important;color:var(--t)}
+.btn-apply{
+  background:var(--grn);
+  color:#fff;
+}
+.btn-apply:hover{background:#45d676;transform:translateY(-1px);box-shadow:0 4px 12px rgba(61,204,110,.3)}
+.btn-apply:disabled{
+  opacity:.3;
+  cursor:not-allowed;
+  transform:none;
+  box-shadow:none;
+}
+
+/* Toast notifications */
+.toast{
+  position:fixed;
+  bottom:28px;
+  right:28px;
+  padding:14px 24px;
+  border-radius:8px;
+  font-size:12px;
+  font-weight:600;
+  transform:translateY(100px);
+  opacity:0;
+  transition:all .4s cubic-bezier(.68,-.55,.27,1.55);
+  z-index:1000;
+  box-shadow:0 10px 30px rgba(0,0,0,.5);
+}
+.toast.show{
+  transform:translateY(0);
+  opacity:1;
+}
+.toast.success{background:var(--grn);color:#fff}
+.toast.error{background:var(--red);color:#fff}
+
+/* SVG styling */
+.flow-line{stroke:var(--bdr);stroke-width:1.8;fill:none}
+.flow-line.active{stroke:var(--grn);stroke-width:2.5}
+.flow-dot{fill:var(--grn);filter:drop-shadow(0 0 4px var(--grn))}
+</style>
+</head>
+<body>
+<div class="pg">
+
+<!-- Header -->
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="tabs">
+      <a href="/dashboard">Usage</a>
+      <a href="/admin" class="on">Admin</a>
+      <a href="/admin2">Optimizer</a>
+    </div>
+    <div class="page-title">Model Routing</div>
+  </div>
+</div>
+
+<!-- Flow Diagram -->
+<div class="flow-container">
+  <div class="flow" id="flowDiagram">
+
+    <!-- Models Column (combined clients + ingress) -->
+    <div class="content-layer">
+      <div class="models-container" id="models-box">
+        <div class="models-title">Models</div>
+        <div class="models-list" id="modelsList"></div>
+      </div>
+    </div>
+
+    <!-- Gateway Column -->
+    <div class="gateway-section content-layer">
+      <div class="gateway" id="gw-box">
+        <div class="gw-header">MaaS Gateway · IPP</div>
+
+        <div class="plugin active" id="plugin-body-field">
+          <div class="plugin-dot on"></div>
+          <div class="plugin-name">body-field-to-header</div>
+          <div class="plugin-info">
+            <span class="plugin-info-close" onclick="event.stopPropagation();closePluginInfo()">&#x2715;</span>
+            <div class="plugin-info-title">Body Field → Header</div>
+            <div class="plugin-info-desc">Extracts model name from request body into X-Gateway-Model-Name header. First plugin in the pipeline.</div>
+          </div>
+        </div>
+
+        <div class="plugin inactive plugin-override" id="plugin-override">
+          <div class="plugin-dot off"></div>
+          <div class="plugin-content">
+            <div class="plugin-name override-label">model-override</div>
+            <select id="overrideSelect" onchange="changeOverride(this.value)" onclick="event.stopPropagation()">
+              <option value="">— same as request —</option>
+            </select>
+          </div>
+          <div class="plugin-info">
+            <span class="plugin-info-close" onclick="event.stopPropagation();closePluginInfo()">&#x2715;</span>
+            <div class="plugin-info-title">Model Override</div>
+            <div class="plugin-info-desc">Rewrites model field and strips incompatible params when routing to a different model (e.g., Opus → Qwen).</div>
+          </div>
+        </div>
+
+        <div class="plugin active" id="plugin-apikey">
+          <div class="plugin-dot on"></div>
+          <div class="plugin-name">apikey-injection</div>
+          <div class="plugin-info">
+            <span class="plugin-info-close" onclick="event.stopPropagation();closePluginInfo()">&#x2715;</span>
+            <div class="plugin-info-title">API Key Injection</div>
+            <div class="plugin-info-desc">Swaps MaaS key with real provider credential from K8s Secret.</div>
+          </div>
+        </div>
+
+        <div class="plugin-divider"></div>
+
+        <div class="plugin extra">
+          <div class="plugin-dot off"></div>
+          <div class="plugin-name">external-metering</div>
+          <div class="plugin-info">
+            <span class="plugin-info-close" onclick="event.stopPropagation();closePluginInfo()">&#x2715;</span>
+            <div class="plugin-info-title">External Metering</div>
+            <div class="plugin-info-desc">Records per-user token usage to PostgreSQL for cost dashboards.</div>
+          </div>
+        </div>
+
+        <div class="plugin extra">
+          <div class="plugin-dot off"></div>
+          <div class="plugin-name">nemo-guard</div>
+          <div class="plugin-info">
+            <span class="plugin-info-close" onclick="event.stopPropagation();closePluginInfo()">&#x2715;</span>
+            <div class="plugin-info-title">NeMo Guardrails</div>
+            <div class="plugin-info-desc">NVIDIA content safety and policy enforcement on inference requests.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Providers Column -->
+    <div class="providers-section content-layer">
+      <div class="providers-title">Providers</div>
+      <div class="providers" id="providersList"></div>
+    </div>
+
+    <!-- SVG Layer for animated lines -->
+    <svg class="svg-layer" id="flowSvg"></svg>
+  </div>
+</div>
+
+<!-- Actions -->
+<div class="actions">
+  <button class="btn-reset" onclick="resetWeights()">Reset</button>
+  <button class="btn-apply" id="applyBtn" onclick="applyChanges()" disabled>Apply Changes</button>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" class="toast"></div>
+
+</div>
+
+<script>
+const ICON_CLAUDE = '<svg width="24" height="20" viewBox="0 0 24 20" fill="none"><rect x="2" y="2" width="20" height="14" rx="2" fill="#cc8b65"/><rect x="8" y="6" width="2" height="3" fill="#1a1a1a"/><rect x="14" y="6" width="2" height="3" fill="#1a1a1a"/><rect x="4" y="16" width="2" height="3" fill="#cc8b65"/><rect x="8" y="16" width="2" height="3" fill="#cc8b65"/><rect x="14" y="16" width="2" height="3" fill="#cc8b65"/><rect x="18" y="16" width="2" height="3" fill="#cc8b65"/></svg>';
+const ICON_OPENAI = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#fff" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="#fff"/></svg>';
+
+const PROVIDER_COLORS = {
+  'anthropic': 'var(--org)',
+  'openai': 'var(--grn)',
+  'onprem': 'var(--cyn)',
+  'vertex': 'var(--pur)',
+  'aws-bedrock': 'var(--red)',
+  'azure': 'var(--blu)'
+};
+
+const PROVIDER_DISPLAY_NAMES = {
+  'onprem': 'on-premises vLLM'
+};
+
+const MODEL_DISPLAY_NAMES = {
+  'ext-claude-sonnet': 'Claude Sonnet 4.6',
+  'ext-claude-opus': 'Claude Opus 4.8',
+  'ext-claude-haiku': 'Claude Haiku 4.5',
+  'ext-openai': 'GPT-5.5',
+  'ext-onprem-qwen': 'Qwen/Qwen3-8B',
+  'claude-opus-4-8': 'Claude Opus 4.8',
+  'claude-opus-4-6': 'Claude Opus 4.6',
+  'claude-sonnet-4-6': 'Claude Sonnet 4.6',
+  'claude-haiku-4-5': 'Claude Haiku 4.5',
+  'gpt-5.5': 'GPT-5.5',
+  'gpt-5.4': 'GPT-5.4',
+  'gpt-5.4-mini': 'GPT-5.4-mini',
+  'Qwen/Qwen3-8B': 'Qwen/Qwen3-8B'
+};
+
+const MODEL_PRICING = {
+  'claude-opus-4-8': '$5 / $25',
+  'claude-opus-4-6': '$5 / $25',
+  'claude-sonnet-4-6': '$3 / $15',
+  'claude-haiku-4-5': '$1 / $5',
+  'gpt-5.5': '$5 / $30',
+  'gpt-5.4': '$2.50 / $15',
+  'gpt-5.4-mini': '$0.30 / $1.20',
+  'Qwen/Qwen3-8B': 'FREE'
+};
+
+let providers = [];
+let models = [];
+let selectedModel = null;
+let originalWeights = {};
+let currentWeights = {};
+let overrideModel = null;
+
+async function fetchAPI(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('API error: ' + response.statusText);
+  return response.json();
+}
+
+function getModelIcon(model) {
+  const name = (model.name || '').toLowerCase();
+  const provider = (model.provider || '').toLowerCase();
+  if (name.includes('claude') || provider === 'anthropic') return ICON_CLAUDE;
+  if (name.includes('openai') || name.includes('gpt') || provider === 'openai') return ICON_OPENAI;
+  return '';
+}
+
+function populateModelList() {
+  const container = document.getElementById('modelsList');
+  if (!container) return;
+
+  container.innerHTML = models.map(m => {
+    const displayName = MODEL_DISPLAY_NAMES[m.name] || m.name;
+    const icon = getModelIcon(m);
+    const isSelected = m.name === selectedModel;
+    const iconHtml = icon ? '<div class="model-icon">' + icon + '</div>' : '';
+    return '<div class="model-card' + (isSelected ? ' selected' : '') + '" data-model="' + m.name + '" onclick="selectModel(\'' + m.name + '\')">'
+      + iconHtml
+      + '<div class="model-name">' + displayName + '</div>'
+      + '</div>';
+  }).join('');
+
+  // Populate override dropdown
+  const overrideSelect = document.getElementById('overrideSelect');
+  if (overrideSelect) {
+    overrideSelect.innerHTML = '<option value="">— same as request —</option>'
+      + models.map(m => {
+        const dn = MODEL_DISPLAY_NAMES[m.name] || m.name;
+        return '<option value="' + m.name + '">' + dn + '</option>';
+      }).join('');
+  }
+}
+
+function updateModelListHighlight() {
+  document.querySelectorAll('.model-card').forEach(card => {
+    if (card.dataset.model === selectedModel) {
+      card.classList.add('selected');
+    } else {
+      card.classList.remove('selected');
+    }
+  });
+}
+
+async function init() {
+  try {
+    [providers, models] = await Promise.all([
+      fetchAPI('/api/v1/admin/providers'),
+      fetchAPI('/api/v1/admin/models')
+    ]);
+
+    var staticModels = [
+      {name: 'ext-claude-haiku', provider: 'anthropic', targetModel: 'claude-haiku-4-5'}
+    ];
+    staticModels.forEach(function(sm) {
+      if (!models.some(function(m) { return m.name === sm.name; })) {
+        models.push(sm);
+      }
+    });
+
+    if (models.length > 0) {
+      selectedModel = models[0].name;
+    }
+    populateModelList();
+    if (selectedModel) {
+      selectModel(selectedModel);
+    }
+  } catch (error) {
+    showToast('Failed to load data: ' + error.message, 'error');
+  }
+}
+
+function selectModel(modelName) {
+  selectedModel = modelName;
+  currentWeights = {};
+  originalWeights = {};
+
+  updateModelListHighlight();
+
+  const model = models.find(m => m.name === modelName);
+  if (!model) return;
+
+  updatePlugins(model);
+  renderProviders(model);
+  setTimeout(drawConnections, 50);
+}
+
+function updatePlugins(model) {
+  setPluginState('plugin-body-field', true);
+  setPluginState('plugin-override', false);
+  setPluginState('plugin-apikey', true);
+}
+
+function setPluginState(pluginId, active) {
+  const plugin = document.getElementById(pluginId);
+  if (!plugin) return;
+  const dot = plugin.querySelector('.plugin-dot');
+  if (!dot) return;
+
+  if (active) {
+    plugin.classList.remove('inactive');
+    plugin.classList.add('active');
+    dot.classList.remove('off');
+    dot.classList.add('on');
+  } else {
+    plugin.classList.remove('active');
+    plugin.classList.add('inactive');
+    dot.classList.remove('on');
+    dot.classList.add('off');
+  }
+}
+
+function renderProviders(model) {
+  const providerCards = providers.map(p => {
+    const modelProvider = model.provider || '';
+    const isCurrent = p.name === modelProvider || p.provider === modelProvider;
+    const isOnprem = p.name === 'onprem';
+    const isCompatible = isCurrent || isOnprem || p.provider === modelProvider;
+    const hasKey = p.hasCredentials;
+    const canUse = isCompatible && hasKey;
+
+    return {
+      name: p.name,
+      provider: p.provider,
+      endpoint: p.endpoint,
+      weight: canUse ? (isCurrent ? 100 : 0) : 0,
+      hasKey: hasKey,
+      compatible: isCompatible,
+      enabled: canUse
+    };
+  });
+
+  originalWeights = {};
+  currentWeights = {};
+  providerCards.forEach(p => {
+    originalWeights[p.name] = p.weight;
+    currentWeights[p.name] = p.weight;
+  });
+
+  const order = ['anthropic', 'openai', 'onprem', 'azure', 'aws-bedrock', 'vertex'];
+  providerCards.sort((a, b) => {
+    const ia = order.indexOf(a.name);
+    const ib = order.indexOf(b.name);
+    if (ia === -1 && ib === -1) return 0;
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
+  const container = document.getElementById('providersList');
+  if (!container) return;
+  container.innerHTML = providerCards.map(p => renderProviderCard(p, model)).join('');
+  updateApplyButton();
+}
+
+function renderProviderCard(provider, model) {
+  const isActive = provider.weight > 0 && provider.enabled;
+  const color = PROVIDER_COLORS[provider.provider] || 'var(--t2)';
+
+  let cardClass = 'provider-card';
+  if (isActive) cardClass += ' active';
+  if (!provider.enabled) cardClass += ' disabled';
+
+  let badge = '';
+  if (isActive) {
+    badge = '<span class="prov-badge active">' + provider.weight + '%</span>';
+  } else if (provider.enabled) {
+    badge = '<span class="prov-badge standby">standby</span>';
+  } else if (!provider.hasKey) {
+    badge = '<span class="prov-badge nokey">no api key</span>';
+  } else {
+    badge = '<span class="prov-badge nokey">n/a</span>';
+  }
+
+  let price = '—';
+  let priceClass = 'na';
+  if (provider.name === 'onprem') {
+    price = 'FREE';
+    priceClass = 'free';
+  } else {
+    const modelForPricing = model.targetModel || selectedModel;
+    if (MODEL_PRICING[modelForPricing]) {
+      price = MODEL_PRICING[modelForPricing];
+      priceClass = 'paid';
+    }
+  }
+
+  var wcStyle = provider.enabled ? '' : ' style="visibility:hidden"';
+  var weightControl = '<div class="weight-control"' + wcStyle + '>'
+    + '<label>Weight</label>'
+    + '<input type="range" min="0" max="100" value="' + provider.weight + '" oninput="updateWeight(\'' + provider.name + '\', parseInt(this.value))">'
+    + '<input type="number" min="0" max="100" value="' + provider.weight + '" onchange="updateWeight(\'' + provider.name + '\', parseInt(this.value))">'
+    + '</div>';
+
+  const displayName = PROVIDER_DISPLAY_NAMES[provider.name] || provider.name;
+
+  return '<div class="' + cardClass + '" data-provider="' + provider.name + '">'
+    + '<div class="prov-header">'
+    + '<span class="prov-name" style="color:' + color + '">' + displayName + '</span>'
+    + '<span class="prov-price ' + priceClass + '">' + price + ' per MTok</span>'
+    + '</div>'
+    + badge
+    + weightControl
+    + '</div>';
+}
+
+function updateWeight(providerName, value) {
+  value = Math.max(0, Math.min(100, value));
+  const oldValue = currentWeights[providerName];
+  currentWeights[providerName] = value;
+  const delta = value - oldValue;
+
+  if (delta !== 0) {
+    const otherProviders = Object.keys(currentWeights).filter(name => {
+      if (name === providerName) return false;
+      const p = providers.find(prov => prov.name === name);
+      return p && p.hasCredentials;
+    });
+
+    const totalOthers = otherProviders.reduce((sum, name) => sum + currentWeights[name], 0);
+
+    if (delta > 0 && totalOthers > 0) {
+      otherProviders.forEach(name => {
+        const proportion = currentWeights[name] / totalOthers;
+        currentWeights[name] = Math.max(0, currentWeights[name] - Math.round(delta * proportion));
+      });
+    } else if (delta < 0 && otherProviders.length > 0) {
+      currentWeights[otherProviders[0]] = Math.min(100, currentWeights[otherProviders[0]] - delta);
+    }
+  }
+
+  updateProviderWeightsUI();
+  updateApplyButton();
+  drawConnections();
+  updateOverridePlugin();
+}
+
+function updateProviderWeightsUI() {
+  document.querySelectorAll('.provider-card').forEach(card => {
+    const name = card.dataset.provider;
+    if (!name || card.classList.contains('disabled')) return;
+
+    const weight = currentWeights[name];
+    const isActive = weight > 0;
+
+    card.querySelectorAll('input').forEach(input => { input.value = weight; });
+
+    const badge = card.querySelector('.prov-badge');
+    if (badge) {
+      if (isActive) {
+        badge.className = 'prov-badge active';
+        badge.textContent = weight + '%';
+      } else {
+        badge.className = 'prov-badge standby';
+        badge.textContent = 'standby';
+      }
+    }
+
+    if (isActive) {
+      card.classList.add('active');
+    } else {
+      card.classList.remove('active');
+    }
+  });
+}
+
+function updateOverridePlugin() {
+  const hasOnprem = Object.keys(currentWeights).some(name =>
+    name === 'onprem' && currentWeights[name] > 0
+  );
+  setPluginState('plugin-override', hasOnprem);
+}
+
+function changeOverride(modelName) {
+  overrideModel = modelName;
+  setPluginState('plugin-override', !!modelName);
+  drawConnections();
+}
+
+function resetWeights() {
+  currentWeights = Object.assign({}, originalWeights);
+  updateProviderWeightsUI();
+  updateApplyButton();
+  drawConnections();
+  updateOverridePlugin();
+}
+
+async function applyChanges() {
+  try {
+    const response = await fetch('/api/v1/admin/models/' + selectedModel + '/weights', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(currentWeights)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || 'Failed to update weights');
+    }
+
+    showToast('Weights updated successfully', 'success');
+    originalWeights = Object.assign({}, currentWeights);
+    updateApplyButton();
+    setTimeout(init, 800);
+  } catch (error) {
+    showToast('Error: ' + error.message, 'error');
+  }
+}
+
+function updateApplyButton() {
+  const hasChanges = Object.keys(currentWeights).some(name =>
+    currentWeights[name] !== originalWeights[name]
+  );
+  var btn = document.getElementById('applyBtn');
+  if (btn) btn.disabled = !hasChanges;
+}
+
+function drawConnections() {
+  const svg = document.getElementById('flowSvg');
+  const flow = document.getElementById('flowDiagram');
+  if (!svg || !flow) return;
+
+  const flowRect = flow.getBoundingClientRect();
+  svg.setAttribute('viewBox', '0 0 ' + flowRect.width + ' ' + flowRect.height);
+  svg.innerHTML = '';
+
+  const selectedCard = document.querySelector('.model-card.selected');
+  const gateway = document.querySelector('.gateway');
+  const providersContainer = document.querySelector('.providers');
+
+  if (!selectedCard || !gateway || !providersContainer) return;
+
+  const selRect = selectedCard.getBoundingClientRect();
+  const gwRect = gateway.getBoundingClientRect();
+  const provsRect = providersContainer.getBoundingClientRect();
+
+  const modelsRight = selRect.right - flowRect.left;
+  const modelsY = selRect.top + selRect.height / 2 - flowRect.top;
+
+  const gwLeft = gwRect.left - flowRect.left;
+  const gwRight = gwRect.right - flowRect.left;
+  const gwY = gwRect.top + gwRect.height / 2 - flowRect.top;
+
+  const provsLeft = provsRect.left - flowRect.left;
+
+  // Line from models to gateway
+  drawLine(svg, modelsRight, modelsY, gwLeft, gwY, true);
+  animateDots(svg, modelsRight, modelsY, gwLeft, gwY, 3);
+
+  // Trunk from gateway toward providers
+  var trunkEndX = gwRight + (provsLeft - gwRight) * 0.5;
+  drawLine(svg, gwRight, gwY, trunkEndX, gwY, true);
+  animateDots(svg, gwRight, gwY, trunkEndX, gwY, 2);
+
+  // Model label on trunk
+  var model = models.find(function(m) { return m.name === selectedModel; });
+  if (model) {
+    var targetModel;
+    if (overrideModel) {
+      targetModel = MODEL_DISPLAY_NAMES[overrideModel] || overrideModel;
+    } else if (currentWeights['onprem'] > 0) {
+      targetModel = 'Qwen/Qwen3-8B';
+    } else {
+      targetModel = model.targetModel || selectedModel;
+      targetModel = MODEL_DISPLAY_NAMES[targetModel] || targetModel;
+    }
+    drawModelLabel(svg, gwRight + (trunkEndX - gwRight) * 0.7, gwY - 24, targetModel);
+  }
+
+  // Curves to active provider cards
+  document.querySelectorAll('.provider-card').forEach(function(card, index) {
+    var name = card.dataset.provider;
+    var weight = currentWeights[name];
+    if (weight > 0 && !card.classList.contains('disabled')) {
+      var cardRect = card.getBoundingClientRect();
+      var cardLeft = cardRect.left - flowRect.left;
+      var cardY = cardRect.top + cardRect.height / 2 - flowRect.top;
+      var curveId = 'curve-' + index;
+      drawCurve(svg, trunkEndX, gwY, cardLeft, cardY, true, curveId);
+      animateDotsOnPath(svg, curveId, 3);
+    }
+  });
+}
+
+function drawLine(svg, x1, y1, x2, y2, active) {
+  var line = createSVGElement('line');
+  line.setAttribute('x1', x1);
+  line.setAttribute('y1', y1);
+  line.setAttribute('x2', x2);
+  line.setAttribute('y2', y2);
+  line.setAttribute('class', active ? 'flow-line active' : 'flow-line');
+  svg.appendChild(line);
+}
+
+function drawCurve(svg, x1, y1, x2, y2, active, id) {
+  var controlX = x1 + (x2 - x1) * 0.35;
+  var path = createSVGElement('path');
+  path.setAttribute('d', 'M ' + x1 + ',' + y1 + ' C ' + controlX + ',' + y1 + ' ' + controlX + ',' + y2 + ' ' + x2 + ',' + y2);
+  path.setAttribute('class', active ? 'flow-line active' : 'flow-line');
+  path.setAttribute('id', id);
+  svg.appendChild(path);
+}
+
+function drawModelLabel(svg, x, y, text) {
+  var textWidth = text.length * 7.5 + 26;
+
+  var bg = createSVGElement('rect');
+  bg.setAttribute('x', x - textWidth / 2);
+  bg.setAttribute('y', y - 12);
+  bg.setAttribute('width', textWidth);
+  bg.setAttribute('height', 24);
+  bg.setAttribute('rx', 7);
+  bg.setAttribute('fill', '#1a2030');
+  bg.setAttribute('stroke', 'var(--grn)');
+  bg.setAttribute('stroke-width', '1.5');
+  svg.appendChild(bg);
+
+  var label = createSVGElement('text');
+  label.setAttribute('x', x);
+  label.setAttribute('y', y + 5);
+  label.setAttribute('text-anchor', 'middle');
+  label.setAttribute('fill', 'var(--grn)');
+  label.setAttribute('font-size', '11');
+  label.setAttribute('font-weight', '700');
+  label.setAttribute('font-family', 'Inter, -apple-system, sans-serif');
+  label.textContent = text;
+  svg.appendChild(label);
+}
+
+function animateDots(svg, x1, y1, x2, y2, count) {
+  for (var i = 0; i < count; i++) {
+    var dot = createSVGElement('circle');
+    dot.setAttribute('r', '3');
+    dot.setAttribute('class', 'flow-dot');
+
+    var animX = createSVGElement('animate');
+    animX.setAttribute('attributeName', 'cx');
+    animX.setAttribute('from', x1);
+    animX.setAttribute('to', x2);
+    animX.setAttribute('dur', '2.2s');
+    animX.setAttribute('repeatCount', 'indefinite');
+    animX.setAttribute('begin', (i * 0.7) + 's');
+
+    var animY = createSVGElement('animate');
+    animY.setAttribute('attributeName', 'cy');
+    animY.setAttribute('from', y1);
+    animY.setAttribute('to', y2);
+    animY.setAttribute('dur', '2.2s');
+    animY.setAttribute('repeatCount', 'indefinite');
+    animY.setAttribute('begin', (i * 0.7) + 's');
+
+    dot.appendChild(animX);
+    dot.appendChild(animY);
+    svg.appendChild(dot);
+  }
+}
+
+function animateDotsOnPath(svg, pathId, count) {
+  for (var i = 0; i < count; i++) {
+    var dot = createSVGElement('circle');
+    dot.setAttribute('r', '3');
+    dot.setAttribute('class', 'flow-dot');
+
+    var animMotion = createSVGElement('animateMotion');
+    animMotion.setAttribute('dur', '2s');
+    animMotion.setAttribute('repeatCount', 'indefinite');
+    animMotion.setAttribute('begin', (i * 0.6) + 's');
+
+    var mpath = createSVGElement('mpath');
+    mpath.setAttributeNS('http://www.w3.org/1999/xlink', 'href', '#' + pathId);
+
+    animMotion.appendChild(mpath);
+    dot.appendChild(animMotion);
+    svg.appendChild(dot);
+  }
+}
+
+function createSVGElement(tag) {
+  return document.createElementNS('http://www.w3.org/2000/svg', tag);
+}
+
+// Plugin info overlay
+document.querySelectorAll('.plugin').forEach(function(plugin) {
+  plugin.addEventListener('click', function(e) {
+    if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
+    if (e.target.classList.contains('plugin-info-close')) return;
+
+    document.querySelectorAll('.plugin-info.open').forEach(function(info) {
+      if (!plugin.contains(info)) info.classList.remove('open');
+    });
+
+    var info = plugin.querySelector('.plugin-info');
+    if (info) info.classList.toggle('open');
+  });
+});
+
+function closePluginInfo() {
+  document.querySelectorAll('.plugin-info.open').forEach(function(info) {
+    info.classList.remove('open');
+  });
+}
+
+function showToast(message, type) {
+  var toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.className = 'toast ' + type + ' show';
+  setTimeout(function() { toast.className = 'toast'; }, 3500);
+}
+
+window.addEventListener('resize', function() {
+  if (selectedModel) requestAnimationFrame(drawConnections);
+});
+
+init();
+</script>
+</body>
+</html>
