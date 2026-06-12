@@ -40,17 +40,22 @@ h1 .grad{background:linear-gradient(135deg,var(--grn),var(--cyn));-webkit-backgr
 .flow-viz{background:var(--c1);border:1px solid var(--bdr);border-radius:14px;padding:32px;margin:40px 0;position:relative;overflow:hidden}
 .flow-viz::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--grn),transparent);animation:shimmer 3s infinite}
 .flow-title{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:2px;font-weight:700;text-align:center;margin-bottom:24px}
-.flow-steps{display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap}
-.flow-step{display:flex;align-items:center;gap:10px}
-.step-num{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;background:var(--c2);border:2px solid var(--bdr);color:var(--t2);flex-shrink:0}
-.step-box{background:var(--c2);border:1px solid var(--bdr);border-radius:8px;padding:12px 16px;min-width:140px}
-.step-box.active{border-color:var(--grn);background:rgba(61,204,110,.06)}
-.step-name{font-size:13px;font-weight:700;margin-bottom:2px}
-.step-desc{font-size:10px;color:var(--t2)}
-.flow-connector{width:40px;display:flex;align-items:center;justify-content:center;position:relative}
-.flow-connector::before{content:'';position:absolute;top:50%;left:0;right:0;height:2px;background:var(--bdr)}
-.flow-dot-anim{width:6px;height:6px;border-radius:50%;background:var(--grn);box-shadow:0 0 8px var(--grn);animation:dotTravel 1.5s infinite;position:relative;z-index:1}
-@keyframes dotTravel{0%{transform:translateX(-16px);opacity:0}20%{opacity:1}80%{opacity:1}100%{transform:translateX(16px);opacity:0}}
+.flow-horiz{display:flex;align-items:center;justify-content:center;gap:0}
+.fh-step{text-align:center;padding:16px 20px;border-radius:10px;background:var(--c2);border:1px solid var(--bdr);min-width:100px;transition:all .3s}
+.fh-step:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.1)}
+.fh-green{border-color:rgba(61,204,110,.3);background:rgba(61,204,110,.06)}
+.fh-green .fh-label{color:var(--grn)}
+.fh-cyan{border-color:rgba(56,212,194,.3);background:rgba(56,212,194,.06)}
+.fh-cyan .fh-label{color:var(--cyn)}
+.fh-icon{font-size:24px;margin-bottom:6px}
+.fh-label{font-size:12px;font-weight:700}
+.fh-line{width:48px;height:2px;background:var(--bdr);position:relative;display:flex;align-items:center;justify-content:center}
+.fh-line-cyan{background:rgba(56,212,194,.3)}
+.fh-dot{width:6px;height:6px;border-radius:50%;background:var(--grn);box-shadow:0 0 8px var(--grn);animation:dotSlide 1.6s infinite;position:absolute}
+.fh-dot-cyan{background:var(--cyn);box-shadow:0 0 8px var(--cyn)}
+@keyframes dotSlide{0%{left:0;opacity:0}15%{opacity:1}85%{opacity:1}100%{left:calc(100% - 6px);opacity:0}}
+.fh-sub{text-align:center;margin-top:16px;font-size:11px;color:var(--t2);letter-spacing:.5px}
+@media(max-width:700px){.flow-horiz{flex-wrap:wrap;gap:8px}.fh-line{width:24px}}
 
 /* Token counter animation */
 .counter-row{display:flex;gap:20px;justify-content:center;margin:24px 0;flex-wrap:wrap}
@@ -141,39 +146,16 @@ footer{text-align:center;color:var(--t2);font-size:12px;padding:40px 0;border-to
 <!-- Animated flow diagram -->
 <div class="flow-viz">
   <div class="flow-title">How It Works</div>
-  <div class="flow-steps">
-    <div class="flow-step">
-      <div class="step-num">1</div>
-      <div class="step-box">
-        <div class="step-name">Request arrives</div>
-        <div class="step-desc">Client sends inference request through the gateway</div>
-      </div>
-    </div>
-    <div class="flow-connector"><div class="flow-dot-anim"></div></div>
-    <div class="flow-step">
-      <div class="step-num" style="background:rgba(61,204,110,.15);color:var(--grn);border-color:var(--grn)">2</div>
-      <div class="step-box active">
-        <div class="step-name" style="color:var(--grn)">Balance check</div>
-        <div class="step-desc">Plugin verifies quota before processing</div>
-      </div>
-    </div>
-    <div class="flow-connector"><div class="flow-dot-anim"></div></div>
-    <div class="flow-step">
-      <div class="step-num">3</div>
-      <div class="step-box">
-        <div class="step-name">Inference</div>
-        <div class="step-desc">Request flows to provider, response returns</div>
-      </div>
-    </div>
-    <div class="flow-connector"><div class="flow-dot-anim" style="background:var(--cyn);box-shadow:0 0 8px var(--cyn)"></div></div>
-    <div class="flow-step">
-      <div class="step-num" style="background:rgba(56,212,194,.15);color:var(--cyn);border-color:var(--cyn)">4</div>
-      <div class="step-box" style="border-color:var(--cyn)">
-        <div class="step-name" style="color:var(--cyn)">Report usage</div>
-        <div class="step-desc">CloudEvents v1.0 sent to metering backend</div>
-      </div>
-    </div>
+  <div class="flow-horiz">
+    <div class="fh-step"><div class="fh-icon">&#x1F4E8;</div><div class="fh-label">Request</div></div>
+    <div class="fh-line"><div class="fh-dot"></div></div>
+    <div class="fh-step fh-green"><div class="fh-icon">&#x1F6E1;</div><div class="fh-label">Balance Check</div></div>
+    <div class="fh-line"><div class="fh-dot"></div></div>
+    <div class="fh-step"><div class="fh-icon">&#x2699;</div><div class="fh-label">Inference</div></div>
+    <div class="fh-line fh-line-cyan"><div class="fh-dot fh-dot-cyan"></div></div>
+    <div class="fh-step fh-cyan"><div class="fh-icon">&#x1F4CA;</div><div class="fh-label">Report Usage</div></div>
   </div>
+  <div class="fh-sub">CloudEvents v1.0 &rarr; OpenMeter &middot; Enterprise Billing &middot; This Service</div>
 </div>
 
 <h2 class="reveal">What It Does</h2>
