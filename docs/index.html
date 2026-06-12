@@ -155,7 +155,7 @@ footer{text-align:center;color:var(--t2);font-size:12px;padding:40px 0;border-to
     <div class="fh-line fh-line-cyan"><div class="fh-dot fh-dot-cyan"></div></div>
     <div class="fh-step fh-cyan"><div class="fh-icon">&#x1F4CA;</div><div class="fh-label">Report Usage</div></div>
   </div>
-  <div class="fh-sub">CloudEvents v1.0 &rarr; OpenMeter &middot; Enterprise Billing &middot; This Service</div>
+  <div class="fh-sub">CNCF CloudEvents v1.0 &rarr; OpenMeter &middot; Lago &middot; Azure Event Grid &middot; Any Compatible Backend</div>
 </div>
 
 <h2 class="reveal">What It Does</h2>
@@ -180,17 +180,21 @@ footer{text-align:center;color:var(--t2);font-size:12px;padding:40px 0;border-to
   </div>
 </div>
 
-<h2 id="providers" class="reveal">Supported Metering Providers</h2>
-<p class="reveal">The <code>external-metering</code> plugin emits CloudEvents v1.0 — any backend that accepts this format works:</p>
+<h2 id="providers" class="reveal">Compatible Platforms</h2>
+<p class="reveal">Built on <a href="https://cloudevents.io">CloudEvents v1.0</a> — a <a href="https://www.cncf.io/projects/cloudevents/">CNCF graduated specification</a> for describing event data in a vendor-neutral way. Any platform that accepts CloudEvents works with this plugin out of the box. Platforms with REST event APIs can be integrated via a thin adapter.</p>
+
 <table class="reveal">
-  <thead><tr><th>Environment</th><th>Backend</th><th>Status</th></tr></thead>
+  <thead><tr><th>Platform</th><th>Integration</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>Development</td><td><strong>This service</strong> — drop-in simulator with PostgreSQL + dashboard</td><td style="color:var(--grn)">&#x2705; Available</td></tr>
-    <tr><td>Staging</td><td><a href="https://openmeter.io">OpenMeter</a> — open-source usage metering</td><td style="color:var(--grn)">&#x2705; Compatible</td></tr>
-    <tr><td>Production</td><td>Enterprise billing systems (e.g., Monetize360)</td><td style="color:var(--org)">&#x1F6A7; Planned</td></tr>
-    <tr><td>Custom</td><td>Any CloudEvents v1.0 endpoint</td><td style="color:var(--blu)">&#x1F527; Extensible</td></tr>
+    <tr><td><strong>This service</strong> — development simulator</td><td>CloudEvents native</td><td style="color:var(--grn)">&#x2705; Available</td></tr>
+    <tr><td><a href="https://openmeter.io">OpenMeter</a> — open-source AI &amp; API metering</td><td>CloudEvents native</td><td style="color:var(--grn)">&#x2705; Compatible</td></tr>
+    <tr><td><a href="https://getlago.com">Lago</a> — open-source billing platform</td><td>Adapter (REST event API)</td><td style="color:var(--blu)">&#x1F527; Adaptable</td></tr>
+    <tr><td><a href="https://learn.microsoft.com/en-us/azure/event-grid/cloud-event-schema">Azure Event Grid</a></td><td>CloudEvents native</td><td style="color:var(--grn)">&#x2705; Compatible</td></tr>
+    <tr><td><a href="https://aws.amazon.com/eventbridge/">Amazon EventBridge</a></td><td>CloudEvents native</td><td style="color:var(--grn)">&#x2705; Compatible</td></tr>
+    <tr><td>Enterprise billing systems</td><td>Adapter</td><td style="color:var(--org)">&#x1F527; Adaptable</td></tr>
   </tbody>
 </table>
+<p class="reveal" style="font-size:12px;color:var(--t2);margin-top:8px">CloudEvents is a <a href="https://www.cncf.io/projects/cloudevents/">CNCF graduated project</a> (Jan 2024) — the industry standard for event interoperability across services, platforms, and systems. No vendor lock-in.</p>
 
 <h2 class="reveal">Token Types Tracked</h2>
 <p class="reveal">Cache-aware metering — different token types have different costs:</p>
@@ -255,7 +259,8 @@ kubectl apply -f deploy/ -n metering</code></pre>
 <div class="cards reveal">
   <div class="card"><span class="icon">&#x1F680;</span><h3><a href="https://github.com/llm-d/llm-d-inference-payload-processor">AI Inference Gateway</a></h3><p>Gateway framework and IPP plugin chain for external model serving in RHOAI.</p></div>
   <div class="card"><span class="icon">&#x1F4B0;</span><h3><a href="https://openmeter.io">OpenMeter</a></h3><p>Open-source cloud metering for AI, usage-based billing, and entitlements.</p></div>
-  <div class="card"><span class="icon">&#x2601;</span><h3><a href="https://cloudevents.io">CloudEvents</a></h3><p>CNCF specification for describing event data in a common way.</p></div>
+  <div class="card"><span class="icon">&#x1F4B3;</span><h3><a href="https://getlago.com">Lago</a></h3><p>Open-source billing platform for usage-based, subscription, and hybrid pricing.</p></div>
+  <div class="card"><span class="icon">&#x2601;</span><h3><a href="https://cloudevents.io">CloudEvents</a></h3><p>CNCF graduated specification for vendor-neutral event interoperability.</p></div>
 </div>
 
 </div>
