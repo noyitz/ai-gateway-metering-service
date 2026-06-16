@@ -79,48 +79,132 @@ The docstring says: *"No proxy, no config needed. Just pass messages and get com
 
 ---
 
-## Deployment Steps (Option D for dogfood now)
+## Deployment Steps (Option E — shared headroom service)
 
-For dogfood, Option D is fine — 2-3 users, no GPU, sidecar is quick to deploy. Option E is the production evolution.
+### Step 1: Build the headroom compression service
 
-### Step 1: Build headroom sidecar image
+Create a FastAPI wrapper around headroom's library API. This is NOT a proxy — it receives messages, compresses them, and returns compressed messages back.
 
+```python
+# headroom_service.py
+from headroom import compress
+from fastapi import FastAPI
+from pydantic import BaseModel
+import uvicorn
+
+app = FastAPI()
+
+class CompressRequest(BaseModel):
+    messages: list
+    model: str = "default"
+
+@app.post("/v1/compress")
+def compress_messages(req: CompressRequest):
+    result = compress(messages=req.messages, model=req.model)
+    return {
+        "messages": result.messages,
+        "tokens_before": result.tokens_before,
+        "tokens_after": result.tokens_after,
+        "tokens_saved": result.tokens_saved,
+        "compression_ratio": result.compression_ratio
+    }
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8787)
+```
+
+Dockerfile:
+```dockerfile
+FROM python:3.12-slim
+RUN pip install "headroom-ai[ml]" fastapi uvicorn
+COPY headroom_service.py /app/headroom_service.py
+WORKDIR /app
+EXPOSE 8787
+CMD ["python", "headroom_service.py"]
+```
+
+Build and push:
 ```bash
 REGISTRY="default-route-openshift-image-registry.apps.ocp.d4fcj.sandbox659.opentlc.com"
 echo "$(oc whoami -t)" | docker login "$REGISTRY" -u "$(oc whoami)" --password-stdin
-
-cd /path/to/combined-build/deploy/examples/headroom
-docker build --platform linux/amd64 -t ${REGISTRY}/openshift-ingress/headroom-sidecar:latest .
-docker push ${REGISTRY}/openshift-ingress/headroom-sidecar:latest
+docker build --platform linux/amd64 --provenance=false -t ${REGISTRY}/openshift-ingress/headroom-service:latest .
+docker push ${REGISTRY}/openshift-ingress/headroom-service:latest
 ```
 
-If the Dockerfile doesn't exist, create one:
-```dockerfile
-FROM python:3.12-slim
-RUN pip install "headroom-ai[ml]"
-EXPOSE 8787
-CMD ["python", "-c", "from headroom.transforms.content_router import ContentRouter; from flask import Flask, request, jsonify; app = Flask(__name__); router = ContentRouter(); \n@app.route('/v1/compress-raw', methods=['POST'])\ndef compress():\n    data = request.json\n    result = router.compress(data.get('text', ''))\n    return jsonify({'compressed': result.compressed})\napp.run(host='0.0.0.0', port=8787)"]
-```
-
-Or use the simpler approach — run the compress-raw server from `deploy/examples/headroom/compress-raw-server.py`.
-
-### Step 2: Add sidecar to payload-processing
+### Step 2: Deploy headroom as a standalone service
 
 ```bash
-oc patch deploy payload-processing -n openshift-ingress --type='json' -p='[
-  {"op": "add", "path": "/spec/template/spec/containers/-", "value": {
-    "name": "headroom",
-    "image": "image-registry.openshift-image-registry.svc:5000/openshift-ingress/headroom-sidecar:latest",
-    "ports": [{"containerPort": 8787}],
-    "resources": {
-      "requests": {"cpu": "2", "memory": "2Gi"},
-      "limits": {"cpu": "4", "memory": "4Gi"}
-    }
-  }}
-]'
+oc apply -n openshift-ingress -f - <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headroom-service
+  labels:
+    app: headroom-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: headroom-service
+  template:
+    metadata:
+      labels:
+        app: headroom-service
+    spec:
+      containers:
+      - name: headroom
+        image: image-registry.openshift-image-registry.svc:5000/openshift-ingress/headroom-service:latest
+        ports:
+        - containerPort: 8787
+        resources:
+          requests:
+            cpu: "2"
+            memory: 2Gi
+          limits:
+            cpu: "4"
+            memory: 4Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8787
+          initialDelaySeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: headroom-service
+spec:
+  ports:
+  - port: 8787
+  selector:
+    app: headroom-service
+EOF
 ```
 
-### Step 3: Update ConfigMap ipp-config
+### Step 3: Update the IPP headroom plugin
+
+The current plugin (`pkg/plugins/headroom/plugin.go`) calls `/v1/compress-raw` with a text blob. For Option E, it needs to call `/v1/compress` with the full message array and get compressed messages back.
+
+Update `client.go` to send messages + model, receive compressed messages:
+```go
+// Before (Option D):
+func (c *Client) CompressRaw(text string) (string, error)
+
+// After (Option E):
+func (c *Client) Compress(messages []any, model string) ([]any, *CompressResult, error)
+```
+
+Update `plugin.go` ProcessRequest to:
+1. Read model from CycleState
+2. Send full `request.Body["messages"]` to headroom service
+3. Replace `request.Body["messages"]` with compressed result
+4. Write savings to CycleState
+
+### Step 4: Update ConfigMap ipp-config
 
 ```bash
 oc apply -f - <<'EOF'
@@ -142,11 +226,9 @@ data:
       - name: headroom
         type: headroom
         parameters:
-          headroomURL: "http://localhost:8787"
+          headroomURL: "http://headroom-service.openshift-ingress.svc:8787"
           timeoutSeconds: 10
           failOpen: true
-          protectRecentTurns: 2
-          minCompressChars: 500
       - name: api-translation
         type: api-translation
         parameters:
@@ -174,17 +256,24 @@ data:
 EOF
 ```
 
-### Step 4: Restart and verify
+Note: `headroomURL` points to the **service** (`headroom-service.openshift-ingress.svc:8787`), not localhost. The `protectRecentTurns` and `minCompressChars` config is no longer needed — headroom's library handles smart selection internally via ContentRouter.
 
+### Step 5: Rebuild payload-processing image
+
+After updating the plugin code, rebuild and push:
 ```bash
-oc rollout restart deploy/payload-processing -n openshift-ingress
-sleep 20
-oc logs -n openshift-ingress deploy/payload-processing | grep headroom
+cd /path/to/combined-build
+REGISTRY="default-route-openshift-image-registry.apps.ocp.d4fcj.sandbox659.opentlc.com"
+docker build --platform linux/amd64 --no-cache --provenance=false --build-arg CGO_ENABLED=0 \
+  -t ${REGISTRY}/openshift-ingress/payload-processing-test:v7 .
+docker push ${REGISTRY}/openshift-ingress/payload-processing-test:v7
+
+oc set image deploy/payload-processing -n openshift-ingress \
+  payload-processing=image-registry.openshift-image-registry.svc:5000/openshift-ingress/payload-processing-test:v7
 ```
 
-### Step 5: Test
+### Step 6: Test
 
-Send a multi-turn request with tool outputs:
 ```bash
 GATEWAY_URL="maas.apps.ocp.d4fcj.sandbox659.opentlc.com"
 API_KEY="sk-oai-1QKwarMxHRwEqbbXA_eJqUnQwYav91cNwd5J2G2pLYiCD8EWqAyVvqAkC8nNq"
@@ -210,9 +299,10 @@ curl -sk -w "\nHTTP %{http_code}\n" \
 Check logs:
 ```bash
 oc logs -n openshift-ingress deploy/payload-processing --since=30s | grep -i headroom
+oc logs -n openshift-ingress deploy/headroom-service --since=30s
 ```
 
-Expected: `headroom-tokens-saved` in logs, `x-headroom-tokens-saved` in response headers.
+Expected: headroom service logs show compression, IPP logs show token savings, metering dashboard shows reduced input tokens.
 
 ## IMPORTANT: Things that break when you touch the env
 
@@ -244,30 +334,10 @@ The MaaS controller is scaled to 0. If you scale it up for ANY reason:
 | `combined-build/pkg/plugins/plugins.go` | Plugin registration (headroom already registered) |
 | `combined-build/pkg/plugins/common/state/state-keys.go` | CycleState keys: HeadroomTokensBefore/After/Saved |
 
-## Future: Option E for Production
+## Production Scale (1K+ users)
 
-When ready for production scale (1K+ users), replace the sidecar with a shared headroom service:
-
-```python
-# headroom-service.py (~20 lines)
-from headroom import compress
-from fastapi import FastAPI
-from pydantic import BaseModel
-
-app = FastAPI()
-
-class CompressRequest(BaseModel):
-    messages: list
-    model: str
-
-@app.post("/v1/compress")
-def compress_messages(req: CompressRequest):
-    result = compress(messages=req.messages, model=req.model)
-    return {
-        "messages": result.messages,
-        "tokens_saved": result.tokens_saved,
-        "compression_ratio": result.compression_ratio
-    }
-```
-
-Deploy as a shared Deployment (3-5 GPU-backed replicas), update the IPP plugin to call the service URL instead of localhost. This gives session tracking, CacheAligner, CCR cache, and efficient GPU sharing.
+For production, add:
+- GPU-backed replicas (L4/T4) — <100ms latency vs. ~3s CPU-only
+- 3-5 replicas behind the headroom-service Service (shared pool)
+- Redis for session state persistence across replicas (optional — in-process memory works for sticky sessions)
+- Horizontal Pod Autoscaler based on request latency
