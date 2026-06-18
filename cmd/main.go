@@ -65,6 +65,7 @@ func main() {
 	mux.HandleFunc("/api/v1/dashboard/recent", dashboardHandler.HandleRecent)
 	mux.HandleFunc("/admin", adminHandler.ServeAdmin)
 	mux.HandleFunc("/admin2", adminHandler.ServeAdmin2)
+	mux.HandleFunc("/compression", adminHandler.ServeCompression)
 	mux.HandleFunc("/api/v1/admin/providers", adminHandler.HandleProviders)
 	mux.HandleFunc("/api/v1/admin/models", adminHandler.HandleModels)
 	mux.HandleFunc("/api/v1/admin/models/", adminHandler.HandleUpdateWeights)

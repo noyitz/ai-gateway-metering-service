@@ -38,6 +38,16 @@ func (h *AdminHandler) ServeAdmin2(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+func (h *AdminHandler) ServeCompression(w http.ResponseWriter, r *http.Request) {
+	data, err := fs.ReadFile(dashboard.FS, "compression.html")
+	if err != nil {
+		http.Error(w, "compression page not found", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(data)
+}
+
 func (h *AdminHandler) HandleProviders(w http.ResponseWriter, r *http.Request) {
 	if h.k8sClient == nil {
 		writeJSON(w, []k8s.ProviderInfo{})
