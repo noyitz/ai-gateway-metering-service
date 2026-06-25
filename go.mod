@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/lib/pq v1.12.3
+	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.36.1
 	k8s.io/client-go v0.36.1
 )
