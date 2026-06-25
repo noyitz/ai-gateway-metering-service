@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MaaS — Compression</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0d10;--c1:#12161d;--c2:#1a1f2a;--bdr:#2a3242;--t:#e4e8ee;--t2:#7a8aa0;--blu:#4a9ef5;--grn:#3dcc6e;--cyn:#3ad4c2}
+body{background:var(--bg);color:var(--t);font-family:'Inter',-apple-system,sans-serif;padding:24px 32px 0 32px;margin:0}
+</style>
+</head>
+<body>
+<div style="display:flex;gap:4px;margin-bottom:16px">
+  <a href="/dashboard" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
+  <a href="/routing" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
+  <a href="/compression" style="background:var(--cyn);color:#fff;border:1px solid var(--cyn);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
+</div>
+<iframe id="headroom-frame" style="width:100%;border:none;min-height:calc(100vh - 70px)" src=""></iframe>
+<script>
+var params = new URLSearchParams(window.location.search);
+var clusterDomain = window.location.hostname.split('.apps.')[1];
+var headroomServiceUrl = params.get('headroom_url') || 'https://headroom-service-openshift-ingress.apps.' + clusterDomain;
+var dashboardUrl = params.get('dashboard_url') || 'https://headroom-dashboard-openshift-ingress.apps.' + clusterDomain;
+document.getElementById('headroom-frame').src = dashboardUrl + '/?url=' + encodeURIComponent(headroomServiceUrl);
+</script>
+</body>
+</html>

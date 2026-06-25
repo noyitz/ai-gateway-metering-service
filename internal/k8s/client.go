@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -193,6 +194,97 @@ func (c *Client) UpdateModelWeights(ctx context.Context, modelName string, weigh
 	_, err = c.client.Resource(legacyModelGVR).Namespace(c.namespace).Patch(
 		ctx, modelName, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 	return err
+}
+
+type ProfileInfo struct {
+	Name            string   `json:"name"`
+	RequestPlugins  []string `json:"requestPlugins"`
+	ResponsePlugins []string `json:"responsePlugins"`
+}
+
+type IPPConfig struct {
+	Profiles      []ProfileInfo `json:"profiles"`
+	ActiveProfile string        `json:"activeProfile"`
+}
+
+func (c *Client) GetIPPConfig(ctx context.Context, configNamespace string) (*IPPConfig, error) {
+	cmGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}
+	cm, err := c.client.Resource(cmGVR).Namespace(configNamespace).Get(ctx, "ipp-config", metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get ipp-config ConfigMap: %w", err)
+	}
+
+	configYAML, found, _ := unstructured.NestedString(cm.Object, "data", "config.yaml")
+	if !found {
+		return nil, fmt.Errorf("config.yaml not found in ipp-config ConfigMap")
+	}
+
+	var raw struct {
+		Profiles []struct {
+			Name    string `yaml:"name"`
+			Plugins struct {
+				Request  []struct{ PluginRef string `yaml:"pluginRef"` } `yaml:"request"`
+				Response []struct{ PluginRef string `yaml:"pluginRef"` } `yaml:"response"`
+			} `yaml:"plugins"`
+		} `yaml:"profiles"`
+	}
+	if err := yaml.Unmarshal([]byte(configYAML), &raw); err != nil {
+		return nil, fmt.Errorf("parse ipp-config YAML: %w", err)
+	}
+
+	result := &IPPConfig{ActiveProfile: "default"}
+	for _, p := range raw.Profiles {
+		pi := ProfileInfo{Name: p.Name}
+		for _, rp := range p.Plugins.Request {
+			pi.RequestPlugins = append(pi.RequestPlugins, rp.PluginRef)
+		}
+		for _, rp := range p.Plugins.Response {
+			pi.ResponsePlugins = append(pi.ResponsePlugins, rp.PluginRef)
+		}
+		result.Profiles = append(result.Profiles, pi)
+	}
+	return result, nil
+}
+
+func (c *Client) UpdateModelProvider(ctx context.Context, modelName string, providerName string, targetModel string, apiFormat string) error {
+	model, err := c.client.Resource(modelGVR).Namespace(c.namespace).Get(ctx, modelName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get ExternalModel %s: %w", modelName, err)
+	}
+
+	refs, found, _ := unstructured.NestedSlice(model.Object, "spec", "externalProviderRefs")
+	if !found || len(refs) == 0 {
+		return fmt.Errorf("model %s has no externalProviderRefs", modelName)
+	}
+
+	refMap, ok := refs[0].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("invalid externalProviderRefs format")
+	}
+	if nameRef, ok := refMap["ref"].(map[string]interface{}); ok {
+		nameRef["name"] = providerName
+	} else {
+		refMap["ref"] = map[string]interface{}{"name": providerName}
+	}
+	refMap["targetModel"] = targetModel
+	refMap["apiFormat"] = apiFormat
+	refs[0] = refMap
+
+	patch := map[string]interface{}{
+		"spec": map[string]interface{}{
+			"externalProviderRefs": refs,
+		},
+	}
+	patchBytes, _ := json.Marshal(patch)
+
+	_, err = c.client.Resource(modelGVR).Namespace(c.namespace).Patch(
+		ctx, modelName, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+	if err != nil {
+		return err
+	}
+
+	slog.Info("ExternalModel provider updated", "model", modelName, "provider", providerName)
+	return nil
 }
 
 func (c *Client) secretExists(ctx context.Context, name string) bool {
