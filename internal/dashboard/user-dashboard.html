@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Dashboard — MaaS</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0b0e11;
+  --c1:#141820;
+  --c2:#1a2030;
+  --c3:#232d40;
+  --bdr:#2e3848;
+  --t:#e2e6ec;
+  --t2:#8090a8;
+  --blu:#4da0f8;
+  --grn:#3dcc6e;
+  --org:#eba830;
+  --red:#e8554e;
+  --pur:#a88cf8;
+  --cyn:#38d4c2;
+}
+body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;font-size:13px;line-height:1.5}
+.pg{max-width:1400px;margin:0 auto;padding:20px 40px}
+
+/* Header */
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px}
+.hdr-left{display:flex;align-items:center;gap:18px}
+.page-title{font-size:20px;font-weight:700;color:var(--blu)}
+.user-badge{font-size:12px;color:var(--t2);display:flex;align-items:center;gap:6px}
+.user-badge .dot{color:var(--blu);font-weight:700}
+.hdr-right{display:flex;align-items:center;gap:12px}
+.btn-logout{
+  background:transparent;color:var(--red);border:1px solid var(--bdr);
+  padding:8px 16px;border-radius:6px;font-size:12px;text-decoration:none;
+  font-weight:600;letter-spacing:.3px;cursor:pointer;transition:all .2s;
+  font-family:inherit;
+}
+.btn-logout:hover{border-color:var(--red);background:rgba(232,85,78,.08)}
+
+/* KPI cards */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
+.kpi{background:var(--c1);border:1px solid var(--bdr);border-radius:10px;padding:20px;text-align:center}
+.kpi-label{display:block;font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:600}
+.kpi-value{display:block;font-size:30px;font-weight:700}
+.kpi-value.blue{color:var(--blu)}
+.kpi-value.green{color:var(--grn)}
+.kpi-value.orange{color:var(--org)}
+.kpi-value.purple{color:var(--pur)}
+
+/* Section card */
+.section{margin-bottom:28px}
+.card{background:var(--c1);border:1px solid var(--bdr);border-radius:10px;padding:20px}
+.card-title{font-size:15px;font-weight:700;color:var(--t);margin-bottom:16px}
+.card-subtitle{font-size:12px;color:var(--t2);margin-bottom:16px}
+
+/* Two-column layout */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+
+/* Tables */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead{position:sticky;top:0;z-index:1}
+th{
+  background:var(--c2);color:var(--t2);font-size:10px;text-transform:uppercase;
+  letter-spacing:.6px;padding:8px 12px;text-align:left;font-weight:700;white-space:nowrap;
+}
+td{padding:8px 12px;border-top:1px solid var(--bdr);white-space:nowrap}
+tr:hover td{background:var(--c2)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* Chart container */
+.chart-wrap{position:relative;min-height:220px}
+.chart-wrap canvas{max-height:280px}
+
+/* Loading & error */
+.loading{display:flex;align-items:center;justify-content:center;padding:40px 20px;color:var(--t2);font-size:12px;gap:10px}
+.spinner{width:18px;height:18px;border:2px solid var(--bdr);border-top-color:var(--blu);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.err-msg{padding:16px 20px;color:var(--red);font-size:12px;text-align:center;background:rgba(232,85,78,.06);border-radius:6px;margin:8px 0}
+.empty{padding:32px 20px;color:var(--t2);font-size:12px;text-align:center}
+
+/* Key display */
+.key-display{background:rgba(61,204,110,.08);border:1px solid rgba(61,204,110,.25);border-radius:8px;padding:14px 16px;margin:16px 0 8px 0}
+.key-display-label{font-size:10px;color:var(--grn);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px}
+.key-display-value{font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;color:var(--t);word-break:break-all;line-height:1.6;user-select:all}
+.key-display-warn{font-size:10px;color:var(--org);margin-top:8px;display:flex;align-items:center;gap:4px}
+
+/* Buttons */
+.btn{padding:7px 18px;border-radius:6px;font-size:11px;cursor:pointer;border:none;font-weight:600;font-family:inherit;transition:all .2s;letter-spacing:.3px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-grn{background:var(--grn);color:#fff}
+.btn-grn:hover:not(:disabled){background:#45d676;box-shadow:0 4px 12px rgba(61,204,110,.3)}
+.btn-copy{margin-top:10px;padding:6px 16px;border-radius:5px;font-size:11px;cursor:pointer;border:1px solid rgba(61,204,110,.3);background:rgba(61,204,110,.12);color:var(--grn);font-weight:600;font-family:inherit;transition:all .2s}
+.btn-copy:hover{background:rgba(61,204,110,.2);border-color:rgba(61,204,110,.5)}
+
+/* Form fields */
+.field{margin-bottom:14px}
+.field label{display:block;font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:5px}
+.field input[type="text"]{width:100%;background:var(--c2);border:1px solid var(--bdr);color:var(--t);padding:9px 14px;border-radius:6px;font-size:13px;font-family:inherit;outline:none;transition:border-color .2s}
+.field input[type="text"]:focus{border-color:var(--blu)}
+.field input[type="text"]::placeholder{color:var(--t2);opacity:.6}
+.field input[type="text"]:disabled{opacity:.6;cursor:not-allowed}
+.field-readonly{background:var(--c2);border:1px solid var(--bdr);color:var(--t2);padding:9px 14px;border-radius:6px;font-size:13px}
+
+/* Instructions box */
+.instructions-box{background:var(--c2);border:1px solid var(--bdr);border-radius:8px;padding:14px 16px;margin-top:16px}
+.instructions-title{font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:10px}
+.instructions-code{font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace;font-size:12px;color:var(--t);line-height:1.7;white-space:pre-wrap;word-break:break-all}
+
+/* Highlight bar */
+.highlight-bar{position:relative}
+
+/* Instructions modal */
+.instr-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.65);z-index:500;
+  align-items:center;justify-content:center;
+}
+.instr-overlay.open{display:flex}
+.instr-modal{
+  background:var(--c1);border:1px solid var(--bdr);border-radius:12px;
+  padding:28px 32px;width:620px;max-width:90vw;max-height:80vh;overflow-y:auto;
+  box-shadow:0 20px 60px rgba(0,0,0,.6);position:relative;
+}
+.instr-modal-close{
+  position:absolute;top:16px;right:20px;cursor:pointer;
+  color:var(--t2);font-size:20px;background:none;border:none;font-family:inherit;
+}
+.instr-modal-close:hover{color:var(--t)}
+.instr-modal-title{font-size:16px;font-weight:700;color:var(--t);margin-bottom:20px}
+.instr-section{margin-bottom:20px}
+.instr-section-title{font-size:11px;color:var(--blu);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:8px}
+.instr-code-wrap{position:relative}
+.instr-code{
+  font-family:'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace;
+  font-size:12px;color:var(--t);line-height:1.7;white-space:pre-wrap;word-break:break-all;
+  background:var(--c2);border:1px solid var(--bdr);border-radius:8px;padding:14px 70px 14px 16px;
+}
+.btn-copy-instr{
+  position:absolute;top:8px;right:8px;
+  background:rgba(77,160,248,.12);color:var(--blu);border:1px solid rgba(77,160,248,.2);
+  padding:4px 10px;border-radius:4px;font-size:10px;font-weight:600;cursor:pointer;
+  font-family:inherit;transition:all .2s;
+}
+.btn-copy-instr:hover{background:rgba(77,160,248,.25);border-color:rgba(77,160,248,.4)}
+.btn-instr{
+  background:rgba(77,160,248,.1);color:var(--blu);border:1px solid rgba(77,160,248,.25);
+  padding:6px 14px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;
+  font-family:inherit;transition:all .2s;
+}
+.btn-instr:hover{background:rgba(77,160,248,.2);border-color:rgba(77,160,248,.4)}
+
+/* Toast */
+.toast{position:fixed;bottom:28px;right:28px;padding:14px 24px;border-radius:8px;font-size:12px;font-weight:600;transform:translateY(100px);opacity:0;transition:all .4s cubic-bezier(.68,-.55,.27,1.55);z-index:1000;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{background:var(--grn);color:#fff}
+.toast.error{background:var(--red);color:#fff}
+
+/* Refresh indicator */
+.last-refresh{font-size:11px;color:var(--t2);font-weight:400}
+
+/* Welcome page (pending approval) */
+.welcome-overlay{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  min-height:60vh;
+  text-align:center;
+  padding:40px 20px;
+}
+.welcome-icon{
+  width:80px;height:80px;
+  border-radius:50%;
+  background:rgba(77,160,248,.1);
+  border:2px solid rgba(77,160,248,.25);
+  display:flex;align-items:center;justify-content:center;
+  margin-bottom:28px;
+  font-size:36px;
+}
+.welcome-title{
+  font-size:24px;font-weight:700;color:var(--t);
+  margin-bottom:12px;
+}
+.welcome-sub{
+  font-size:14px;color:var(--t2);
+  max-width:440px;line-height:1.7;
+  margin-bottom:24px;
+}
+.welcome-status{
+  display:flex;align-items:center;gap:8px;
+  font-size:12px;color:var(--org);
+  background:rgba(235,168,48,.08);
+  border:1px solid rgba(235,168,48,.2);
+  border-radius:8px;
+  padding:10px 20px;
+}
+.welcome-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--org);
+  animation:pulse-dot 1.5s ease-in-out infinite;
+}
+@keyframes pulse-dot{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:.4;transform:scale(.8)}
+}
+
+/* Responsive */
+@media(max-width:1100px){.two-col{grid-template-columns:1fr}}
+@media(max-width:900px){.kpi-row{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.kpi-row{grid-template-columns:1fr}.pg{padding:12px 16px}}
+</style>
+</head>
+<body>
+<div class="pg">
+
+<!-- Header -->
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="page-title">My Dashboard</div>
+    <div class="user-badge" id="user-badge">
+      <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>
+    </div>
+    <span class="last-refresh" id="last-refresh"></span>
+  </div>
+  <div class="hdr-right">
+    <button class="btn-logout" onclick="doLogout()">Logout</button>
+  </div>
+</div>
+
+<!-- Welcome page (shown when user has no group) -->
+<div id="welcome-page" style="display:none">
+  <div class="welcome-overlay">
+    <div id="welcome-avatar-wrap" style="display:none;margin-bottom:24px">
+      <img id="welcome-avatar" style="width:80px;height:80px;border-radius:50%;border:3px solid var(--blu)" alt="">
+    </div>
+    <div id="welcome-icon-default" class="welcome-icon">&#128075;</div>
+    <div class="welcome-title">Welcome, <span id="welcome-fullname"></span>!</div>
+    <div class="welcome-sub">
+      Your account is pending approval. An admin will add you to a group shortly.
+      Once approved, you'll be able to create API keys and start using the platform.
+    </div>
+    <div class="welcome-status">
+      <div class="welcome-dot"></div>
+      <span>Checking approval status...</span>
+    </div>
+  </div>
+</div>
+
+<!-- Full dashboard (shown when user is in a group) -->
+<div id="dashboard-content">
+
+<!-- Create API Key (top) -->
+<div class="section">
+  <div class="card">
+    <div class="card-title">Create Your API Key</div>
+    <div id="create-key-form">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:14px;align-items:end">
+        <div class="field" style="margin-bottom:0">
+          <label>Username</label>
+          <div class="field-readonly" id="ck-username">--</div>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label>Group</label>
+          <div class="field-readonly" id="ck-group">--</div>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label>Key Name</label>
+          <input type="text" id="ck-keyname" placeholder="e.g. my-dev-key">
+        </div>
+        <button class="btn btn-grn" id="ck-submit" onclick="submitCreateKey()" style="height:38px;white-space:nowrap">Create Key</button>
+      </div>
+      <div id="ck-error"></div>
+    </div>
+    <div id="create-key-success" style="display:none">
+      <div class="key-display">
+        <div class="key-display-label">Your New API Key</div>
+        <div class="key-display-value" id="new-key-value"></div>
+        <div class="key-display-warn">This key is shown only once. Save it now.</div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
+        <button class="btn-copy" onclick="copyKey()" style="margin-top:0">Copy to Clipboard</button>
+        <button class="btn-instr" onclick="showInstructions(document.getElementById('new-key-value').textContent)">Setup Instructions</button>
+      </div>
+      <div style="margin-top:16px">
+        <button class="btn btn-grn" onclick="resetKeyForm()">Create Another Key</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- My API Keys -->
+<div class="section">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:0">My API Keys</div>
+      <button class="btn-instr" onclick="showInstructions()">Setup Instructions</button>
+    </div>
+    <div class="tbl-wrap" id="my-keys-body">
+      <div class="loading"><div class="spinner"></div>Loading keys...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Section 1: My Summary KPIs -->
+<div class="kpi-row">
+  <div class="kpi"><span class="kpi-label">My Total Requests</span><span id="kpi-requests" class="kpi-value blue"><div class="spinner" style="margin:8px auto"></div></span></div>
+  <div class="kpi"><span class="kpi-label">My Total Tokens</span><span id="kpi-tokens" class="kpi-value green"><div class="spinner" style="margin:8px auto"></div></span></div>
+  <div class="kpi"><span class="kpi-label">My Estimated Cost</span><span id="kpi-cost" class="kpi-value orange"><div class="spinner" style="margin:8px auto"></div></span></div>
+  <div class="kpi"><span class="kpi-label">My Rank in Group</span><span id="kpi-rank" class="kpi-value purple"><div class="spinner" style="margin:8px auto"></div></span></div>
+</div>
+
+<!-- Section 2: My Usage by Model -->
+<div class="section">
+  <div class="card">
+    <div class="card-title">My Usage by Model</div>
+    <div class="two-col">
+      <div class="chart-wrap">
+        <canvas id="model-pie-chart"></canvas>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Model</th><th class="num">Requests</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+          <tbody id="model-tbody">
+            <tr><td colspan="4"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Section 3: My Group Ranking -->
+<div class="section">
+  <div class="card">
+    <div class="card-title">My Group Ranking</div>
+    <div class="card-subtitle" id="group-rank-subtitle"></div>
+    <div class="chart-wrap" style="min-height:180px">
+      <canvas id="group-rank-chart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Section 4: Company Overview -->
+<div class="section">
+  <div class="card">
+    <div class="card-title">Company Overview</div>
+    <div class="card-subtitle" id="company-subtitle"></div>
+    <div class="chart-wrap" style="min-height:180px">
+      <canvas id="company-chart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Section 6: Recent Activity -->
+<div class="section">
+  <div class="card">
+    <div class="card-title">Recent Activity</div>
+    <div class="tbl-wrap" style="max-height:340px;overflow-y:auto">
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Model</th><th>Provider</th>
+          <th class="num">Input Tokens</th><th class="num">Output Tokens</th><th class="num">Cost</th>
+        </tr></thead>
+        <tbody id="recent-tbody">
+          <tr><td colspan="6"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div>
+
+</div><!-- /dashboard-content -->
+
+<!-- Instructions Modal -->
+<div class="instr-overlay" id="instrModal">
+  <div class="instr-modal">
+    <button class="instr-modal-close" onclick="closeInstructions()">&times;</button>
+    <div class="instr-modal-title">Setup Instructions</div>
+    <div class="instr-section">
+      <div class="instr-section-title">Claude Code</div>
+      <div class="instr-code-wrap">
+        <button class="btn-copy-instr" onclick="copyInstr('instr-claude',this)">Copy</button>
+        <div class="instr-code" id="instr-claude"></div>
+      </div>
+    </div>
+    <div class="instr-section">
+      <div class="instr-section-title">Codex — Step 1: Create config file</div>
+      <div class="instr-code-wrap">
+        <button class="btn-copy-instr" onclick="copyInstr('instr-codex-config',this)">Copy</button>
+        <div class="instr-code" id="instr-codex-config"></div>
+      </div>
+    </div>
+    <div class="instr-section">
+      <div class="instr-section-title">Codex — Step 2: Run</div>
+      <div class="instr-code-wrap">
+        <button class="btn-copy-instr" onclick="copyInstr('instr-codex-run',this)">Copy</button>
+        <div class="instr-code" id="instr-codex-run"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script>
+/* ================================================================
+   State
+   ================================================================ */
+var currentUser = '';
+var currentGroups = [];
+var userAliases = [];
+var modelPieChart = null;
+var groupRankChart = null;
+var companyChart = null;
+var refreshTimer = null;
+
+var COLORS = ['#4da0f8','#3dcc6e','#eba830','#e8554e','#a88cf8','#38d4c2','#f778ba','#79c0ff','#7ee787','#e3b341','#ff9a8c','#d2a8ff','#56d4dd','#ffa657','#a5d6ff'];
+
+/* ================================================================
+   HTML escaping
+   ================================================================ */
+var escDiv = document.createElement('div');
+function esc(s) {
+  if (s == null) return '';
+  escDiv.textContent = String(s);
+  return escDiv.innerHTML;
+}
+
+/* ================================================================
+   Formatting helpers
+   ================================================================ */
+function fmtN(n) {
+  if (n == null) return '0';
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return n.toString();
+}
+
+function fmtC(n) {
+  if (n == null) return '$0.00';
+  return '$' + n.toFixed(2);
+}
+
+function timeAgo(ts) {
+  var s = Math.floor((Date.now() - new Date(ts)) / 1000);
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+
+/* ================================================================
+   Fetch helper
+   ================================================================ */
+function fetchJSON(url) {
+  return fetch(url).then(function(r) {
+    if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+    return r.json();
+  });
+}
+
+/* ================================================================
+   Cluster domain for instructions
+   ================================================================ */
+function getClusterDomain() {
+  var host = window.location.hostname;
+  var idx = host.indexOf('.apps.');
+  if (idx >= 0) {
+    return host.substring(idx + 1);
+  }
+  // fallback: use entire hostname
+  return host;
+}
+
+/* ================================================================
+   Logout
+   ================================================================ */
+function doLogout() {
+  fetch('/oauth/sign_out', { redirect: 'manual' }).then(function() {
+    window.location = '/dashboard';
+  });
+}
+
+/* ================================================================
+   Toast
+   ================================================================ */
+function showToast(message, type) {
+  var toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.className = 'toast ' + type + ' show';
+  setTimeout(function() { toast.className = 'toast'; }, 3500);
+}
+
+/* ================================================================
+   Copy key
+   ================================================================ */
+function copyKey() {
+  var keyText = document.getElementById('new-key-value').textContent;
+  if (!keyText) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(keyText).then(function() {
+      showToast('Copied to clipboard', 'success');
+    }).catch(function() { fallbackCopy(keyText); });
+  } else {
+    fallbackCopy(keyText);
+  }
+}
+
+function fallbackCopy(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('Copied to clipboard', 'success');
+  } catch (e) {
+    showToast('Copy failed -- select the key manually', 'error');
+  }
+  document.body.removeChild(ta);
+}
+
+/* ================================================================
+   Create API Key
+   ================================================================ */
+function submitCreateKey() {
+  var keyName = document.getElementById('ck-keyname').value.trim();
+  var errEl = document.getElementById('ck-error');
+
+  if (!keyName) {
+    errEl.innerHTML = '<div class="err-msg" style="margin-top:10px;text-align:left">Key name is required.</div>';
+    return;
+  }
+  if (!currentUser) {
+    errEl.innerHTML = '<div class="err-msg" style="margin-top:10px;text-align:left">User not loaded yet. Please wait.</div>';
+    return;
+  }
+
+  errEl.innerHTML = '';
+  var btn = document.getElementById('ck-submit');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+
+  var group = (currentGroups && currentGroups.length > 0) ? currentGroups[0] : '';
+
+  fetch('/api/v1/admin/keys', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: currentUser, group: group, keyName: keyName })
+  })
+  .then(function(r) {
+    if (!r.ok) return r.text().then(function(t) { throw new Error(t || r.statusText); });
+    return r.json();
+  })
+  .then(function(data) {
+    var key = data.key || data.apiKey || data.api_key || data.value || '';
+    document.getElementById('new-key-value').textContent = key;
+
+    // Build usage instructions
+    var domain = getClusterDomain();
+    document.getElementById('create-key-form').style.display = 'none';
+    document.getElementById('create-key-success').style.display = '';
+    showToast('API key created', 'success');
+    loadMyKeys();
+  })
+  .catch(function(err) {
+    errEl.innerHTML = '<div class="err-msg" style="margin-top:10px;text-align:left">' + esc(err.message) + '</div>';
+    btn.disabled = false;
+    btn.textContent = 'Create Key';
+  });
+}
+
+function resetKeyForm() {
+  document.getElementById('create-key-form').style.display = '';
+  document.getElementById('create-key-success').style.display = 'none';
+  document.getElementById('ck-keyname').value = '';
+  document.getElementById('ck-error').innerHTML = '';
+  var btn = document.getElementById('ck-submit');
+  btn.disabled = false;
+  btn.textContent = 'Create Key';
+}
+
+/* ================================================================
+   Render: KPI cards
+   ================================================================ */
+function renderKPIs(userData, rankInfo) {
+  document.getElementById('kpi-requests').textContent = userData ? fmtN(userData.requests || 0) : '0';
+  document.getElementById('kpi-tokens').textContent = userData ? fmtN(userData.total_tokens || 0) : '0';
+  document.getElementById('kpi-cost').textContent = userData ? fmtC(userData.cost_usd || 0) : '$0.00';
+
+  if (rankInfo) {
+    document.getElementById('kpi-rank').textContent = '#' + rankInfo.rank + ' of ' + rankInfo.total;
+  } else {
+    document.getElementById('kpi-rank').textContent = '--';
+  }
+}
+
+/* ================================================================
+   Render: Model usage (pie + table)
+   ================================================================ */
+function renderModelUsage(models) {
+  var tbody = document.getElementById('model-tbody');
+
+  if (!models || models.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4"><div class="empty">No model usage data found.</div></td></tr>';
+    if (modelPieChart) { modelPieChart.destroy(); modelPieChart = null; }
+    return;
+  }
+
+  // Table
+  tbody.innerHTML = models.map(function(m) {
+    return '<tr>'
+      + '<td style="font-weight:600">' + esc(m.model) + '</td>'
+      + '<td class="num">' + fmtN(m.requests) + '</td>'
+      + '<td class="num">' + fmtN(m.total_tokens) + '</td>'
+      + '<td class="num">' + fmtC(m.cost_usd) + '</td>'
+      + '</tr>';
+  }).join('');
+
+  // Pie chart
+  var labels = models.map(function(m) { return m.model; });
+  var vals = models.map(function(m) { return m.total_tokens || 0; });
+  var colors = models.map(function(_, i) { return COLORS[i % COLORS.length]; });
+  var total = vals.reduce(function(a, b) { return a + b; }, 0);
+
+  if (modelPieChart) modelPieChart.destroy();
+  modelPieChart = new Chart(document.getElementById('model-pie-chart'), {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{ data: vals, backgroundColor: colors, borderWidth: 0 }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#8090a8', font: { size: 11 }, padding: 10 } },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              var pct = total > 0 ? ((ctx.raw / total) * 100).toFixed(1) : '0';
+              return ctx.label + ': ' + fmtN(ctx.raw) + ' tokens (' + pct + '%)';
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+/* ================================================================
+   Render: Group ranking (horizontal bar)
+   ================================================================ */
+function renderGroupRanking(allUsers, currentUsername, currentGroup) {
+  var groupMembers = allUsers.filter(function(u) { return u.group_name === currentGroup; });
+  groupMembers.sort(function(a, b) { return (b.cost_usd || 0) - (a.cost_usd || 0); });
+
+  var rank = -1;
+  for (var i = 0; i < groupMembers.length; i++) {
+    if (groupMembers[i].username === currentUsername) { rank = i + 1; break; }
+  }
+
+  var subtitle = document.getElementById('group-rank-subtitle');
+  if (rank > 0) {
+    subtitle.textContent = 'You are #' + rank + ' of ' + groupMembers.length + ' in ' + currentGroup;
+  } else {
+    subtitle.textContent = currentGroup || 'No group data';
+  }
+
+  var labels = groupMembers.map(function(u) { return u.username; });
+  var vals = groupMembers.map(function(u) { return u.cost_usd || 0; });
+  var colors = groupMembers.map(function(u) {
+    return u.username === currentUsername ? '#3dcc6e' : '#4da0f8';
+  });
+
+  if (groupRankChart) groupRankChart.destroy();
+  groupRankChart = new Chart(document.getElementById('group-rank-chart'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Cost ($)',
+        data: vals,
+        backgroundColor: colors,
+        borderWidth: 0,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return fmtC(ctx.raw); }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#8090a8', callback: function(v) { return '$' + v.toFixed(2); } }, grid: { color: '#2e3848' } },
+        y: { ticks: { color: '#8090a8', font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+
+  return { rank: rank > 0 ? rank : '--', total: groupMembers.length };
+}
+
+/* ================================================================
+   Render: Company overview (horizontal bar by group)
+   ================================================================ */
+function renderCompanyOverview(allUsers, currentGroup) {
+  var groupMap = {};
+  allUsers.forEach(function(u) {
+    var g = u.group_name || '(no group)';
+    if (!groupMap[g]) groupMap[g] = 0;
+    groupMap[g] += (u.cost_usd || 0);
+  });
+
+  var groups = Object.keys(groupMap).sort(function(a, b) { return groupMap[b] - groupMap[a]; });
+  var vals = groups.map(function(g) { return groupMap[g]; });
+  var colors = groups.map(function(g) { return g === currentGroup ? '#3dcc6e' : '#4da0f8'; });
+  var companyTotal = vals.reduce(function(a, b) { return a + b; }, 0);
+
+  document.getElementById('company-subtitle').textContent = 'Company total cost: ' + fmtC(companyTotal);
+
+  if (companyChart) companyChart.destroy();
+  companyChart = new Chart(document.getElementById('company-chart'), {
+    type: 'bar',
+    data: {
+      labels: groups,
+      datasets: [{
+        label: 'Cost ($)',
+        data: vals,
+        backgroundColor: colors,
+        borderWidth: 0,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return fmtC(ctx.raw); }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#8090a8', callback: function(v) { return '$' + v.toFixed(2); } }, grid: { color: '#2e3848' } },
+        y: { ticks: { color: '#8090a8', font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+/* ================================================================
+   Render: Recent activity
+   ================================================================ */
+function renderRecent(data) {
+  var tbody = document.getElementById('recent-tbody');
+
+  var filtered = data.filter(function(r) {
+    return (r.username || r.user) === currentUser;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No recent activity.</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(function(r) {
+    var provColor = (r.provider === 'anthropic') ? 'var(--org)' : (r.provider === 'openai') ? 'var(--grn)' : 'var(--cyn)';
+    return '<tr>'
+      + '<td style="white-space:nowrap;color:var(--t2)">' + esc(timeAgo(r.timestamp || r.time)) + '</td>'
+      + '<td style="font-weight:600">' + esc(r.model) + '</td>'
+      + '<td style="color:' + provColor + '">' + esc(r.provider) + '</td>'
+      + '<td class="num">' + fmtN(r.prompt_tokens) + '</td>'
+      + '<td class="num">' + fmtN(r.completion_tokens) + '</td>'
+      + '<td class="num">' + fmtC(r.cost_usd) + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+/* ================================================================
+   Instructions modal
+   ================================================================ */
+function showInstructions(apiKey) {
+  var domain = getClusterDomain();
+  var baseUrl = 'https://maas.' + domain;
+  var keyPlaceholder = apiKey || '<your-key>';
+
+  document.getElementById('instr-claude').textContent =
+    'unset CLAUDE_CODE_USE_VERTEX\n'
+    + 'unset ANTHROPIC_VERTEX_PROJECT_ID\n'
+    + 'export ANTHROPIC_BASE_URL=' + baseUrl + '/v1\n'
+    + 'export ANTHROPIC_API_KEY=' + keyPlaceholder + '\n'
+    + 'claude';
+
+  document.getElementById('instr-codex-config').textContent =
+    'mkdir -p ~/.codex && cat > ~/.codex/config.json << \'EOF\'\n'
+    + '{\n'
+    + '  "provider": "openai",\n'
+    + '  "model": "claude-sonnet-4-6",\n'
+    + '  "providers": {\n'
+    + '    "openai": {\n'
+    + '      "name": "MaaS Gateway",\n'
+    + '      "baseURL": "' + baseUrl + '/llm/ext-openai",\n'
+    + '      "envKey": "OPENAI_API_KEY"\n'
+    + '    }\n'
+    + '  }\n'
+    + '}\n'
+    + 'EOF';
+
+  document.getElementById('instr-codex-run').textContent =
+    'export OPENAI_API_KEY=' + keyPlaceholder + '\n'
+    + 'codex';
+
+  document.getElementById('instrModal').classList.add('open');
+}
+
+function copyInstr(id, btn) {
+  var text = document.getElementById(id).textContent;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+    }).catch(function() { fallbackCopy(text); });
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function closeInstructions() {
+  document.getElementById('instrModal').classList.remove('open');
+}
+
+document.getElementById('instrModal').addEventListener('click', function(e) {
+  if (e.target === this) closeInstructions();
+});
+
+/* ================================================================
+   Render: My API Keys
+   ================================================================ */
+function loadMyKeys() {
+  var body = document.getElementById('my-keys-body');
+  fetchJSON('/api/v1/admin/keys?username=' + encodeURIComponent(currentUser)).then(function(data) {
+    var keys = Array.isArray(data) ? data : (data.data || data.keys || data.items || []);
+    var myKeys = keys.filter(function(k) {
+      return (k.username || k.user || '') === currentUser;
+    });
+
+    if (myKeys.length === 0) {
+      body.innerHTML = '<div class="empty">No API keys yet. Create one above.</div>';
+      return;
+    }
+
+    var html = '<table><thead><tr>'
+      + '<th>Key Name</th><th>Group</th><th>Status</th><th>Created</th><th>Expires</th><th>Last Used</th><th>Action</th>'
+      + '</tr></thead><tbody>';
+
+    myKeys.forEach(function(k) {
+      var status = (k.status || 'active').toLowerCase();
+      var statusColor = status === 'active' ? 'var(--grn)' : status === 'revoked' ? 'var(--red)' : 'var(--t2)';
+      var created = k.creationDate || k.created_at || '';
+      var expires = k.expirationDate || '';
+      var lastUsed = k.lastUsedAt || k.last_used_at || '';
+      var group = k.subscription || k.group || k.tenant || '--';
+      var keyId = k.id || '';
+
+      html += '<tr>'
+        + '<td style="font-weight:600;font-family:\'SF Mono\',SFMono-Regular,Consolas,monospace;font-size:11px">' + esc(k.name || '--') + '</td>'
+        + '<td>' + esc(group) + '</td>'
+        + '<td style="color:' + statusColor + ';font-weight:600;font-size:11px;text-transform:uppercase">' + esc(status) + '</td>'
+        + '<td style="color:var(--t2);font-size:11px">' + (created ? esc(timeAgo(created)) : '--') + '</td>'
+        + '<td style="color:var(--t2);font-size:11px">' + (expires ? esc(new Date(expires).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})) : '--') + '</td>'
+        + '<td style="color:var(--t2);font-size:11px">' + (lastUsed ? esc(timeAgo(lastUsed)) : 'never') + '</td>'
+        + '<td>';
+      if (status === 'active' && keyId) {
+        html += '<button class="btn btn-grn" style="background:var(--red);padding:4px 12px;font-size:10px" onclick="revokeMyKey(\'' + esc(keyId) + '\')">Revoke</button>';
+      }
+      html += '</td></tr>';
+    });
+
+    html += '</tbody></table>';
+    body.innerHTML = html;
+  }).catch(function() {
+    body.innerHTML = '<div class="empty" style="color:var(--t2)">Could not load keys.</div>';
+  });
+}
+
+function revokeMyKey(keyId) {
+  if (!confirm('Revoke this API key? This cannot be undone.')) return;
+  fetch('/api/v1/admin/keys/' + encodeURIComponent(keyId), { method: 'DELETE' })
+    .then(function(r) {
+      if (!r.ok) throw new Error(r.statusText);
+      showToast('Key revoked', 'success');
+      loadMyKeys();
+    })
+    .catch(function(err) {
+      showToast('Failed to revoke: ' + err.message, 'error');
+    });
+}
+
+/* ================================================================
+   Main data load
+   ================================================================ */
+function loadDashboard() {
+  if (!currentUser) return;
+
+  loadMyKeys();
+
+  Promise.all([
+    fetchJSON('/api/v1/dashboard/users?range=7d'),
+    fetchJSON('/api/v1/dashboard/models?range=7d&user=' + encodeURIComponent(currentUser)),
+    fetchJSON('/api/v1/dashboard/recent?limit=10')
+  ]).then(function(results) {
+    var allUsers = results[0] || [];
+    var models = results[1] || [];
+    var recent = results[2] || [];
+
+    // Find current user data
+    var userData = null;
+    for (var i = 0; i < allUsers.length; i++) {
+      if (allUsers[i].username === currentUser) {
+        userData = allUsers[i];
+        break;
+      }
+    }
+
+    // Determine user's group
+    var userGroup = '';
+    if (userData && userData.group_name) {
+      userGroup = userData.group_name;
+    } else if (currentGroups && currentGroups.length > 0) {
+      userGroup = currentGroups[0];
+    }
+
+    // Render group ranking and get rank info
+    var rankInfo = renderGroupRanking(allUsers, currentUser, userGroup);
+
+    // Render KPIs
+    renderKPIs(userData, rankInfo);
+
+    // Render model usage
+    renderModelUsage(models);
+
+    // Render company overview
+    renderCompanyOverview(allUsers, userGroup);
+
+    // Render recent activity
+    renderRecent(recent);
+
+    // Update refresh timestamp
+    document.getElementById('last-refresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+  }).catch(function(err) {
+    console.error('Dashboard load error:', err);
+  });
+}
+
+/* ================================================================
+   Show welcome page (pending approval)
+   ================================================================ */
+var approvalTimer = null;
+var currentGitHubId = '';
+
+function parseGroups(g) {
+  if (Array.isArray(g)) return g;
+  if (typeof g === 'string' && g) return g.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  return [];
+}
+
+function showWelcomePage() {
+  document.getElementById('welcome-page').style.display = '';
+  document.getElementById('dashboard-content').style.display = 'none';
+  document.getElementById('welcome-fullname').textContent = currentUser;
+
+  if (currentGitHubId) {
+    fetch('https://api.github.com/user/' + encodeURIComponent(currentGitHubId))
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(gh) {
+        if (!gh) return;
+        if (gh.avatar_url) {
+          document.getElementById('welcome-avatar').src = gh.avatar_url;
+          document.getElementById('welcome-avatar-wrap').style.display = '';
+          document.getElementById('welcome-icon-default').style.display = 'none';
+        }
+        if (gh.name) {
+          document.getElementById('welcome-fullname').textContent = gh.name;
+        }
+      }).catch(function() {});
+  }
+
+  if (approvalTimer) clearInterval(approvalTimer);
+  approvalTimer = setInterval(checkApproval, 10000);
+}
+
+function showFullDashboard() {
+  document.getElementById('welcome-page').style.display = 'none';
+  document.getElementById('dashboard-content').style.display = '';
+
+  if (approvalTimer) { clearInterval(approvalTimer); approvalTimer = null; }
+
+  document.getElementById('ck-username').textContent = esc(currentUser);
+  document.getElementById('ck-group').textContent = (currentGroups.length > 0) ? esc(currentGroups[0]) : '--';
+
+  loadDashboard();
+}
+
+function checkApproval() {
+  fetchJSON('/api/v1/admin/groups').then(function(groups) {
+    var allGroups = Array.isArray(groups) ? groups : [];
+    for (var i = 0; i < allGroups.length; i++) {
+      var members = allGroups[i].members || [];
+      if (members.indexOf(currentUser) >= 0) {
+        currentGroups = [allGroups[i].name];
+        showFullDashboard();
+        return;
+      }
+    }
+  }).catch(function() {});
+}
+
+/* ================================================================
+   Init: fetch whoami, then load everything
+   ================================================================ */
+function init() {
+  fetchJSON('/whoami').then(function(d) {
+    currentUser = d.user || '';
+    currentGroups = parseGroups(d.groups);
+    currentGitHubId = d.githubId || '';
+
+    var badge = document.getElementById('user-badge');
+    badge.innerHTML = '<span class="dot">' + esc(currentUser) + '</span> <span style="font-size:10px;color:#5a6a7a">(GitHub)</span>';
+
+    if (currentGroups.length > 0) {
+      showFullDashboard();
+    } else {
+      fetchJSON('/api/v1/admin/groups').then(function(groups) {
+        var allGroups = Array.isArray(groups) ? groups : [];
+        for (var i = 0; i < allGroups.length; i++) {
+          var members = allGroups[i].members || [];
+          if (members.indexOf(currentUser) >= 0) {
+            currentGroups = [allGroups[i].name];
+            showFullDashboard();
+            return;
+          }
+        }
+        showWelcomePage();
+      }).catch(function() {
+        showWelcomePage();
+      });
+    }
+  }).catch(function(err) {
+    document.getElementById('user-badge').innerHTML = '<span style="color:var(--red)">Not logged in</span>';
+    console.error('whoami failed:', err);
+  });
+}
+
+init();
+refreshTimer = setInterval(function() {
+  if (currentGroups.length > 0) loadDashboard();
+}, 60000);
+</script>
+</body>
+</html>
