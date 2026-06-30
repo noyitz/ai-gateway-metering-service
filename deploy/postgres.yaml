@@ -4,9 +4,9 @@ metadata:
   name: metering-db
 type: Opaque
 stringData:
-  DATABASE_URL: "postgres://metering:metering-dev@metering-postgresql:5432/metering?sslmode=disable"
+  DATABASE_URL: "postgres://metering:CHANGE_ME@metering-postgresql:5432/metering?sslmode=disable"
   POSTGRES_USER: metering
-  POSTGRES_PASSWORD: metering-dev
+  POSTGRES_PASSWORD: CHANGE_ME
   POSTGRES_DB: metering
 ---
 apiVersion: apps/v1
