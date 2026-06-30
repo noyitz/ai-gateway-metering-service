@@ -21,10 +21,14 @@ func NewDashboardHandler(store *storage.Store) *DashboardHandler {
 }
 
 func (h *DashboardHandler) ServeDashboard(w http.ResponseWriter, r *http.Request) {
-	data, err := fs.ReadFile(dashboard.FS, "dashboard.html")
+	user := r.Header.Get("X-Forwarded-User")
+	page := "dashboard.html"
+	if user != "" && user != "admin" {
+		page = "user-dashboard.html"
+	}
+	data, err := fs.ReadFile(dashboard.FS, page)
 	if err != nil {
-		http.Error(w, "dashboard not found", http.StatusInternalServerError)
-		return
+		data, _ = fs.ReadFile(dashboard.FS, "dashboard.html")
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(data)

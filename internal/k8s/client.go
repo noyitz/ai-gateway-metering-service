@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -285,6 +286,261 @@ func (c *Client) UpdateModelProvider(ctx context.Context, modelName string, prov
 
 	slog.Info("ExternalModel provider updated", "model", modelName, "provider", providerName)
 	return nil
+}
+
+var (
+	authPolicyGVR = schema.GroupVersionResource{
+		Group:    "maas.opendatahub.io",
+		Version:  "v1alpha1",
+		Resource: "maasauthpolicies",
+	}
+	subscriptionGVR = schema.GroupVersionResource{
+		Group:    "maas.opendatahub.io",
+		Version:  "v1alpha1",
+		Resource: "maassubscriptions",
+	}
+)
+
+type AuthPolicyInfo struct {
+	Name      string   `json:"name"`
+	Namespace string   `json:"namespace"`
+	Groups    []string `json:"groups"`
+	Users     []string `json:"users"`
+	Models    []string `json:"models"`
+	Phase     string   `json:"phase"`
+}
+
+type SubscriptionInfo struct {
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Groups    []string          `json:"groups"`
+	Users     []string          `json:"users"`
+	Models    []ModelSubRefInfo `json:"models"`
+	Priority  int64             `json:"priority"`
+	Phase     string            `json:"phase"`
+}
+
+type ModelSubRefInfo struct {
+	Name       string `json:"name"`
+	TokenLimit int64  `json:"tokenLimit"`
+}
+
+func (c *Client) GetAuthPolicies(ctx context.Context, namespace string) ([]AuthPolicyInfo, error) {
+	ns := namespace
+	if ns == "" {
+		ns = "models-as-a-service"
+	}
+	list, err := c.client.Resource(authPolicyGVR).Namespace(ns).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("list MaaSAuthPolicies: %w", err)
+	}
+
+	var result []AuthPolicyInfo
+	for _, item := range list.Items {
+		info := AuthPolicyInfo{
+			Name:      item.GetName(),
+			Namespace: item.GetNamespace(),
+		}
+
+		subjects, _, _ := unstructured.NestedMap(item.Object, "spec", "subjects")
+		if groups, ok := subjects["groups"].([]interface{}); ok {
+			for _, g := range groups {
+				if gMap, ok := g.(map[string]interface{}); ok {
+					if name, ok := gMap["name"].(string); ok {
+						info.Groups = append(info.Groups, name)
+					}
+				}
+			}
+		}
+		if users, ok := subjects["users"].([]interface{}); ok {
+			for _, u := range users {
+				if s, ok := u.(string); ok {
+					info.Users = append(info.Users, s)
+				}
+			}
+		}
+
+		modelRefs, _, _ := unstructured.NestedSlice(item.Object, "spec", "modelRefs")
+		for _, mr := range modelRefs {
+			if m, ok := mr.(map[string]interface{}); ok {
+				if name, ok := m["name"].(string); ok {
+					info.Models = append(info.Models, name)
+				}
+			}
+		}
+
+		phase, _, _ := unstructured.NestedString(item.Object, "status", "phase")
+		info.Phase = phase
+
+		result = append(result, info)
+	}
+	return result, nil
+}
+
+func (c *Client) GetSubscriptions(ctx context.Context, namespace string) ([]SubscriptionInfo, error) {
+	ns := namespace
+	if ns == "" {
+		ns = "models-as-a-service"
+	}
+	list, err := c.client.Resource(subscriptionGVR).Namespace(ns).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("list MaaSSubscriptions: %w", err)
+	}
+
+	var result []SubscriptionInfo
+	for _, item := range list.Items {
+		info := SubscriptionInfo{
+			Name:      item.GetName(),
+			Namespace: item.GetNamespace(),
+		}
+
+		owner, _, _ := unstructured.NestedMap(item.Object, "spec", "owner")
+		if groups, ok := owner["groups"].([]interface{}); ok {
+			for _, g := range groups {
+				if gMap, ok := g.(map[string]interface{}); ok {
+					if name, ok := gMap["name"].(string); ok {
+						info.Groups = append(info.Groups, name)
+					}
+				}
+			}
+		}
+		if users, ok := owner["users"].([]interface{}); ok {
+			for _, u := range users {
+				if s, ok := u.(string); ok {
+					info.Users = append(info.Users, s)
+				}
+			}
+		}
+
+		modelRefs, _, _ := unstructured.NestedSlice(item.Object, "spec", "modelRefs")
+		for _, mr := range modelRefs {
+			if m, ok := mr.(map[string]interface{}); ok {
+				mInfo := ModelSubRefInfo{}
+				if name, ok := m["name"].(string); ok {
+					mInfo.Name = name
+				}
+				if trl, ok := m["tokenRateLimit"].(map[string]interface{}); ok {
+					if limit, ok := trl["tokensPerMinute"].(int64); ok {
+						mInfo.TokenLimit = limit
+					}
+				}
+				info.Models = append(info.Models, mInfo)
+			}
+		}
+
+		priority, _, _ := unstructured.NestedInt64(item.Object, "spec", "priority")
+		info.Priority = priority
+
+		phase, _, _ := unstructured.NestedString(item.Object, "status", "phase")
+		info.Phase = phase
+
+		result = append(result, info)
+	}
+	return result, nil
+}
+
+var (
+	openshiftGroupGVR = schema.GroupVersionResource{
+		Group:    "user.openshift.io",
+		Version:  "v1",
+		Resource: "groups",
+	}
+)
+
+type GroupInfo struct {
+	Name    string   `json:"name"`
+	Members []string `json:"members"`
+}
+
+func (c *Client) GetOpenShiftGroups(ctx context.Context) ([]GroupInfo, error) {
+	list, err := c.client.Resource(openshiftGroupGVR).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("list OpenShift groups: %w", err)
+	}
+
+	var result []GroupInfo
+	for _, item := range list.Items {
+		info := GroupInfo{
+			Name: item.GetName(),
+		}
+		users, _, _ := unstructured.NestedStringSlice(item.Object, "users")
+		info.Members = users
+		if info.Members == nil {
+			info.Members = []string{}
+		}
+		result = append(result, info)
+	}
+	return result, nil
+}
+
+func (c *Client) AddUserToGroup(ctx context.Context, groupName, username string) error {
+	group, err := c.client.Resource(openshiftGroupGVR).Get(ctx, groupName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get group %s: %w", groupName, err)
+	}
+
+	users, _, _ := unstructured.NestedStringSlice(group.Object, "users")
+	for _, u := range users {
+		if u == username {
+			return nil // already in group
+		}
+	}
+	users = append(users, username)
+	unstructured.SetNestedStringSlice(group.Object, users, "users")
+
+	_, err = c.client.Resource(openshiftGroupGVR).Update(ctx, group, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("update group %s: %w", groupName, err)
+	}
+	return nil
+}
+
+func (c *Client) RemoveUserFromGroup(ctx context.Context, groupName, username string) error {
+	group, err := c.client.Resource(openshiftGroupGVR).Get(ctx, groupName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get group %s: %w", groupName, err)
+	}
+
+	users, _, _ := unstructured.NestedStringSlice(group.Object, "users")
+	var filtered []string
+	for _, u := range users {
+		if u != username {
+			filtered = append(filtered, u)
+		}
+	}
+	unstructured.SetNestedStringSlice(group.Object, filtered, "users")
+
+	_, err = c.client.Resource(openshiftGroupGVR).Update(ctx, group, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("update group %s: %w", groupName, err)
+	}
+	return nil
+}
+
+type OpenShiftUser struct {
+	Name     string `json:"name"`
+	GitHubID string `json:"githubId,omitempty"`
+}
+
+func (c *Client) GetOpenShiftUsers(ctx context.Context) ([]OpenShiftUser, error) {
+	userGVR := schema.GroupVersionResource{Group: "user.openshift.io", Version: "v1", Resource: "users"}
+	list, err := c.client.Resource(userGVR).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	var users []OpenShiftUser
+	for _, u := range list.Items {
+		user := OpenShiftUser{Name: u.GetName()}
+		identities, _, _ := unstructured.NestedStringSlice(u.Object, "identities")
+		for _, id := range identities {
+			if strings.HasPrefix(id, "github:") {
+				user.GitHubID = strings.TrimPrefix(id, "github:")
+				break
+			}
+		}
+		users = append(users, user)
+	}
+	return users, nil
 }
 
 func (c *Client) secretExists(ctx context.Context, name string) bool {

@@ -115,6 +115,7 @@ body{background:var(--bg);color:var(--t);font-family:'Inter',-apple-system,sans-
   <a href="/dashboard" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
   <a href="/routing" style="background:var(--blu);color:#fff;border:1px solid var(--blu);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
   <a href="/compression" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
+  <a href="/admin" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Admin</a> <span id="user-badge" style="margin-left:auto;font-size:11px;color:#8090a8;display:flex;align-items:center;gap:6px"></span> <a href="#" onclick="fetch('/oauth/sign_out',{redirect:'manual'}).then(function(){window.location='/dashboard'});return false" style="background:transparent;color:var(--red,#e8554e);border:1px solid var(--bdr,#2e3848);padding:8px 16px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Logout</a>
 </div>
 <div style="font-size:17px;font-weight:700;letter-spacing:-.2px;margin-bottom:16px">Model Routing</div>
 
@@ -326,5 +327,5 @@ function toast(m,t){var e=document.getElementById('toast');e.textContent=m;e.cla
 window.addEventListener('resize',function(){if(selected)requestAnimationFrame(drawLines)});
 init();
 </script>
-</body>
+<script>fetch("/whoami").then(function(r){return r.json()}).then(function(d){var el=document.getElementById("user-badge");if(d.user&&el){var isAdmin=d.user==="admin";el.innerHTML=isAdmin?"<span style=\"color:#3dcc6e;font-weight:700\">⬤ admin</span> <span style=\"font-size:10px;color:#5a6a7a\">(cluster admin)</span>":"<span style=\"color:#4da0f8;font-weight:700\">⬤ "+d.user+"</span> <span style=\"font-size:10px;color:#5a6a7a\">(GitHub)</span>"}}).catch(function(){})</script></body>
 </html>
