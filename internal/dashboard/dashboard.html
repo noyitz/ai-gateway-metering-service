@@ -183,6 +183,7 @@ tr.clickable{cursor:pointer}
         <th style="cursor:default" class="num">Input</th>
         <th style="cursor:default" class="num">Output</th>
         <th style="cursor:default" class="num">Cached</th>
+        <th style="cursor:default" class="num">Cache Write</th>
         <th style="cursor:default" class="num">Total</th>
         <th style="cursor:default" class="num">Cost</th>
       </tr></thead>
@@ -273,6 +274,7 @@ function renderRecent(data){
       <td class="num">${fmtN(r.prompt_tokens)}</td>
       <td class="num">${fmtN(r.completion_tokens)}</td>
       <td class="num" style="color:var(--cyan)">${fmtN(r.cached_input_tokens||0)}</td>
+      <td class="num" style="color:var(--purple)">${fmtN(r.cache_creation_tokens||0)}</td>
       <td class="num">${fmtN(r.total_tokens)}</td>
       <td class="num">${fmtC(r.cost_usd)}</td>
     </tr>`;
