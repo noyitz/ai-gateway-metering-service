@@ -11,6 +11,7 @@ import (
 
 	"github.com/noyitz/ai-gateway-metering-service/internal/handler"
 	"github.com/noyitz/ai-gateway-metering-service/internal/k8s"
+	"github.com/noyitz/ai-gateway-metering-service/internal/pricing"
 	"github.com/noyitz/ai-gateway-metering-service/internal/storage"
 )
 
@@ -32,6 +33,26 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
+
+	// Seed model pricing from LiteLLM (try fetch latest, fall back to bundled)
+	ctx := context.Background()
+	litellmPrices, pricingSource := pricing.LoadPrices(ctx)
+	if len(litellmPrices) > 0 {
+		storePrices := make([]storage.ModelPrice, len(litellmPrices))
+		for i, p := range litellmPrices {
+			storePrices[i] = storage.ModelPrice{
+				Model: p.Model, Provider: p.Provider,
+				InputCost: p.InputCost, OutputCost: p.OutputCost,
+				CacheWriteCost: p.CacheWriteCost, CacheReadCost: p.CacheReadCost,
+			}
+		}
+		updated, seedErr := store.SeedPricing(ctx, storePrices)
+		if seedErr != nil {
+			slog.Warn("pricing seed failed — dashboard costs may be stale", "error", seedErr)
+		} else {
+			slog.Info("model pricing seeded", "models", len(storePrices), "updated", updated, "source", pricingSource)
+		}
+	}
 
 	eventsHandler := handler.NewEventsHandler(store)
 	entitlementsHandler := handler.NewEntitlementsHandler(store)
@@ -72,6 +93,7 @@ func main() {
 	mux.HandleFunc("/api/v1/admin/models/", adminHandler.HandleUpdateWeights)
 	mux.HandleFunc("/api/v1/admin/config", adminHandler.HandleConfig)
 	mux.HandleFunc("/api/v1/admin/models/provider/", adminHandler.HandleUpdateProvider)
+	mux.HandleFunc("/api/v1/admin/pricing/refresh", handler.NewPricingRefreshHandler(store).HandleRefresh)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
