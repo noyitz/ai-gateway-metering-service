@@ -510,16 +510,58 @@ var migrations = []string{
 		cache_write_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0,
 		cache_read_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0
 	)`,
-	`INSERT INTO model_pricing (model, provider, input_cost_per_mtok, output_cost_per_mtok) VALUES
-		('gpt-4o', 'openai', 2.50, 10.00),
-		('gpt-4o-mini', 'openai', 0.15, 0.60),
-		('gpt-4.1', 'openai', 2.00, 8.00),
-		('gpt-4.1-mini', 'openai', 0.40, 1.60),
-		('gpt-5.5', 'openai', 2.00, 8.00),
-		('claude-opus-4-6', 'anthropic', 15.00, 75.00),
-		('claude-sonnet-4-20250514', 'anthropic', 3.00, 15.00),
-		('claude-haiku-4-5-20251001', 'anthropic', 0.80, 4.00),
-		('gemini-2.0-flash', 'vertex', 0.10, 0.40),
-		('gemini-2.5-pro', 'vertex', 1.25, 10.00)
-	ON CONFLICT (model) DO NOTHING`,
+}
+
+// SeedPricing upserts model pricing from an external source (e.g., LiteLLM).
+func (s *Store) SeedPricing(ctx context.Context, prices []ModelPrice) (int, error) {
+	updated := 0
+	for _, p := range prices {
+		result, err := s.db.ExecContext(ctx, `
+			INSERT INTO model_pricing (model, provider, input_cost_per_mtok, output_cost_per_mtok, cache_write_cost_per_mtok, cache_read_cost_per_mtok)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (model) DO UPDATE SET
+				provider = EXCLUDED.provider,
+				input_cost_per_mtok = EXCLUDED.input_cost_per_mtok,
+				output_cost_per_mtok = EXCLUDED.output_cost_per_mtok,
+				cache_write_cost_per_mtok = EXCLUDED.cache_write_cost_per_mtok,
+				cache_read_cost_per_mtok = EXCLUDED.cache_read_cost_per_mtok`,
+			p.Model, p.Provider, p.InputCost, p.OutputCost, p.CacheWriteCost, p.CacheReadCost)
+		if err != nil {
+			return updated, fmt.Errorf("upsert %s: %w", p.Model, err)
+		}
+		if rows, _ := result.RowsAffected(); rows > 0 {
+			updated++
+		}
+	}
+	return updated, nil
+}
+
+// ModelPrice is imported from the pricing package. Re-declared here to avoid
+// a circular import — the storage layer doesn't depend on internal/pricing.
+type ModelPrice struct {
+	Model          string
+	Provider       string
+	InputCost      float64
+	OutputCost     float64
+	CacheWriteCost float64
+	CacheReadCost  float64
+}
+
+// GetCurrentPricing returns all model pricing from the database.
+func (s *Store) GetCurrentPricing(ctx context.Context) ([]ModelPrice, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT model, provider, input_cost_per_mtok, output_cost_per_mtok, cache_write_cost_per_mtok, cache_read_cost_per_mtok FROM model_pricing ORDER BY model`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var prices []ModelPrice
+	for rows.Next() {
+		var p ModelPrice
+		if err := rows.Scan(&p.Model, &p.Provider, &p.InputCost, &p.OutputCost, &p.CacheWriteCost, &p.CacheReadCost); err != nil {
+			return nil, err
+		}
+		prices = append(prices, p)
+	}
+	return prices, nil
 }
