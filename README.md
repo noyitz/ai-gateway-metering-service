@@ -88,12 +88,37 @@ Production:   meteringURL → Monetize360 / custom billing
 
 The CloudEvents v1.0 format is the integration contract — any backend that accepts this schema works.
 
+## Model Pricing
+
+Cost calculation uses per-model pricing from the `model_pricing` table. Prices
+are sourced from [LiteLLM's community-maintained database](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) (MIT licensed).
+
+**On startup**, the service:
+1. Fetches the latest pricing from LiteLLM's GitHub (10s timeout)
+2. Filters to relevant models (Claude, GPT, Gemini)
+3. UPSERTs into `model_pricing` (corrects stale prices, adds new models)
+4. Falls back to a bundled snapshot if the fetch fails (air-gapped / offline)
+
+**To refresh pricing without restarting:**
+```bash
+curl -X POST https://<metering-dashboard-route>/api/v1/admin/pricing/refresh
+# Returns: { "updated": 3, "total": 239, "source": "fetched", "changed": [...] }
+```
+
+**To refresh on restart:**
+```bash
+oc rollout restart deployment/metering-service -n openshift-ingress
+```
+
+Pricing fields per model: `input_cost_per_mtok`, `output_cost_per_mtok`,
+`cache_read_cost_per_mtok`, `cache_write_cost_per_mtok` (all USD per million tokens).
+
 ## Database
 
 PostgreSQL 14+. Schema is auto-migrated on startup:
 
 - `usage_events` — per-request token usage records
-- `model_pricing` — per-model cost rates (input, output, cache read, cache write)
+- `model_pricing` — per-model cost rates (auto-synced from LiteLLM on startup)
 
 ## Related
 
