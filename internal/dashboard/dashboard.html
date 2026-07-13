@@ -177,6 +177,7 @@ tr.clickable{cursor:pointer}
         <th style="cursor:default">Time</th>
         <th style="cursor:default">User</th>
         <th style="cursor:default">Group</th>
+        <th style="cursor:default">Client</th>
         <th style="cursor:default">Model</th>
         <th style="cursor:default">Provider</th>
         <th style="cursor:default" class="num">Input</th>
@@ -259,14 +260,29 @@ function timeAgo(ts){
   return Math.floor(s/86400)+'d ago';
 }
 
+function friendlyClient(ua){
+  if(!ua) return '';
+  if(ua.startsWith('claude-cli')) return 'Claude Code';
+  if(ua==='undici') return 'OpenCLEW';
+  if(ua.startsWith('curl/')) return 'curl';
+  if(ua.startsWith('python-requests')) return 'Python SDK';
+  if(ua.startsWith('anthropic-python')) return 'Python SDK';
+  if(ua.startsWith('node-fetch')||ua.startsWith('axios')) return 'Node.js';
+  if(ua.startsWith('Go-http-client')) return 'Go';
+  return ua.split('/')[0];
+}
+
 function renderRecent(data){
   const tbody=document.getElementById('recent-tbody');
   tbody.innerHTML=data.map(r=>{
     const provColor=r.provider==='anthropic'?'var(--orange)':r.provider==='openai'?'var(--green)':'var(--cyan)';
+    const client=friendlyClient(r.user_agent);
+    const clientColor=client==='Claude Code'?'var(--orange)':client==='OpenCLEW'?'var(--cyan)':client==='curl'?'var(--text2)':'var(--green)';
     return `<tr>
       <td style="white-space:nowrap;color:var(--text2)">${timeAgo(r.timestamp)}</td>
       <td><strong>${r.username}</strong></td>
       <td>${r.group_name}</td>
+      <td style="color:${clientColor}" title="${r.user_agent||''}">${client||'—'}</td>
       <td>${r.model}</td>
       <td style="color:${provColor}">${r.provider}</td>
       <td class="num">${fmtN(r.prompt_tokens)}</td>
