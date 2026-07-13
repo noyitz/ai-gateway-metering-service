@@ -31,7 +31,8 @@ type cloudEventData struct {
 	TotalTokens        int `json:"total_tokens"`
 	CachedInputTokens  int `json:"cached_input_tokens"`
 	CacheCreationTokens int `json:"cache_creation_tokens"`
-	ReasoningTokens    int `json:"reasoning_tokens"`
+	ReasoningTokens    int    `json:"reasoning_tokens"`
+	UserAgent          string `json:"user_agent"`
 }
 
 type EventsHandler struct {
@@ -85,6 +86,7 @@ func (h *EventsHandler) HandleEvent(w http.ResponseWriter, r *http.Request) {
 		CacheCreationTokens: event.Data.CacheCreationTokens,
 		ReasoningTokens:     event.Data.ReasoningTokens,
 		Source:              event.Source,
+		UserAgent:           event.Data.UserAgent,
 	}
 
 	if h.store == nil {
