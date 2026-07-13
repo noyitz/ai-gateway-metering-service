@@ -25,6 +25,7 @@ type UsageEvent struct {
 	CacheCreationTokens int
 	ReasoningTokens     int
 	Source              string
+	UserAgent           string
 }
 
 type UsageStats struct {
@@ -68,10 +69,10 @@ func (s *Store) Close() error {
 
 func (s *Store) InsertEvent(ctx context.Context, e UsageEvent) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO usage_events (event_id, timestamp, username, group_name, subscription, provider, model, prompt_tokens, completion_tokens, total_tokens, cached_input_tokens, cache_creation_tokens, reasoning_tokens, source)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+		`INSERT INTO usage_events (event_id, timestamp, username, group_name, subscription, provider, model, prompt_tokens, completion_tokens, total_tokens, cached_input_tokens, cache_creation_tokens, reasoning_tokens, source, user_agent)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
 		e.EventID, e.Timestamp, e.Username, e.GroupName, e.Subscription, e.Provider, e.Model,
-		e.PromptTokens, e.CompletionTokens, e.TotalTokens, e.CachedInputTokens, e.CacheCreationTokens, e.ReasoningTokens, e.Source,
+		e.PromptTokens, e.CompletionTokens, e.TotalTokens, e.CachedInputTokens, e.CacheCreationTokens, e.ReasoningTokens, e.Source, e.UserAgent,
 	)
 	return err
 }
@@ -428,6 +429,7 @@ type RecentEvent struct {
 	CachedInputTokens   int       `json:"cached_input_tokens"`
 	CacheCreationTokens int       `json:"cache_creation_tokens"`
 	CostUSD             float64   `json:"cost_usd"`
+	UserAgent           string    `json:"user_agent"`
 }
 
 func (s *Store) GetRecentEvents(ctx context.Context, limit int) ([]RecentEvent, error) {
@@ -443,7 +445,8 @@ func (s *Store) GetRecentEvents(ctx context.Context, limit int) ([]RecentEvent, 
 				COALESCE(e.cached_input_tokens, 0) * COALESCE(p.cache_read_cost_per_mtok, 0.5)/1000000.0 +
 				COALESCE(e.cache_creation_tokens, 0) * COALESCE(p.cache_write_cost_per_mtok, 0)/1000000.0 +
 				e.completion_tokens * COALESCE(p.output_cost_per_mtok, 75)/1000000.0
-			)::numeric, 4), 0)
+			)::numeric, 4), 0),
+			COALESCE(e.user_agent, '')
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
 		ORDER BY e.timestamp DESC
@@ -456,7 +459,7 @@ func (s *Store) GetRecentEvents(ctx context.Context, limit int) ([]RecentEvent, 
 	var result []RecentEvent
 	for rows.Next() {
 		var r RecentEvent
-		if err := rows.Scan(&r.Timestamp, &r.Username, &r.GroupName, &r.Model, &r.Provider, &r.PromptTokens, &r.CompletionTokens, &r.TotalTokens, &r.CachedInputTokens, &r.CacheCreationTokens, &r.CostUSD); err != nil {
+		if err := rows.Scan(&r.Timestamp, &r.Username, &r.GroupName, &r.Model, &r.Provider, &r.PromptTokens, &r.CompletionTokens, &r.TotalTokens, &r.CachedInputTokens, &r.CacheCreationTokens, &r.CostUSD, &r.UserAgent); err != nil {
 			return nil, err
 		}
 		result = append(result, r)
@@ -502,6 +505,7 @@ var migrations = []string{
 	`CREATE INDEX IF NOT EXISTS idx_usage_events_group ON usage_events (group_name)`,
 	`CREATE INDEX IF NOT EXISTS idx_usage_events_model ON usage_events (model)`,
 	`CREATE INDEX IF NOT EXISTS idx_usage_events_ts_user_model ON usage_events (timestamp, username, model)`,
+	`ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS user_agent TEXT NOT NULL DEFAULT ''`,
 	`CREATE TABLE IF NOT EXISTS model_pricing (
 		model TEXT PRIMARY KEY,
 		provider TEXT NOT NULL,
