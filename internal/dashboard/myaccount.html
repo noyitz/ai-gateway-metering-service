@@ -187,15 +187,10 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
         <button onclick="showTab('codex',this)">Codex</button>
       </div>
       <div id="tabClaude">
+        <div style="font-size:11px;color:var(--t2);margin-bottom:8px">Paste this into your terminal. It sets the env vars and starts Claude Code.</div>
         <div class="setup-block">
-          <div class="setup-label">Add to your shell profile <span style="color:var(--t2)">(~/.zshrc or ~/.bashrc)</span>
-            <button class="setup-copy" onclick="copyText(document.getElementById('claudeEnv').textContent)">Copy</button>
-          </div>
-          <pre class="setup-code" id="claudeEnv"></pre>
-        </div>
-        <div class="setup-block" style="margin-top:10px">
-          <div class="setup-label">Or paste everything at once
-            <button class="setup-copy" id="claudeAllCopy" onclick="copyText(document.getElementById('claudeAll').textContent)">Copy</button>
+          <div class="setup-label"><span></span>
+            <button class="setup-copy" onclick="copyText(document.getElementById('claudeAll').textContent)">Copy</button>
           </div>
           <pre class="setup-code" id="claudeAll"></pre>
         </div>
@@ -432,7 +427,6 @@ async function generateKey(){
     document.getElementById('modalTitle').textContent='Key Created: '+name;
     document.getElementById('keyValue').textContent=data.key;
     var claudeEnv='export ANTHROPIC_BASE_URL='+gatewayUrl+'\nexport ANTHROPIC_API_KEY='+data.key+'\nexport NODE_TLS_REJECT_UNAUTHORIZED=0\nexport CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1\nunset CLAUDE_CODE_USE_VERTEX\nunset ANTHROPIC_VERTEX_PROJECT_ID';
-    document.getElementById('claudeEnv').textContent=claudeEnv;
     var codexStep1='mkdir -p ~/.codex && cat > ~/.codex/config.toml << \'EOF\'\nmodel = "gpt-4.1-mini"\nmodel_provider = "maas"\n\n[model_providers.maas]\nname = "MaaS Gateway"\nbase_url = "'+gatewayUrl+'/v1"\nwire_api = "responses"\nenv_key = "MAAS_API_KEY"\nEOF';
     var codexStep2='export MAAS_API_KEY='+data.key+'\nexport NODE_TLS_REJECT_UNAUTHORIZED=0\ncodex';
     document.getElementById('codexStep1').textContent=codexStep1;
