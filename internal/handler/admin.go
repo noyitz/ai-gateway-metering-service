@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -25,6 +26,8 @@ func isAdmin(r *http.Request) bool {
 
 func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Header.Get("X-Forwarded-User")
+		slog.Info("RequireAdmin check", "path", r.URL.Path, "X-Forwarded-User", user, "isAdmin", isAdmin(r))
 		if !isAdmin(r) {
 			http.Redirect(w, r, "/me", http.StatusFound)
 			return
