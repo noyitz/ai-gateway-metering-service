@@ -271,7 +271,7 @@ function friendlyClient(ua){
   if(!ua) return '';
   if(ua.startsWith('claude-cli')||ua.startsWith('claude-code')) return 'Claude Code';
   if(ua.startsWith('codex-tui')||ua.startsWith('codex/')) return 'OpenAI Codex';
-  if(ua==='undici') return 'OpenCLEW';
+  if(ua==='undici') return 'OpenCLAW';
   if(ua.startsWith('curl/')) return 'curl';
   if(ua.startsWith('python-requests')) return 'Python SDK';
   if(ua.startsWith('anthropic-python')) return 'Python SDK';
@@ -285,7 +285,7 @@ function renderRecent(data){
   tbody.innerHTML=data.map(r=>{
     const provColor=r.provider==='anthropic'?'var(--orange)':r.provider==='openai'?'var(--green)':'var(--cyan)';
     const client=friendlyClient(r.user_agent);
-    const clientColor=client==='Claude Code'?'var(--orange)':client==='OpenCLEW'?'var(--cyan)':client==='curl'?'var(--text2)':'var(--green)';
+    const clientColor=client==='Claude Code'?'var(--orange)':client==='OpenCLAW'?'var(--cyan)':client==='curl'?'var(--text2)':'var(--green)';
     return `<tr>
       <td style="white-space:nowrap;color:var(--text2)">${timeAgo(r.timestamp)}</td>
       <td><strong>${r.username}</strong></td>
