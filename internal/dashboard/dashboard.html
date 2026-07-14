@@ -226,6 +226,7 @@ const COLORS=['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#39d2c0','#f778
 
 function fmtN(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return n.toString()}
 function fmtC(n){return '$'+n.toFixed(2)}
+function fmtGroup(g){if(!g)return'';try{var a=JSON.parse(g);return Array.isArray(a)?a.join(', '):g;}catch(e){return g.replace(/^\["|"\]$/g,'').replace(/","/g,', ');}}
 
 async function api(path){const r=await fetch(path);if(!r.ok)throw new Error(r.statusText);return r.json()}
 
@@ -289,7 +290,7 @@ function renderRecent(data){
     return `<tr>
       <td style="white-space:nowrap;color:var(--text2)">${timeAgo(r.timestamp)}</td>
       <td><strong>${r.username}</strong></td>
-      <td>${r.group_name}</td>
+      <td>${fmtGroup(r.group_name)}</td>
       <td style="color:${clientColor}" title="${r.user_agent||''}">${client||'—'}</td>
       <td>${r.model}</td>
       <td style="color:${provColor}">${r.provider}</td>
@@ -342,7 +343,7 @@ function renderUsers(data){
     let row=`<tr class="${cls}" onclick="toggleExpand('${u.username}')">
       <td style="color:var(--text2);font-size:10px">${arrow}</td>
       <td>${u.username}</td>
-      <td>${u.group_name}</td>
+      <td>${fmtGroup(u.group_name)}</td>
       <td class="num">${fmtN(u.requests)}</td>
       <td class="num">${fmtN(u.prompt_tokens)}</td>
       <td class="num">${fmtN(u.completion_tokens)}</td>
@@ -494,7 +495,7 @@ function populateFilterDropdowns(models, users){
   if(gs){
     var curG=gs.value;
     var groups=[...new Set(users.map(function(u){return u.group_name}).filter(Boolean))];
-    gs.innerHTML='<option value="">All</option>'+groups.map(function(g){return '<option value="'+g+'"'+(g===curG?' selected':'')+'>'+g+'</option>';}).join('');
+    gs.innerHTML='<option value="">All</option>'+groups.map(function(g){return '<option value="'+g+'"'+(g===curG?' selected':'')+'>'+fmtGroup(g)+'</option>';}).join('');
   }
   allUsers=users;
   var inp=document.getElementById('user-filter-input');
