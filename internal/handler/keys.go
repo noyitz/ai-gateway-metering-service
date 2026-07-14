@@ -103,6 +103,19 @@ func (h *KeysHandler) revokeKey(w http.ResponseWriter, keyID string, hdrs map[st
 	io.Copy(w, resp.Body)
 }
 
+func (h *KeysHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
+	hdrs := maasHeaders(r)
+	resp, err := proxyToMaaS("GET", "/v1/models", hdrs, nil)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to reach maas-api: %v", err), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+}
+
 func (h *KeysHandler) HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 	user := r.Header.Get("X-Forwarded-User")
 	groups := r.Header.Get("X-Forwarded-Groups")
