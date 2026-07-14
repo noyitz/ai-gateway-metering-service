@@ -158,7 +158,7 @@ func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
 }
 
 func (c *Client) UpdateModelWeights(ctx context.Context, modelName string, weights map[string]int64) error {
-	model, err := c.client.Resource(legacyModelGVR).Namespace(c.namespace).Get(ctx, modelName, metav1.GetOptions{})
+	model, err := c.client.Resource(modelGVR).Namespace(c.namespace).Get(ctx, modelName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("get ExternalModel %s: %w", modelName, err)
 	}
@@ -191,7 +191,7 @@ func (c *Client) UpdateModelWeights(ctx context.Context, modelName string, weigh
 	}
 	patchBytes, _ := json.Marshal(patch)
 
-	_, err = c.client.Resource(legacyModelGVR).Namespace(c.namespace).Patch(
+	_, err = c.client.Resource(modelGVR).Namespace(c.namespace).Patch(
 		ctx, modelName, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 	return err
 }
