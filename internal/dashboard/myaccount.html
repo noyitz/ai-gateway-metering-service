@@ -430,7 +430,6 @@ async function generateKey(){
     document.getElementById('modalStep1').style.display='none';
     document.getElementById('modalStep2').style.display='block';
     document.getElementById('modalTitle').textContent='Key Created: '+name;
-    document.getElementById('keyValue').childNodes[0].textContent=data.key;
     document.getElementById('keyValue').textContent=data.key;
     var claudeEnv='export ANTHROPIC_BASE_URL='+gatewayUrl+'/llm/ext-claude-sonnet\nexport ANTHROPIC_API_KEY='+data.key+'\nexport NODE_TLS_REJECT_UNAUTHORIZED=0\nunset CLAUDE_CODE_USE_VERTEX\nunset ANTHROPIC_VERTEX_PROJECT_ID';
     document.getElementById('claudeEnv').textContent=claudeEnv;
