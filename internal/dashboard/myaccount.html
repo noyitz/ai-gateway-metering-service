@@ -433,7 +433,7 @@ async function generateKey(){
     document.getElementById('keyValue').textContent=data.key;
     var claudeEnv='export ANTHROPIC_BASE_URL='+gatewayUrl+'/llm/ext-claude-sonnet\nexport ANTHROPIC_API_KEY='+data.key+'\nexport NODE_TLS_REJECT_UNAUTHORIZED=0\nunset CLAUDE_CODE_USE_VERTEX\nunset ANTHROPIC_VERTEX_PROJECT_ID';
     document.getElementById('claudeEnv').textContent=claudeEnv;
-    var codexStep1='mkdir -p ~/.codex && cat > ~/.codex/config.toml << \'EOF\'\nmodel = "gpt-4.1-mini"\nmodel_provider = "maas"\n\n[model_providers.maas]\nname = "MaaS Gateway"\nbase_url = "'+gatewayUrl+'/v1"\nwire_api = "chat"\nenv_key = "MAAS_API_KEY"\nEOF';
+    var codexStep1='mkdir -p ~/.codex && cat > ~/.codex/config.toml << \'EOF\'\nmodel = "gpt-4.1-mini"\nmodel_provider = "maas"\n\n[model_providers.maas]\nname = "MaaS Gateway"\nbase_url = "'+gatewayUrl+'/v1"\nwire_api = "responses"\nenv_key = "MAAS_API_KEY"\nEOF';
     var codexStep2='export MAAS_API_KEY='+data.key+'\nexport NODE_TLS_REJECT_UNAUTHORIZED=0\ncodex';
     document.getElementById('codexStep1').textContent=codexStep1;
     document.getElementById('codexStep2').textContent=codexStep2;
