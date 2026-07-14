@@ -71,6 +71,12 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
 .tabs button.active{background:var(--c2);color:var(--t);border-bottom-color:var(--c2)}
 .tab-content{background:var(--c2);border:1px solid var(--bdr);border-radius:0 6px 6px 6px;padding:14px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:11px;line-height:1.8;white-space:pre-wrap;color:var(--t)}
 
+.setup-block{background:var(--bg);border:1px solid var(--bdr);border-radius:6px;padding:12px 14px}
+.setup-label{font-size:11px;font-weight:600;color:var(--t);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
+.setup-copy{background:var(--c2);color:var(--t2);border:1px solid var(--bdr);padding:2px 10px;border-radius:4px;font-size:9px;cursor:pointer;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.setup-copy:hover{background:var(--bdr);color:var(--t)}
+.setup-code{background:transparent;color:var(--cyn);font-family:'SF Mono',Menlo,monospace;font-size:12px;line-height:1.6;margin:0;white-space:pre-wrap;word-break:break-all}
+
 .toast{position:fixed;bottom:24px;right:24px;padding:12px 22px;border-radius:8px;font-size:12px;font-weight:600;transform:translateY(80px);opacity:0;transition:all .3s;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,.5)}
 .toast.show{transform:translateY(0);opacity:1}
 .toast.ok{background:var(--grn);color:#fff}
@@ -164,19 +170,57 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
       </div>
     </div>
     <div id="modalStep2" style="display:none">
-      <div style="background:rgba(63,185,80,.08);border:1px solid var(--grn);border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--grn)">
-        Key created successfully. Copy it now — you won't be able to see it again.
+      <div style="background:rgba(63,185,80,.06);border:1px solid rgba(63,185,80,.3);border-radius:8px;padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:600;color:var(--grn);margin-bottom:6px">Key created successfully</div>
+        <div style="font-size:11px;color:var(--t2)">Copy it now — you won't be able to see it again.</div>
       </div>
-      <div class="key-display" id="keyValue">
-        <button class="copy-btn" onclick="copyKey()">Copy</button>
+      <div style="position:relative;margin-bottom:20px">
+        <div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Your API Key</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <code id="keyValue" style="flex:1;background:var(--bg);border:1px solid var(--grn);border-radius:6px;padding:10px 12px;font-family:'SF Mono',Menlo,monospace;font-size:12px;color:var(--grn);word-break:break-all"></code>
+          <button class="btn btn-secondary" onclick="copyText(document.getElementById('keyValue').textContent)" style="flex-shrink:0;padding:8px 14px">Copy</button>
+        </div>
       </div>
+      <div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Quick Setup</div>
       <div class="tabs">
         <button class="active" onclick="showTab('claude',this)">Claude Code</button>
         <button onclick="showTab('codex',this)">Codex</button>
       </div>
-      <div class="tab-content" id="tabClaude"></div>
-      <div class="tab-content" id="tabCodex" style="display:none"></div>
-      <div style="margin-top:14px;text-align:right">
+      <div id="tabClaude">
+        <div class="setup-block">
+          <div class="setup-label">Add to your shell profile <span style="color:var(--t2)">(~/.zshrc or ~/.bashrc)</span>
+            <button class="setup-copy" onclick="copyText(document.getElementById('claudeEnv').textContent)">Copy</button>
+          </div>
+          <pre class="setup-code" id="claudeEnv"></pre>
+        </div>
+        <div class="setup-block" style="margin-top:10px">
+          <div class="setup-label">Then run
+            <button class="setup-copy" onclick="copyText('source ~/.zshrc && claude')">Copy</button>
+          </div>
+          <pre class="setup-code">source ~/.zshrc && claude</pre>
+        </div>
+      </div>
+      <div id="tabCodex" style="display:none">
+        <div class="setup-block">
+          <div class="setup-label">Add to your shell profile <span style="color:var(--t2)">(~/.zshrc or ~/.bashrc)</span>
+            <button class="setup-copy" onclick="copyText(document.getElementById('codexEnv').textContent)">Copy</button>
+          </div>
+          <pre class="setup-code" id="codexEnv"></pre>
+        </div>
+        <div class="setup-block" style="margin-top:10px">
+          <div class="setup-label">Create config file <span style="color:var(--t2)">(~/.codex/config.json)</span>
+            <button class="setup-copy" onclick="copyText(document.getElementById('codexConfig').textContent)">Copy</button>
+          </div>
+          <pre class="setup-code" id="codexConfig"></pre>
+        </div>
+        <div class="setup-block" style="margin-top:10px">
+          <div class="setup-label">Then run
+            <button class="setup-copy" onclick="copyText('source ~/.zshrc && codex')">Copy</button>
+          </div>
+          <pre class="setup-code">source ~/.zshrc && codex</pre>
+        </div>
+      </div>
+      <div style="margin-top:16px;text-align:right">
         <button class="btn btn-primary" onclick="closeGenModal();loadKeys()">Done</button>
       </div>
     </div>
@@ -393,16 +437,16 @@ async function generateKey(){
     document.getElementById('modalStep2').style.display='block';
     document.getElementById('modalTitle').textContent='Key Created: '+name;
     document.getElementById('keyValue').childNodes[0].textContent=data.key;
-    document.getElementById('tabClaude').textContent='# Add to your shell profile (~/.zshrc or ~/.bashrc)\nexport ANTHROPIC_BASE_URL='+gatewayUrl+'\nexport ANTHROPIC_API_KEY='+data.key+'\n\n# Then restart your terminal and run:\nclaude';
-    document.getElementById('tabCodex').textContent='# Add to your shell profile (~/.zshrc or ~/.bashrc)\nexport OPENAI_BASE_URL='+gatewayUrl+'/v1\nexport OPENAI_API_KEY='+data.key+'\n\n# Then restart your terminal and run:\ncodex';
+    document.getElementById('claudeEnv').textContent='export ANTHROPIC_BASE_URL='+gatewayUrl+'\nexport ANTHROPIC_API_KEY='+data.key;
+    document.getElementById('codexEnv').textContent='export OPENAI_BASE_URL='+gatewayUrl+'/v1\nexport OPENAI_API_KEY='+data.key;
+    document.getElementById('codexConfig').textContent='mkdir -p ~/.codex && cat > ~/.codex/config.json << \'EOF\'\n{\n  "model": "gpt-4.1-mini",\n  "provider": "openai",\n  "providers": {\n    "openai": {\n      "name": "MaaS Gateway"\n    }\n  }\n}\nEOF';
     toast('Key generated','ok');
   }catch(e){toast('Error: '+e.message,'err')}
   finally{btn.disabled=false;btn.textContent='Generate';}
 }
 
-function copyKey(){
-  var key=document.getElementById('keyValue').childNodes[0].textContent;
-  navigator.clipboard.writeText(key).then(function(){toast('Copied to clipboard','ok')});
+function copyText(text){
+  navigator.clipboard.writeText(text).then(function(){toast('Copied to clipboard','ok')});
 }
 function showTab(tab,btn){
   document.getElementById('tabClaude').style.display=tab==='claude'?'block':'none';
