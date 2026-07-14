@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MaaS — My Account</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0b0e11;--c1:#181b1f;--c2:#22262c;--bdr:#2c3138;
+  --t:#e0e3e8;--t2:#8b949e;--blu:#58a6ff;--grn:#3fb950;
+  --org:#d29922;--red:#f85149;--pur:#bc8cff;--cyn:#39d2c0;
+}
+body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px;max-width:1200px;margin:0 auto}
+a{color:var(--blu);text-decoration:none}
+
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.kpi{background:var(--c1);border:1px solid var(--bdr);border-radius:10px;padding:18px;text-align:center}
+.kpi-label{font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.kpi-value{font-size:28px;font-weight:700}
+
+.section{background:var(--c1);border:1px solid var(--bdr);border-radius:10px;padding:20px;margin-bottom:20px}
+.section-title{font-size:14px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#14171a;color:var(--t2);font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;text-align:left}
+td{padding:8px 12px;border-top:1px solid var(--bdr)}
+tr.me{background:rgba(63,185,80,.08)}
+tr.me td{font-weight:600}
+
+.btn{padding:7px 18px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all .15s}
+.btn-primary{background:var(--grn);color:#fff}
+.btn-primary:hover{background:#45d676}
+.btn-secondary{background:var(--c2);color:var(--t2);border:1px solid var(--bdr)}
+.btn-secondary:hover{background:var(--bdr);color:var(--t)}
+.btn-danger{background:transparent;color:var(--red);border:1px solid var(--red);padding:4px 10px;font-size:10px}
+.btn-danger:hover{background:rgba(248,81,73,.1)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+.tag{font-size:9px;padding:2px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+.tag-active{background:rgba(63,185,80,.15);color:var(--grn)}
+.tag-revoked{background:rgba(248,81,73,.12);color:var(--red)}
+.tag-expired{background:rgba(139,148,158,.12);color:var(--t2)}
+
+.range-btns{display:flex;gap:4px}
+.range-btns button{background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:5px 12px;border-radius:5px;cursor:pointer;font-size:11px}
+.range-btns button.active{background:var(--blu);color:#fff;border-color:var(--blu)}
+
+/* Modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--c1);border:1px solid var(--bdr);border-radius:12px;padding:24px;width:560px;max-width:95vw;max-height:90vh;overflow-y:auto}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:16px}
+.modal input[type=text]{width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--t);padding:8px 12px;border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:12px}
+.modal input:focus{outline:none;border-color:var(--blu)}
+
+.key-display{background:var(--bg);border:1px solid var(--grn);border-radius:8px;padding:12px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:11px;color:var(--grn);word-break:break-all;margin:12px 0;position:relative}
+.copy-btn{position:absolute;top:8px;right:8px;background:var(--c2);color:var(--t);border:1px solid var(--bdr);padding:4px 10px;border-radius:4px;font-size:10px;cursor:pointer}
+.copy-btn:hover{background:var(--bdr)}
+
+.tabs{display:flex;gap:2px;margin:12px 0 8px}
+.tabs button{background:var(--bg);color:var(--t2);border:1px solid var(--bdr);padding:6px 16px;border-radius:6px 6px 0 0;cursor:pointer;font-size:11px;font-weight:600}
+.tabs button.active{background:var(--c2);color:var(--t);border-bottom-color:var(--c2)}
+.tab-content{background:var(--c2);border:1px solid var(--bdr);border-radius:0 6px 6px 6px;padding:14px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:11px;line-height:1.8;white-space:pre-wrap;color:var(--t)}
+
+.toast{position:fixed;bottom:24px;right:24px;padding:12px 22px;border-radius:8px;font-size:12px;font-weight:600;transform:translateY(80px);opacity:0;transition:all .3s;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok{background:var(--grn);color:#fff}
+.toast.err{background:var(--red);color:#fff}
+</style>
+</head>
+<body>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+  <div style="display:flex;gap:4px">
+    <a href="/me" style="background:var(--cyn);color:#fff;border:1px solid var(--cyn);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My Account</a>
+    <a href="/dashboard" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
+    <a href="/routing" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
+    <a href="/compression" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span id="userInfo" style="font-size:11px;color:var(--t2)"></span>
+    <a href="/oauth/sign_out" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600">Logout</a>
+  </div>
+</div>
+
+<div style="font-size:18px;font-weight:700;margin-bottom:6px" id="pageTitle">My Account</div>
+<div style="font-size:12px;color:var(--t2);margin-bottom:20px">
+  <span id="groupInfo"></span>
+  <div class="range-btns" style="display:inline-flex;margin-left:16px">
+    <button onclick="setRange('24h')" data-r="24h">24h</button>
+    <button onclick="setRange('7d')" data-r="7d" class="active">7d</button>
+    <button onclick="setRange('30d')" data-r="30d">30d</button>
+  </div>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-label">Requests</div><div class="kpi-value" style="color:var(--blu)" id="kpiReqs">--</div></div>
+  <div class="kpi"><div class="kpi-label">Total Tokens</div><div class="kpi-value" style="color:var(--grn)" id="kpiTokens">--</div></div>
+  <div class="kpi"><div class="kpi-label">Cost</div><div class="kpi-value" style="color:var(--org)" id="kpiCost">--</div></div>
+  <div class="kpi"><div class="kpi-label">Team Rank</div><div class="kpi-value" style="color:var(--pur)" id="kpiRank">--</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+  <div class="section">
+    <div class="section-title">Model Breakdown</div>
+    <table><thead><tr><th>Model</th><th>Provider</th><th>Tokens</th><th>Cost</th></tr></thead>
+    <tbody id="modelBody"></tbody></table>
+  </div>
+  <div class="section">
+    <div class="section-title">Team Comparison</div>
+    <table><thead><tr><th>#</th><th>User</th><th>Tokens</th><th>Cost</th></tr></thead>
+    <tbody id="teamBody"></tbody></table>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">
+    <span>API Keys</span>
+    <button class="btn btn-primary" onclick="openGenModal()">Generate New Key</button>
+  </div>
+  <table><thead><tr><th>Name</th><th>Status</th><th>Created</th><th>Expires</th><th>Last Used</th><th></th></tr></thead>
+  <tbody id="keysBody"></tbody></table>
+  <div id="keysEmpty" style="display:none;text-align:center;padding:20px;color:var(--t2);font-size:12px">No API keys found. Generate one to get started.</div>
+</div>
+
+<!-- Generate Key Modal -->
+<div class="modal-bg" id="genModal">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Generate New API Key</div>
+    <div id="modalStep1">
+      <label style="font-size:11px;color:var(--t2);display:block;margin-bottom:4px">Key Name</label>
+      <input type="text" id="keyNameInput" placeholder="e.g., my-laptop, ci-pipeline">
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="closeGenModal()">Cancel</button>
+        <button class="btn btn-primary" id="genBtn" onclick="generateKey()">Generate</button>
+      </div>
+    </div>
+    <div id="modalStep2" style="display:none">
+      <div style="background:rgba(63,185,80,.08);border:1px solid var(--grn);border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--grn)">
+        Key created successfully. Copy it now — you won't be able to see it again.
+      </div>
+      <div class="key-display" id="keyValue">
+        <button class="copy-btn" onclick="copyKey()">Copy</button>
+      </div>
+      <div class="tabs">
+        <button class="active" onclick="showTab('claude',this)">Claude Code</button>
+        <button onclick="showTab('codex',this)">Codex</button>
+      </div>
+      <div class="tab-content" id="tabClaude"></div>
+      <div class="tab-content" id="tabCodex" style="display:none"></div>
+      <div style="margin-top:14px;text-align:right">
+        <button class="btn btn-primary" onclick="closeGenModal();loadKeys()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+var me='',myGroup='',range='7d',gatewayUrl='';
+
+function fmtN(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return String(n)}
+function fmtC(n){return '$'+n.toFixed(2)}
+function fmtDate(s){if(!s)return'—';var d=new Date(s);return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+function api(u){return fetch(u).then(function(r){if(!r.ok)throw new Error(r.statusText);return r.json()})}
+
+function setRange(r){
+  range=r;
+  document.querySelectorAll('.range-btns button').forEach(function(b){b.classList.toggle('active',b.dataset.r===r)});
+  refresh();
+}
+
+async function init(){
+  try{
+    var w=await api('/api/v1/whoami');
+    me=w.user||'';
+    myGroup=w.groups||'';
+    if(myGroup.startsWith('[')){try{myGroup=JSON.parse(myGroup)[0]||'';}catch(e){myGroup='';}}
+    document.getElementById('userInfo').textContent=me;
+    document.getElementById('pageTitle').textContent='Welcome, '+me;
+    document.getElementById('groupInfo').textContent=myGroup?'Group: '+myGroup:'';
+
+    var host=window.location.hostname;
+    var clusterDomain=host.split('.apps.')[1]||host;
+    gatewayUrl='https://maas.apps.'+clusterDomain;
+  }catch(e){}
+  refresh();
+  loadKeys();
+}
+
+async function refresh(){
+  var q='range='+range+'&user='+encodeURIComponent(me);
+  var gq='range='+range+'&group='+encodeURIComponent(myGroup);
+  try{
+    var [userData,modelData,teamData]=await Promise.all([
+      api('/api/v1/dashboard/users?'+q),
+      api('/api/v1/dashboard/models?'+q),
+      api('/api/v1/dashboard/users?'+gq+'&sort=total_tokens&order=desc')
+    ]);
+
+    var u=userData&&userData.length>0?userData[0]:{requests:0,total_tokens:0,cost_usd:0};
+    document.getElementById('kpiReqs').textContent=fmtN(u.requests||0);
+    document.getElementById('kpiTokens').textContent=fmtN(u.total_tokens||0);
+    document.getElementById('kpiCost').textContent=fmtC(u.cost_usd||0);
+
+    var rank='—';
+    if(teamData&&teamData.length>0){
+      var idx=teamData.findIndex(function(t){return t.username===me});
+      if(idx>=0)rank='#'+(idx+1)+' of '+teamData.length;
+    }
+    document.getElementById('kpiRank').textContent=rank;
+
+    document.getElementById('modelBody').innerHTML=(modelData||[]).map(function(m){
+      return '<tr><td>'+m.model+'</td><td>'+m.provider+'</td><td>'+fmtN(m.total_tokens)+'</td><td>'+fmtC(m.cost_usd||0)+'</td></tr>';
+    }).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--t2)">No usage data</td></tr>';
+
+    document.getElementById('teamBody').innerHTML=(teamData||[]).map(function(t,i){
+      var cls=t.username===me?' class="me"':'';
+      return '<tr'+cls+'><td>'+(i+1)+'</td><td>'+t.username+'</td><td>'+fmtN(t.total_tokens)+'</td><td>'+fmtC(t.cost_usd||0)+'</td></tr>';
+    }).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--t2)">No team data</td></tr>';
+  }catch(e){
+    toast('Failed to load: '+e.message,'err');
+  }
+}
+
+async function loadKeys(){
+  try{
+    var data=await api('/api/v1/me/keys');
+    var keys=data.data||[];
+    var tbody=document.getElementById('keysBody');
+    var empty=document.getElementById('keysEmpty');
+    if(keys.length===0){
+      tbody.innerHTML='';empty.style.display='block';return;
+    }
+    empty.style.display='none';
+    tbody.innerHTML=keys.map(function(k){
+      var tagCls=k.status==='active'?'tag-active':k.status==='revoked'?'tag-revoked':'tag-expired';
+      var revokeBtn=k.status==='active'?'<button class="btn btn-danger" onclick="revokeKey(\''+k.id+'\')">Revoke</button>':'';
+      return '<tr>'
+        +'<td><strong>'+k.name+'</strong></td>'
+        +'<td><span class="tag '+tagCls+'">'+k.status+'</span></td>'
+        +'<td>'+fmtDate(k.creationDate)+'</td>'
+        +'<td>'+fmtDate(k.expirationDate)+'</td>'
+        +'<td>'+fmtDate(k.lastUsedAt)+'</td>'
+        +'<td>'+revokeBtn+'</td>'
+        +'</tr>';
+    }).join('');
+  }catch(e){
+    toast('Failed to load keys: '+e.message,'err');
+  }
+}
+
+function openGenModal(){
+  document.getElementById('genModal').classList.add('show');
+  document.getElementById('modalStep1').style.display='block';
+  document.getElementById('modalStep2').style.display='none';
+  document.getElementById('keyNameInput').value='';
+  document.getElementById('keyNameInput').focus();
+}
+function closeGenModal(){document.getElementById('genModal').classList.remove('show')}
+
+async function generateKey(){
+  var name=document.getElementById('keyNameInput').value.trim();
+  if(!name){toast('Enter a key name','err');return;}
+  var btn=document.getElementById('genBtn');
+  btn.disabled=true;btn.textContent='Generating...';
+  try{
+    var resp=await fetch('/api/v1/me/keys',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:name})
+    });
+    if(!resp.ok){var t=await resp.text();throw new Error(t);}
+    var data=await resp.json();
+    document.getElementById('modalStep1').style.display='none';
+    document.getElementById('modalStep2').style.display='block';
+    document.getElementById('modalTitle').textContent='Key Created: '+name;
+    document.getElementById('keyValue').childNodes[0].textContent=data.key;
+
+    document.getElementById('tabClaude').textContent=
+      '# Add to your shell profile (~/.zshrc or ~/.bashrc)\n'
+      +'export ANTHROPIC_BASE_URL='+gatewayUrl+'\n'
+      +'export ANTHROPIC_API_KEY='+data.key+'\n\n'
+      +'# Then restart your terminal and run:\n'
+      +'claude';
+
+    document.getElementById('tabCodex').textContent=
+      '# Add to your shell profile (~/.zshrc or ~/.bashrc)\n'
+      +'export OPENAI_BASE_URL='+gatewayUrl+'/v1\n'
+      +'export OPENAI_API_KEY='+data.key+'\n\n'
+      +'# Then restart your terminal and run:\n'
+      +'codex';
+
+    toast('Key generated','ok');
+  }catch(e){
+    toast('Error: '+e.message,'err');
+  }finally{
+    btn.disabled=false;btn.textContent='Generate';
+  }
+}
+
+function copyKey(){
+  var key=document.getElementById('keyValue').childNodes[0].textContent;
+  navigator.clipboard.writeText(key).then(function(){toast('Copied to clipboard','ok')});
+}
+
+function showTab(tab,btn){
+  document.getElementById('tabClaude').style.display=tab==='claude'?'block':'none';
+  document.getElementById('tabCodex').style.display=tab==='codex'?'block':'none';
+  btn.parentElement.querySelectorAll('button').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+}
+
+async function revokeKey(id){
+  if(!confirm('Revoke this API key? This cannot be undone.'))return;
+  try{
+    var resp=await fetch('/api/v1/me/keys/'+id,{method:'DELETE'});
+    if(!resp.ok)throw new Error(await resp.text());
+    toast('Key revoked','ok');
+    loadKeys();
+  }catch(e){toast('Error: '+e.message,'err')}
+}
+
+function toast(m,t){var e=document.getElementById('toast');e.textContent=m;e.className='toast '+t+' show';setTimeout(function(){e.className='toast'},3000)}
+init();
+</script>
+</body>
+</html>

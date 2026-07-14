@@ -28,6 +28,16 @@ func (h *AdminHandler) ServeAdmin(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+func (h *AdminHandler) ServeMyAccount(w http.ResponseWriter, r *http.Request) {
+	data, err := fs.ReadFile(dashboard.FS, "myaccount.html")
+	if err != nil {
+		http.Error(w, "my account page not found", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(data)
+}
+
 func (h *AdminHandler) ServeRouting(w http.ResponseWriter, r *http.Request) {
 	data, err := fs.ReadFile(dashboard.FS, "routing.html")
 	if err != nil {
