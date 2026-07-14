@@ -202,22 +202,16 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
       </div>
       <div id="tabCodex" style="display:none">
         <div class="setup-block">
-          <div class="setup-label">Add to your shell profile <span style="color:var(--t2)">(~/.zshrc or ~/.bashrc)</span>
-            <button class="setup-copy" onclick="copyText(document.getElementById('codexEnv').textContent)">Copy</button>
+          <div class="setup-label"><span style="color:var(--pur)">Step 1</span> — Create config <span style="color:var(--t2)">(~/.codex/config.toml)</span>
+            <button class="setup-copy" onclick="copyText(document.getElementById('codexStep1').textContent)">Copy</button>
           </div>
-          <pre class="setup-code" id="codexEnv"></pre>
+          <pre class="setup-code" id="codexStep1"></pre>
         </div>
         <div class="setup-block" style="margin-top:10px">
-          <div class="setup-label">Create config file <span style="color:var(--t2)">(~/.codex/config.json)</span>
-            <button class="setup-copy" onclick="copyText(document.getElementById('codexConfig').textContent)">Copy</button>
+          <div class="setup-label"><span style="color:var(--pur)">Step 2</span> — Set key and start Codex
+            <button class="setup-copy" onclick="copyText(document.getElementById('codexStep2').textContent)">Copy</button>
           </div>
-          <pre class="setup-code" id="codexConfig"></pre>
-        </div>
-        <div class="setup-block" style="margin-top:10px">
-          <div class="setup-label">Or paste everything at once
-            <button class="setup-copy" id="codexAllCopy" onclick="copyText(document.getElementById('codexAll').textContent)">Copy</button>
-          </div>
-          <pre class="setup-code" id="codexAll"></pre>
+          <pre class="setup-code" id="codexStep2"></pre>
         </div>
       </div>
       <div style="margin-top:16px;text-align:right">
@@ -440,12 +434,11 @@ async function generateKey(){
     document.getElementById('keyValue').textContent=data.key;
     var claudeEnv='export ANTHROPIC_BASE_URL='+gatewayUrl+'/llm/ext-claude-sonnet\nexport ANTHROPIC_API_KEY='+data.key+'\nexport NODE_TLS_REJECT_UNAUTHORIZED=0\nunset CLAUDE_CODE_USE_VERTEX\nunset ANTHROPIC_VERTEX_PROJECT_ID';
     document.getElementById('claudeEnv').textContent=claudeEnv;
-    var codexEnv='export OPENAI_BASE_URL='+gatewayUrl+'/v1\nexport OPENAI_API_KEY='+data.key+'\nexport NODE_TLS_REJECT_UNAUTHORIZED=0';
-    document.getElementById('codexEnv').textContent=codexEnv;
-    var codexConfigCmd='mkdir -p ~/.codex && cat > ~/.codex/config.json << \'EOF\'\n{\n  "model": "gpt-4.1-mini",\n  "provider": "openai",\n  "providers": {\n    "openai": {\n      "name": "MaaS Gateway"\n    }\n  }\n}\nEOF';
-    document.getElementById('codexConfig').textContent=codexConfigCmd;
+    var codexStep1='mkdir -p ~/.codex && cat > ~/.codex/config.toml << \'EOF\'\nmodel = "gpt-5.5"\nmodel_provider = "maas"\n\n[model_providers.maas]\nname = "MaaS Gateway"\nbase_url = "'+gatewayUrl+'/v1"\nwire_api = "responses"\nenv_key = "MAAS_API_KEY"\nEOF';
+    var codexStep2='export MAAS_API_KEY='+data.key+'\nexport NODE_TLS_REJECT_UNAUTHORIZED=0\ncodex';
+    document.getElementById('codexStep1').textContent=codexStep1;
+    document.getElementById('codexStep2').textContent=codexStep2;
     document.getElementById('claudeAll').textContent=claudeEnv+'\nclaude';
-    document.getElementById('codexAll').textContent=codexEnv+'\n'+codexConfigCmd+'\ncodex';
     toast('Key generated','ok');
   }catch(e){toast('Error: '+e.message,'err')}
   finally{btn.disabled=false;btn.textContent='Generate';}
