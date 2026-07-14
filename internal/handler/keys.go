@@ -49,7 +49,7 @@ func proxyToMaaS(method, path string, headers map[string]string, body io.Reader)
 }
 
 func (h *KeysHandler) HandleKeys(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/me/keys")
+	path := strings.TrimPrefix(r.URL.Path, "/me/keys")
 	path = strings.TrimSuffix(path, "/")
 	hdrs := maasHeaders(r)
 
