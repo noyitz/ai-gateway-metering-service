@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MaaS — My Account</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -11,7 +12,7 @@
   --t:#e0e3e8;--t2:#8b949e;--blu:#58a6ff;--grn:#3fb950;
   --org:#d29922;--red:#f85149;--pur:#bc8cff;--cyn:#39d2c0;
 }
-body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px;max-width:1200px;margin:0 auto}
+body{background:var(--bg);color:var(--t);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px;max-width:1400px;margin:0 auto}
 a{color:var(--blu);text-decoration:none}
 
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
@@ -26,7 +27,8 @@ table{width:100%;border-collapse:collapse;font-size:12px}
 th{background:#14171a;color:var(--t2);font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;text-align:left}
 td{padding:8px 12px;border-top:1px solid var(--bdr)}
 tr.me{background:rgba(63,185,80,.08)}
-tr.me td{font-weight:600}
+tr.me td{font-weight:600;color:var(--grn)}
+tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);font-size:10px;padding:4px}
 
 .btn{padding:7px 18px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all .15s}
 .btn-primary{background:var(--grn);color:#fff}
@@ -46,18 +48,24 @@ tr.me td{font-weight:600}
 .range-btns button{background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:5px 12px;border-radius:5px;cursor:pointer;font-size:11px}
 .range-btns button.active{background:var(--blu);color:#fff;border-color:var(--blu)}
 
-/* Modal */
+.toggle-btns{display:flex;gap:2px}
+.toggle-btns button{background:var(--c2);color:var(--t2);border:1px solid var(--bdr);padding:4px 12px;border-radius:5px;cursor:pointer;font-size:10px;font-weight:600}
+.toggle-btns button.active{background:var(--blu);color:#fff;border-color:var(--blu)}
+
+.bar-row{margin-bottom:10px}
+.bar-label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px}
+.bar-track{height:8px;background:var(--c2);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .3s}
+
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
 .modal-bg.show{display:flex}
 .modal{background:var(--c1);border:1px solid var(--bdr);border-radius:12px;padding:24px;width:560px;max-width:95vw;max-height:90vh;overflow-y:auto}
 .modal-title{font-size:16px;font-weight:700;margin-bottom:16px}
 .modal input[type=text]{width:100%;background:var(--bg);border:1px solid var(--bdr);color:var(--t);padding:8px 12px;border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:12px}
 .modal input:focus{outline:none;border-color:var(--blu)}
-
 .key-display{background:var(--bg);border:1px solid var(--grn);border-radius:8px;padding:12px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:11px;color:var(--grn);word-break:break-all;margin:12px 0;position:relative}
 .copy-btn{position:absolute;top:8px;right:8px;background:var(--c2);color:var(--t);border:1px solid var(--bdr);padding:4px 10px;border-radius:4px;font-size:10px;cursor:pointer}
 .copy-btn:hover{background:var(--bdr)}
-
 .tabs{display:flex;gap:2px;margin:12px 0 8px}
 .tabs button{background:var(--bg);color:var(--t2);border:1px solid var(--bdr);padding:6px 16px;border-radius:6px 6px 0 0;cursor:pointer;font-size:11px;font-weight:600}
 .tabs button.active{background:var(--c2);color:var(--t);border-bottom-color:var(--c2)}
@@ -74,9 +82,6 @@ tr.me td{font-weight:600}
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
   <div style="display:flex;gap:4px">
     <a href="/me" style="background:var(--cyn);color:#fff;border:1px solid var(--cyn);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My Account</a>
-    <a href="/dashboard" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
-    <a href="/routing" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
-    <a href="/compression" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
   </div>
   <div style="display:flex;align-items:center;gap:12px">
     <span id="userInfo" style="font-size:11px;color:var(--t2)"></span>
@@ -101,19 +106,41 @@ tr.me td{font-weight:600}
   <div class="kpi"><div class="kpi-label">Team Rank</div><div class="kpi-value" style="color:var(--pur)" id="kpiRank">--</div></div>
 </div>
 
+<!-- By Model + By Token Type -->
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
   <div class="section">
-    <div class="section-title">Model Breakdown</div>
-    <table><thead><tr><th>Model</th><th>Provider</th><th>Tokens</th><th>Cost</th></tr></thead>
-    <tbody id="modelBody"></tbody></table>
+    <div class="section-title">By Model
+      <div class="toggle-btns" id="modelToggle">
+        <button class="active" onclick="setModelMetric('cost',this)">Cost</button>
+        <button onclick="setModelMetric('tokens',this)">Tokens</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:20px">
+      <div style="width:180px;height:180px;flex-shrink:0"><canvas id="modelChart"></canvas></div>
+      <div id="modelLegend" style="font-size:11px;line-height:2"></div>
+    </div>
   </div>
+  <div class="section">
+    <div class="section-title">By Token Type</div>
+    <div id="tokenBars"></div>
+  </div>
+</div>
+
+<!-- Team Comparison + Recent Activity -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
   <div class="section">
     <div class="section-title">Team Comparison</div>
     <table><thead><tr><th>#</th><th>User</th><th>Tokens</th><th>Cost</th></tr></thead>
     <tbody id="teamBody"></tbody></table>
   </div>
+  <div class="section">
+    <div class="section-title">Recent Activity</div>
+    <table><thead><tr><th>Time</th><th>Model</th><th>Tokens</th><th>Cost</th></tr></thead>
+    <tbody id="recentBody"></tbody></table>
+  </div>
 </div>
 
+<!-- API Keys -->
 <div class="section">
   <div class="section-title">
     <span>API Keys</span>
@@ -159,11 +186,14 @@ tr.me td{font-weight:600}
 <div id="toast" class="toast"></div>
 
 <script>
-var me='',myGroup='',range='7d',gatewayUrl='';
+var me='',myGroup='',range='7d',gatewayUrl='',modelMetric='cost';
+var modelChart=null,cachedModels=[];
+var COLORS=['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#39d2c0','#f778ba','#79c0ff','#7ee787','#e3b341'];
 
 function fmtN(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return String(n)}
 function fmtC(n){return '$'+n.toFixed(2)}
 function fmtDate(s){if(!s)return'—';var d=new Date(s);return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+function fmtTime(s){if(!s)return'—';var d=new Date(s);return d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
 function api(u){return fetch(u).then(function(r){if(!r.ok)throw new Error(r.statusText);return r.json()})}
 
 function setRange(r){
@@ -172,16 +202,22 @@ function setRange(r){
   refresh();
 }
 
+function setModelMetric(m,btn){
+  modelMetric=m;
+  btn.parentElement.querySelectorAll('button').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  renderModelChart();
+}
+
 async function init(){
   try{
-    var w=await api('/api/v1/whoami');
+    var w=await api('/me/whoami');
     me=w.user||'';
     myGroup=w.groups||'';
     if(myGroup.startsWith('[')){try{myGroup=JSON.parse(myGroup)[0]||'';}catch(e){myGroup='';}}
     document.getElementById('userInfo').textContent=me;
     document.getElementById('pageTitle').textContent='Welcome, '+me;
     document.getElementById('groupInfo').textContent=myGroup?'Group: '+myGroup:'';
-
     var host=window.location.hostname;
     var clusterDomain=host.split('.apps.')[1]||host;
     gatewayUrl='https://maas.apps.'+clusterDomain;
@@ -191,20 +227,24 @@ async function init(){
 }
 
 async function refresh(){
+  if(!me)return;
   var q='range='+range+'&user='+encodeURIComponent(me);
   var gq='range='+range+'&group='+encodeURIComponent(myGroup);
   try{
-    var [userData,modelData,teamData]=await Promise.all([
+    var [userData,modelData,teamData,recentData]=await Promise.all([
       api('/api/v1/dashboard/users?'+q),
       api('/api/v1/dashboard/models?'+q),
-      api('/api/v1/dashboard/users?'+gq+'&sort=total_tokens&order=desc')
+      api('/api/v1/dashboard/users?'+gq+'&sort=total_tokens&order=desc'),
+      api('/api/v1/dashboard/recent?limit=50')
     ]);
 
-    var u=userData&&userData.length>0?userData[0]:{requests:0,total_tokens:0,cost_usd:0};
+    // KPIs
+    var u=userData&&userData.length>0?userData[0]:{requests:0,total_tokens:0,cost_usd:0,prompt_tokens:0,completion_tokens:0};
     document.getElementById('kpiReqs').textContent=fmtN(u.requests||0);
     document.getElementById('kpiTokens').textContent=fmtN(u.total_tokens||0);
     document.getElementById('kpiCost').textContent=fmtC(u.cost_usd||0);
 
+    // Team rank
     var rank='—';
     if(teamData&&teamData.length>0){
       var idx=teamData.findIndex(function(t){return t.username===me});
@@ -212,44 +252,123 @@ async function refresh(){
     }
     document.getElementById('kpiRank').textContent=rank;
 
-    document.getElementById('modelBody').innerHTML=(modelData||[]).map(function(m){
-      return '<tr><td>'+m.model+'</td><td>'+m.provider+'</td><td>'+fmtN(m.total_tokens)+'</td><td>'+fmtC(m.cost_usd||0)+'</td></tr>';
-    }).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--t2)">No usage data</td></tr>';
+    // Model chart
+    cachedModels=modelData||[];
+    renderModelChart();
 
-    document.getElementById('teamBody').innerHTML=(teamData||[]).map(function(t,i){
-      var cls=t.username===me?' class="me"':'';
-      return '<tr'+cls+'><td>'+(i+1)+'</td><td>'+t.username+'</td><td>'+fmtN(t.total_tokens)+'</td><td>'+fmtC(t.cost_usd||0)+'</td></tr>';
-    }).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--t2)">No team data</td></tr>';
+    // Token type bars
+    renderTokenBars(modelData||[]);
+
+    // Team comparison: top 5 + my position + bottom 5
+    renderTeam(teamData||[]);
+
+    // Recent activity (filtered to me)
+    var myRecent=(recentData||[]).filter(function(r){return r.username===me}).slice(0,10);
+    document.getElementById('recentBody').innerHTML=myRecent.map(function(r){
+      return '<tr><td>'+fmtTime(r.timestamp)+'</td><td>'+r.model+'</td><td>'+fmtN(r.total_tokens)+'</td><td>'+fmtC(r.cost_usd||0)+'</td></tr>';
+    }).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--t2)">No recent activity</td></tr>';
   }catch(e){
     toast('Failed to load: '+e.message,'err');
   }
 }
 
+function renderModelChart(){
+  var data=cachedModels;
+  if(!data.length)return;
+  var labels=data.map(function(m){return m.model});
+  var values=data.map(function(m){return modelMetric==='cost'?(m.cost_usd||0):(m.total_tokens||0)});
+  var colors=data.map(function(_,i){return COLORS[i%COLORS.length]});
+
+  if(modelChart){modelChart.destroy();}
+  modelChart=new Chart(document.getElementById('modelChart'),{
+    type:'doughnut',
+    data:{labels:labels,datasets:[{data:values,backgroundColor:colors,borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:true,cutout:'60%',plugins:{legend:{display:false}}}
+  });
+
+  document.getElementById('modelLegend').innerHTML=data.map(function(m,i){
+    var val=modelMetric==='cost'?fmtC(m.cost_usd||0):fmtN(m.total_tokens||0);
+    return '<div><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+COLORS[i%COLORS.length]+';margin-right:6px"></span>'+m.model+' — '+val+'</div>';
+  }).join('');
+}
+
+function renderTokenBars(models){
+  var input=0,output=0,cacheRead=0,cacheWrite=0;
+  models.forEach(function(m){
+    input+=(m.prompt_tokens||0)-(m.cached_input_tokens||0)-(m.cache_creation_tokens||0);
+    output+=m.completion_tokens||0;
+    cacheRead+=m.cached_input_tokens||0;
+    cacheWrite+=m.cache_creation_tokens||0;
+  });
+  var total=input+output+cacheRead+cacheWrite;
+  if(total===0)total=1;
+  var bars=[
+    {label:'New Input',val:input,color:'var(--t2)'},
+    {label:'Output',val:output,color:'var(--grn)'},
+    {label:'Cache Read',val:cacheRead,color:'var(--cyn)'},
+    {label:'Cache Write',val:cacheWrite,color:'var(--pur)'}
+  ];
+  document.getElementById('tokenBars').innerHTML=bars.map(function(b){
+    var pct=((b.val/(input+output+cacheRead+cacheWrite))*100).toFixed(1);
+    return '<div class="bar-row"><div class="bar-label"><span><strong>'+b.label+'</strong></span><span><strong>'+fmtN(b.val)+'</strong> ('+pct+'%)</span></div>'
+      +'<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+b.color+'"></div></div></div>';
+  }).join('');
+}
+
+function renderTeam(teamData){
+  if(!teamData.length){
+    document.getElementById('teamBody').innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--t2)">No team data</td></tr>';
+    return;
+  }
+  var myIdx=teamData.findIndex(function(t){return t.username===me});
+  var rows=[];
+  var top5=teamData.slice(0,5);
+  var bot5=teamData.length>10?teamData.slice(-5):[];
+  var shown=new Set();
+
+  top5.forEach(function(t,i){
+    shown.add(i);
+    rows.push(makeTeamRow(t,i));
+  });
+
+  if(myIdx>=5&&myIdx<teamData.length-(bot5.length)){
+    rows.push('<tr class="sep"><td colspan="4">...</td></tr>');
+    rows.push(makeTeamRow(teamData[myIdx],myIdx));
+    shown.add(myIdx);
+  }
+
+  if(bot5.length>0){
+    var botStart=teamData.length-5;
+    if(!shown.has(botStart))rows.push('<tr class="sep"><td colspan="4">...</td></tr>');
+    bot5.forEach(function(t,i){
+      var globalIdx=botStart+i;
+      if(!shown.has(globalIdx))rows.push(makeTeamRow(t,globalIdx));
+    });
+  }
+
+  document.getElementById('teamBody').innerHTML=rows.join('');
+}
+
+function makeTeamRow(t,i){
+  var cls=t.username===me?' class="me"':'';
+  return '<tr'+cls+'><td>'+(i+1)+'</td><td>'+t.username+'</td><td>'+fmtN(t.total_tokens)+'</td><td>'+fmtC(t.cost_usd||0)+'</td></tr>';
+}
+
 async function loadKeys(){
   try{
-    var data=await api('/api/v1/me/keys');
+    var data=await api('/me/keys');
     var keys=data.data||[];
     var tbody=document.getElementById('keysBody');
     var empty=document.getElementById('keysEmpty');
-    if(keys.length===0){
-      tbody.innerHTML='';empty.style.display='block';return;
-    }
+    if(keys.length===0){tbody.innerHTML='';empty.style.display='block';return;}
     empty.style.display='none';
     tbody.innerHTML=keys.map(function(k){
       var tagCls=k.status==='active'?'tag-active':k.status==='revoked'?'tag-revoked':'tag-expired';
       var revokeBtn=k.status==='active'?'<button class="btn btn-danger" onclick="revokeKey(\''+k.id+'\')">Revoke</button>':'';
-      return '<tr>'
-        +'<td><strong>'+k.name+'</strong></td>'
-        +'<td><span class="tag '+tagCls+'">'+k.status+'</span></td>'
-        +'<td>'+fmtDate(k.creationDate)+'</td>'
-        +'<td>'+fmtDate(k.expirationDate)+'</td>'
-        +'<td>'+fmtDate(k.lastUsedAt)+'</td>'
-        +'<td>'+revokeBtn+'</td>'
-        +'</tr>';
+      return '<tr><td><strong>'+k.name+'</strong></td><td><span class="tag '+tagCls+'">'+k.status+'</span></td>'
+        +'<td>'+fmtDate(k.creationDate)+'</td><td>'+fmtDate(k.expirationDate)+'</td><td>'+fmtDate(k.lastUsedAt)+'</td><td>'+revokeBtn+'</td></tr>';
     }).join('');
-  }catch(e){
-    toast('Failed to load keys: '+e.message,'err');
-  }
+  }catch(e){toast('Failed to load keys: '+e.message,'err')}
 }
 
 function openGenModal(){
@@ -267,61 +386,38 @@ async function generateKey(){
   var btn=document.getElementById('genBtn');
   btn.disabled=true;btn.textContent='Generating...';
   try{
-    var resp=await fetch('/api/v1/me/keys',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:name})
-    });
+    var resp=await fetch('/me/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})});
     if(!resp.ok){var t=await resp.text();throw new Error(t);}
     var data=await resp.json();
     document.getElementById('modalStep1').style.display='none';
     document.getElementById('modalStep2').style.display='block';
     document.getElementById('modalTitle').textContent='Key Created: '+name;
     document.getElementById('keyValue').childNodes[0].textContent=data.key;
-
-    document.getElementById('tabClaude').textContent=
-      '# Add to your shell profile (~/.zshrc or ~/.bashrc)\n'
-      +'export ANTHROPIC_BASE_URL='+gatewayUrl+'\n'
-      +'export ANTHROPIC_API_KEY='+data.key+'\n\n'
-      +'# Then restart your terminal and run:\n'
-      +'claude';
-
-    document.getElementById('tabCodex').textContent=
-      '# Add to your shell profile (~/.zshrc or ~/.bashrc)\n'
-      +'export OPENAI_BASE_URL='+gatewayUrl+'/v1\n'
-      +'export OPENAI_API_KEY='+data.key+'\n\n'
-      +'# Then restart your terminal and run:\n'
-      +'codex';
-
+    document.getElementById('tabClaude').textContent='# Add to your shell profile (~/.zshrc or ~/.bashrc)\nexport ANTHROPIC_BASE_URL='+gatewayUrl+'\nexport ANTHROPIC_API_KEY='+data.key+'\n\n# Then restart your terminal and run:\nclaude';
+    document.getElementById('tabCodex').textContent='# Add to your shell profile (~/.zshrc or ~/.bashrc)\nexport OPENAI_BASE_URL='+gatewayUrl+'/v1\nexport OPENAI_API_KEY='+data.key+'\n\n# Then restart your terminal and run:\ncodex';
     toast('Key generated','ok');
-  }catch(e){
-    toast('Error: '+e.message,'err');
-  }finally{
-    btn.disabled=false;btn.textContent='Generate';
-  }
+  }catch(e){toast('Error: '+e.message,'err')}
+  finally{btn.disabled=false;btn.textContent='Generate';}
 }
 
 function copyKey(){
   var key=document.getElementById('keyValue').childNodes[0].textContent;
   navigator.clipboard.writeText(key).then(function(){toast('Copied to clipboard','ok')});
 }
-
 function showTab(tab,btn){
   document.getElementById('tabClaude').style.display=tab==='claude'?'block':'none';
   document.getElementById('tabCodex').style.display=tab==='codex'?'block':'none';
   btn.parentElement.querySelectorAll('button').forEach(function(b){b.classList.remove('active')});
   btn.classList.add('active');
 }
-
 async function revokeKey(id){
   if(!confirm('Revoke this API key? This cannot be undone.'))return;
   try{
-    var resp=await fetch('/api/v1/me/keys/'+id,{method:'DELETE'});
+    var resp=await fetch('/me/keys/'+id,{method:'DELETE'});
     if(!resp.ok)throw new Error(await resp.text());
-    toast('Key revoked','ok');
-    loadKeys();
+    toast('Key revoked','ok');loadKeys();
   }catch(e){toast('Error: '+e.message,'err')}
 }
-
 function toast(m,t){var e=document.getElementById('toast');e.textContent=m;e.className='toast '+t+' show';setTimeout(function(){e.className='toast'},3000)}
 init();
 </script>
