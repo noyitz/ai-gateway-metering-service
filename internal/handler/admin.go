@@ -18,6 +18,21 @@ func NewAdminHandler(k8sClient *k8s.Client) *AdminHandler {
 	return &AdminHandler{k8sClient: k8sClient}
 }
 
+func isAdmin(r *http.Request) bool {
+	user := r.Header.Get("X-Forwarded-User")
+	return user == "" || user == "admin" || user == "kube:admin"
+}
+
+func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !isAdmin(r) {
+			http.Redirect(w, r, "/me", http.StatusFound)
+			return
+		}
+		next(w, r)
+	}
+}
+
 func (h *AdminHandler) ServeAdmin(w http.ResponseWriter, r *http.Request) {
 	data, err := fs.ReadFile(dashboard.FS, "admin.html")
 	if err != nil {
