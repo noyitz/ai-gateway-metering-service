@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
@@ -57,13 +56,20 @@ func main() {
 	mux.HandleFunc("/api/v1/events", eventsHandler.HandleEvent)
 	mux.HandleFunc("/api/v1/customers/", entitlementsHandler.HandleEntitlement)
 	mux.HandleFunc("/api/v1/team-usage", teamUsageHandler.HandleTeamUsage)
+	keysHandler := handler.NewKeysHandler()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
-			http.Redirect(w, r, "/dashboard", http.StatusFound)
+			user := r.Header.Get("X-Forwarded-User")
+			if user == "" || user == "admin" || user == "kube:admin" {
+				http.Redirect(w, r, "/dashboard", http.StatusFound)
+			} else {
+				http.Redirect(w, r, "/me", http.StatusFound)
+			}
 			return
 		}
 		http.NotFound(w, r)
 	})
+	mux.HandleFunc("/me", adminHandler.ServeMyAccount)
 	mux.HandleFunc("/dashboard", dashboardHandler.ServeDashboard)
 	mux.HandleFunc("/api/v1/dashboard/overview", dashboardHandler.HandleOverview)
 	mux.HandleFunc("/api/v1/dashboard/groups", dashboardHandler.HandleGroups)
@@ -80,11 +86,9 @@ func main() {
 	mux.HandleFunc("/api/v1/admin/models/", adminHandler.HandleUpdateWeights)
 	mux.HandleFunc("/api/v1/admin/config", adminHandler.HandleConfig)
 	mux.HandleFunc("/api/v1/admin/models/provider/", adminHandler.HandleUpdateProvider)
-	mux.HandleFunc("/api/v1/whoami", func(w http.ResponseWriter, r *http.Request) {
-		user := r.Header.Get("X-Forwarded-User")
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"user": user})
-	})
+	mux.HandleFunc("/api/v1/me/keys", keysHandler.HandleKeys)
+	mux.HandleFunc("/api/v1/me/keys/", keysHandler.HandleKeys)
+	mux.HandleFunc("/api/v1/whoami", keysHandler.HandleWhoAmI)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
