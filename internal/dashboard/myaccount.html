@@ -258,7 +258,7 @@ async function init(){
     document.getElementById('groupInfo').textContent=myGroup?'Group: '+myGroup:'';
     var host=window.location.hostname;
     var clusterDomain=host.split('.apps.')[1]||host;
-    gatewayUrl='https://maas.apps.'+clusterDomain;
+    gatewayUrl='https://headroom-service-openshift-ingress.apps.'+clusterDomain;
   }catch(e){}
   refresh();
   loadKeys();
