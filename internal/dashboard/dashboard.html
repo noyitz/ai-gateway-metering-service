@@ -79,10 +79,16 @@ tr.clickable{cursor:pointer}
 </head>
 <body>
 
-<div style="display:flex;gap:4px;margin-bottom:16px">
-  <a href="/dashboard" style="background:var(--blue);color:#fff;border:1px solid var(--blue);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
-  <a href="/routing" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
-  <a href="/compression" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+  <div style="display:flex;gap:4px">
+    <a href="/dashboard" style="background:var(--blue);color:#fff;border:1px solid var(--blue);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
+    <a href="/routing" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
+    <a href="/compression" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span id="userInfo" style="font-size:11px;color:var(--text2)"></span>
+    <a href="/oauth/sign_out" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600;letter-spacing:.3px">Logout</a>
+  </div>
 </div>
 
 <header>
@@ -660,6 +666,15 @@ document.getElementById('tl-toggle').addEventListener('click',e=>{
 syncDateInputs();
 refresh();
 setInterval(refresh,30000);
+
+fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
+  if(d.user){
+    document.getElementById('userInfo').textContent=d.user;
+    if(d.user!=='admin'&&d.user!=='kube:admin'&&!userFilter){
+      selectUserFilter(d.user);
+    }
+  }
+}).catch(function(){});
 </script>
 </body>
 </html>
