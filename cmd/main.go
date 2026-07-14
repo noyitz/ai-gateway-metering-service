@@ -88,7 +88,6 @@ func main() {
 	mux.HandleFunc("/api/v1/admin/models/provider/", adminHandler.HandleUpdateProvider)
 	mux.HandleFunc("/me/keys", keysHandler.HandleKeys)
 	mux.HandleFunc("/me/keys/", keysHandler.HandleKeys)
-	mux.HandleFunc("/me/models", keysHandler.HandleModels)
 	mux.HandleFunc("/me/whoami", keysHandler.HandleWhoAmI)
 	mux.HandleFunc("/api/v1/whoami", keysHandler.HandleWhoAmI)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
