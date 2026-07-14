@@ -295,3 +295,22 @@ func (c *Client) secretExists(ctx context.Context, name string) bool {
 	_, err := c.client.Resource(coreGVR).Namespace(c.namespace).Get(ctx, name, metav1.GetOptions{})
 	return err == nil
 }
+
+func (c *Client) GetUserGroups(username string) ([]string, error) {
+	groupGVR := schema.GroupVersionResource{Group: "user.openshift.io", Version: "v1", Resource: "groups"}
+	list, err := c.client.Resource(groupGVR).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	var result []string
+	for _, item := range list.Items {
+		users, _, _ := unstructured.NestedStringSlice(item.Object, "users")
+		for _, u := range users {
+			if u == username {
+				result = append(result, item.GetName())
+				break
+			}
+		}
+	}
+	return result, nil
+}

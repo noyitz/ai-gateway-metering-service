@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/noyitz/ai-gateway-metering-service/internal/k8s"
 )
 
 const maasAPIURL = "https://maas-api.opendatahub.svc.cluster.local:8443"
@@ -19,13 +21,23 @@ var maasHTTPClient = &http.Client{
 	},
 }
 
-type KeysHandler struct{}
+type KeysHandler struct {
+	k8sClient *k8s.Client
+}
 
-func NewKeysHandler() *KeysHandler { return &KeysHandler{} }
+func NewKeysHandler(k8sClient *k8s.Client) *KeysHandler {
+	return &KeysHandler{k8sClient: k8sClient}
+}
 
-func maasHeaders(r *http.Request) map[string]string {
+func (h *KeysHandler) maasHeaders(r *http.Request) map[string]string {
 	user := r.Header.Get("X-Forwarded-User")
 	groups := r.Header.Get("X-Forwarded-Groups")
+	if groups == "" && h.k8sClient != nil && user != "" {
+		userGroups, _ := h.k8sClient.GetUserGroups(user)
+		if len(userGroups) > 0 {
+			groups = `["` + strings.Join(userGroups, `","`) + `"]`
+		}
+	}
 	if groups == "" {
 		groups = `["ai-eng"]`
 	}
@@ -51,7 +63,7 @@ func proxyToMaaS(method, path string, headers map[string]string, body io.Reader)
 func (h *KeysHandler) HandleKeys(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/me/keys")
 	path = strings.TrimSuffix(path, "/")
-	hdrs := maasHeaders(r)
+	hdrs := h.maasHeaders(r)
 
 	switch {
 	case r.Method == http.MethodGet && path == "":

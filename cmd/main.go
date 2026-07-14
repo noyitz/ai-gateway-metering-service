@@ -56,7 +56,7 @@ func main() {
 	mux.HandleFunc("/api/v1/events", eventsHandler.HandleEvent)
 	mux.HandleFunc("/api/v1/customers/", entitlementsHandler.HandleEntitlement)
 	mux.HandleFunc("/api/v1/team-usage", teamUsageHandler.HandleTeamUsage)
-	keysHandler := handler.NewKeysHandler()
+	keysHandler := handler.NewKeysHandler(k8sClient)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			user := r.Header.Get("X-Forwarded-User")
