@@ -194,10 +194,10 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
           <pre class="setup-code" id="claudeEnv"></pre>
         </div>
         <div class="setup-block" style="margin-top:10px">
-          <div class="setup-label">Then run
-            <button class="setup-copy" onclick="copyText('source ~/.zshrc && claude')">Copy</button>
+          <div class="setup-label">Or paste everything at once
+            <button class="setup-copy" id="claudeAllCopy" onclick="copyText(document.getElementById('claudeAll').textContent)">Copy</button>
           </div>
-          <pre class="setup-code">source ~/.zshrc && claude</pre>
+          <pre class="setup-code" id="claudeAll"></pre>
         </div>
       </div>
       <div id="tabCodex" style="display:none">
@@ -214,10 +214,10 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
           <pre class="setup-code" id="codexConfig"></pre>
         </div>
         <div class="setup-block" style="margin-top:10px">
-          <div class="setup-label">Then run
-            <button class="setup-copy" onclick="copyText('source ~/.zshrc && codex')">Copy</button>
+          <div class="setup-label">Or paste everything at once
+            <button class="setup-copy" id="codexAllCopy" onclick="copyText(document.getElementById('codexAll').textContent)">Copy</button>
           </div>
-          <pre class="setup-code">source ~/.zshrc && codex</pre>
+          <pre class="setup-code" id="codexAll"></pre>
         </div>
       </div>
       <div style="margin-top:16px;text-align:right">
@@ -437,9 +437,15 @@ async function generateKey(){
     document.getElementById('modalStep2').style.display='block';
     document.getElementById('modalTitle').textContent='Key Created: '+name;
     document.getElementById('keyValue').childNodes[0].textContent=data.key;
-    document.getElementById('claudeEnv').textContent='export ANTHROPIC_BASE_URL='+gatewayUrl+'\nexport ANTHROPIC_API_KEY='+data.key;
-    document.getElementById('codexEnv').textContent='export OPENAI_BASE_URL='+gatewayUrl+'/v1\nexport OPENAI_API_KEY='+data.key;
-    document.getElementById('codexConfig').textContent='mkdir -p ~/.codex && cat > ~/.codex/config.json << \'EOF\'\n{\n  "model": "gpt-4.1-mini",\n  "provider": "openai",\n  "providers": {\n    "openai": {\n      "name": "MaaS Gateway"\n    }\n  }\n}\nEOF';
+    document.getElementById('keyValue').textContent=data.key;
+    var claudeEnv='export ANTHROPIC_BASE_URL='+gatewayUrl+'/llm/ext-claude-sonnet\nexport ANTHROPIC_API_KEY='+data.key+'\nexport NODE_TLS_REJECT_UNAUTHORIZED=0\nunset CLAUDE_CODE_USE_VERTEX\nunset ANTHROPIC_VERTEX_PROJECT_ID';
+    document.getElementById('claudeEnv').textContent=claudeEnv;
+    var codexEnv='export OPENAI_BASE_URL='+gatewayUrl+'/v1\nexport OPENAI_API_KEY='+data.key+'\nexport NODE_TLS_REJECT_UNAUTHORIZED=0';
+    document.getElementById('codexEnv').textContent=codexEnv;
+    var codexConfigCmd='mkdir -p ~/.codex && cat > ~/.codex/config.json << \'EOF\'\n{\n  "model": "gpt-4.1-mini",\n  "provider": "openai",\n  "providers": {\n    "openai": {\n      "name": "MaaS Gateway"\n    }\n  }\n}\nEOF';
+    document.getElementById('codexConfig').textContent=codexConfigCmd;
+    document.getElementById('claudeAll').textContent=claudeEnv+'\nclaude';
+    document.getElementById('codexAll').textContent=codexEnv+'\n'+codexConfigCmd+'\ncodex';
     toast('Key generated','ok');
   }catch(e){toast('Error: '+e.message,'err')}
   finally{btn.disabled=false;btn.textContent='Generate';}
