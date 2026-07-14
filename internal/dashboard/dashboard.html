@@ -269,7 +269,8 @@ function timeAgo(ts){
 
 function friendlyClient(ua){
   if(!ua) return '';
-  if(ua.startsWith('claude-cli')) return 'Claude Code';
+  if(ua.startsWith('claude-cli')||ua.startsWith('claude-code')) return 'Claude Code';
+  if(ua.startsWith('codex-tui')||ua.startsWith('codex/')) return 'OpenAI Codex';
   if(ua==='undici') return 'OpenCLEW';
   if(ua.startsWith('curl/')) return 'curl';
   if(ua.startsWith('python-requests')) return 'Python SDK';
