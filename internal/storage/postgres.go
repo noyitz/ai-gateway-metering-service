@@ -514,9 +514,15 @@ var migrations = []string{
 
 // SeedPricing upserts model pricing from an external source (e.g., LiteLLM).
 func (s *Store) SeedPricing(ctx context.Context, prices []ModelPrice) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	updated := 0
 	for _, p := range prices {
-		result, err := s.db.ExecContext(ctx, `
+		_, err := tx.ExecContext(ctx, `
 			INSERT INTO model_pricing (model, provider, input_cost_per_mtok, output_cost_per_mtok, cache_write_cost_per_mtok, cache_read_cost_per_mtok)
 			VALUES ($1, $2, $3, $4, $5, $6)
 			ON CONFLICT (model) DO UPDATE SET
@@ -527,11 +533,13 @@ func (s *Store) SeedPricing(ctx context.Context, prices []ModelPrice) (int, erro
 				cache_read_cost_per_mtok = EXCLUDED.cache_read_cost_per_mtok`,
 			p.Model, p.Provider, p.InputCost, p.OutputCost, p.CacheWriteCost, p.CacheReadCost)
 		if err != nil {
-			return updated, fmt.Errorf("upsert %s: %w", p.Model, err)
+			return 0, fmt.Errorf("upsert %s: %w", p.Model, err)
 		}
-		if rows, _ := result.RowsAffected(); rows > 0 {
-			updated++
-		}
+		updated++
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit transaction: %w", err)
 	}
 	return updated, nil
 }

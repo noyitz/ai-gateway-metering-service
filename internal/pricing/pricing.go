@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"strings"
@@ -62,14 +62,14 @@ func LoadPrices(ctx context.Context) ([]ModelPrice, string) {
 		if parseErr == nil && len(prices) > 0 {
 			return prices, "fetched"
 		}
-		log.Printf("pricing: fetched file parsed %d models (parse error: %v), falling back to bundled", len(prices), parseErr)
+		slog.Warn("pricing: fetched file parse issue, falling back to bundled", "models", len(prices), "error", parseErr)
 	} else {
-		log.Printf("pricing: fetch failed (%v), using bundled pricing", err)
+		slog.Warn("pricing: fetch failed, using bundled pricing", "error", err)
 	}
 
 	prices, err := parseBundled(bundledPricing)
 	if err != nil {
-		log.Printf("pricing: bundled parse failed: %v", err)
+		slog.Warn("pricing: bundled parse failed", "error", err)
 		return nil, "error"
 	}
 	return prices, "bundled"
@@ -95,7 +95,8 @@ func FetchLatest(ctx context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	const maxResponseBytes = 10 << 20 // 10 MB
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
@@ -163,7 +164,7 @@ func parseLiteLLMRaw(data []byte) ([]ModelPrice, error) {
 		return nil, fmt.Errorf("unmarshal raw: %w", err)
 	}
 
-	var prices []ModelPrice
+	seen := make(map[string]ModelPrice)
 	for key, rawEntry := range raw {
 		if key == "sample_spec" {
 			continue
@@ -178,9 +179,21 @@ func parseLiteLLMRaw(data []byte) ([]ModelPrice, error) {
 		}
 
 		p := entryToModelPrice(key, entry)
-		if p.Model != "" {
-			prices = append(prices, p)
+		if p.Model == "" {
+			continue
 		}
+
+		if _, ok := seen[p.Model]; ok {
+			if strings.Contains(key, "/") {
+				continue
+			}
+		}
+		seen[p.Model] = p
+	}
+
+	prices := make([]ModelPrice, 0, len(seen))
+	for _, p := range seen {
+		prices = append(prices, p)
 	}
 	return prices, nil
 }
