@@ -118,6 +118,40 @@ func TestParseLiteLLMRaw(t *testing.T) {
 	}
 }
 
+func TestParseLiteLLMRaw_DedupPrefersCanonical(t *testing.T) {
+	raw := map[string]liteLLMEntry{
+		"claude-opus-4-8": {
+			InputCostPerToken:  0.000005,
+			OutputCostPerToken: 0.000025,
+			Provider:           "anthropic",
+		},
+		"vertex_ai/claude-opus-4-8": {
+			InputCostPerToken:  0.000005,
+			OutputCostPerToken: 0.000025,
+			Provider:           "vertex_ai",
+		},
+	}
+	data, _ := json.Marshal(raw)
+
+	prices, err := parseLiteLLMRaw(data)
+	if err != nil {
+		t.Fatalf("parseLiteLLMRaw: %v", err)
+	}
+
+	count := 0
+	for _, p := range prices {
+		if p.Model == "claude-opus-4-8" {
+			count++
+			if p.Provider != "anthropic" {
+				t.Errorf("duplicate model should keep canonical provider, got %q", p.Provider)
+			}
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected 1 entry for claude-opus-4-8, got %d", count)
+	}
+}
+
 func TestEntryToModelPrice_ZeroCost(t *testing.T) {
 	p := entryToModelPrice("test-model", liteLLMEntry{})
 	if p.Model != "" {
