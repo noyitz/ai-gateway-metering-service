@@ -40,7 +40,7 @@ func (h *PricingRefreshHandler) HandleRefresh(w http.ResponseWriter, r *http.Req
 	currentDB, err := h.store.GetCurrentPricing(ctx)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(refreshResponse{Error: "failed to read current pricing: " + err.Error()})
+		json.NewEncoder(w).Encode(refreshResponse{Error: "failed to read current pricing"})
 		return
 	}
 
@@ -76,7 +76,7 @@ func (h *PricingRefreshHandler) HandleRefresh(w http.ResponseWriter, r *http.Req
 	updated, seedErr := h.store.SeedPricing(ctx, storePrices)
 	if seedErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(refreshResponse{Error: "seed failed: " + seedErr.Error()})
+		json.NewEncoder(w).Encode(refreshResponse{Error: "seed failed"})
 		return
 	}
 
