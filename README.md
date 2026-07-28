@@ -1,6 +1,6 @@
 # AI Gateway Metering Service
 
-A development metering backend for the [AI Inference Gateway](https://github.com/opendatahub-io/ai-gateway-payload-processing) — provides CloudEvents-compatible token usage ingestion, per-user balance checks, and usage aggregation for testing the `external-metering` IPP plugin.
+A development metering backend for AI inference gateways — provides CloudEvents-compatible token usage ingestion, per-user balance checks, and usage aggregation for testing an `external-metering` gateway filter.
 
 **Use this to test metering without deploying OpenMeter or a production billing system.**
 
@@ -42,7 +42,7 @@ The service accepts [CloudEvents v1.0](https://cloudevents.io) with this data sc
 {
   "specversion": "1.0",
   "id": "evt-<uuid>",
-  "source": "maas-gateway",
+  "source": "ai-gateway",
   "type": "inference.tokens.used",
   "subject": "alice",
   "time": "2026-06-10T12:00:00Z",
@@ -78,12 +78,12 @@ This format is compatible with [OpenMeter](https://openmeter.io) and can be adap
 
 ## Simulating Metering Providers
 
-This service acts as a **drop-in simulator** for metering backends. The `external-metering` IPP plugin sends CloudEvents to whatever URL is configured — point it at this service for development, OpenMeter for staging, or Monetize360 for production.
+This service acts as a **drop-in simulator** for metering backends. The gateway's `external-metering` filter sends CloudEvents to whatever URL is configured — point it at this service for development, OpenMeter for staging, or a commercial billing system for production.
 
 ```
 Development:  meteringURL → ai-gateway-metering-service (this repo)
 Staging:      meteringURL → OpenMeter
-Production:   meteringURL → Monetize360 / custom billing
+Production:   meteringURL → commercial or custom billing system
 ```
 
 The CloudEvents v1.0 format is the integration contract — any backend that accepts this schema works.
@@ -122,10 +122,9 @@ PostgreSQL 14+. Schema is auto-migrated on startup:
 
 ## Related
 
-- [AI Inference Gateway](https://github.com/opendatahub-io/ai-gateway-payload-processing) — the gateway and plugin framework
-- [external-metering plugin](https://github.com/opendatahub-io/ai-gateway-payload-processing/tree/main/pkg/plugins/external-metering) — the IPP plugin that sends events to this service
+- [Praxis](https://github.com/praxis-proxy/praxis) — the proxy this service was built against
+- [Praxis AI](https://github.com/praxis-proxy/ai) — AI filters, including the `external_metering` filter that sends events to this service
 - [OpenMeter](https://openmeter.io) — production-grade usage metering
-- [RHAISTRAT-1919](https://redhat.atlassian.net/browse/RHAISTRAT-1919) — tracking Jira
 
 ## License
 
