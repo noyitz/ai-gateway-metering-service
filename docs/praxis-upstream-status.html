@@ -87,6 +87,8 @@
   svg .small { font-size: 10.5px; fill: var(--muted); }
   svg .cap { font-size: 10px; letter-spacing: 0.08em; fill: var(--muted); }
   svg .box { fill: var(--panel); stroke: currentColor; stroke-width: 1.2; rx: 8; }
+  svg a.prlink text { text-decoration: underline; cursor: pointer; }
+  a.prlink { color: inherit; }
   svg .b-ours { stroke: var(--ours); stroke-width: 1.6; }
   svg .b-yossi { stroke: var(--yossi); stroke-width: 1.6; }
   svg .b-shane { stroke: var(--shane); stroke-width: 1.6; stroke-dasharray: 6 4; }
@@ -129,12 +131,12 @@
   per-request, dropped when the response completes.</p>
 
   <div class="legend">
-    <span><i class="swatch" style="--sw: var(--ours)"></i> Noy — PR #581 / #582 in review</span>
-    <span><i class="swatch" style="--sw: var(--yossi)"></i> Yossi — PR #709 in review</span>
+    <span><i class="swatch" style="--sw: var(--ours)"></i> Noy — <a href="https://github.com/praxis-proxy/ai/pull/581">PR #581</a> / <a href="https://github.com/praxis-proxy/ai/pull/582">#582</a> in review</span>
+    <span><i class="swatch" style="--sw: var(--yossi)"></i> Yossi — <a href="https://github.com/praxis-proxy/ai/pull/709">PR #709</a> in review</span>
     <span><i class="swatch" style="--sw: var(--gap)"></i> on the dogfood branch only — <strong>needs a PR</strong></span>
     <span><i class="swatch"></i> upstream, already in-tree</span>
     <span><i class="swatch" style="--sw: var(--ext)"></i> external services — not part of Praxis</span>
-    <span><i class="swatch dashed" style="--sw: var(--shane)"></i> Shane — proposal #658, added to the dogfood later</span>
+    <span><i class="swatch dashed" style="--sw: var(--shane)"></i> Shane — <a href="https://github.com/praxis-proxy/ai/pull/658">proposal #658</a>, added to the dogfood later</span>
   </div>
 
   <figure id="dogfood">
@@ -185,7 +187,7 @@
 
       <rect x="530" y="112" width="170" height="84" class="box b-yossi"/>
       <text x="615" y="136" text-anchor="middle" class="mono-t" style="font-size:11px">identity_header_guard</text>
-      <text x="615" y="153" text-anchor="middle" class="small t-yossi">PR #709 &#183; Yossi</text>
+      <a href="https://github.com/praxis-proxy/ai/pull/709" target="_blank" rel="noopener" class="prlink"><text x="615" y="153" text-anchor="middle" class="small t-yossi">PR #709 &#183; Yossi</text></a>
       <text x="615" y="170" text-anchor="middle" class="small">&#9314; capture + strip x-tenant-*</text>
       <text x="615" y="186" text-anchor="middle" class="small">headers &#8594; identity.*</text>
 
@@ -233,7 +235,7 @@
       <!-- ===== EXTERNAL_METERING: one filter, both lanes ===== -->
       <rect x="720" y="112" width="170" height="420" class="box b-ours"/>
       <text x="805" y="136" text-anchor="middle" class="mono-t" style="font-size:11.5px">external_metering</text>
-      <text x="805" y="153" text-anchor="middle" class="small t-ours">PR #581 &#183; Noy</text>
+      <a href="https://github.com/praxis-proxy/ai/pull/581" target="_blank" rel="noopener" class="prlink"><text x="805" y="153" text-anchor="middle" class="small t-ours">PR #581 &#183; Noy</text></a>
       <text x="805" y="212" text-anchor="middle" class="cap">ON THE REQUEST</text>
       <text x="805" y="232" text-anchor="middle" class="small">&#9315; reads verified + identity.*</text>
       <text x="805" y="248" text-anchor="middle" class="small">GET balance &#8594; admit / 429</text>
@@ -246,7 +248,7 @@
       <text x="995" y="480" text-anchor="middle" class="mono-t" style="font-size:11.5px">token_count</text>
       <text x="995" y="497" text-anchor="middle" class="small">&#9317; parses usage from the</text>
       <text x="995" y="511" text-anchor="middle" class="small">response body</text>
-      <text x="995" y="528" text-anchor="middle" class="small t-ours">cache fields = PR #582 &#183; Noy</text>
+      <a href="https://github.com/praxis-proxy/ai/pull/582" target="_blank" rel="noopener" class="prlink"><text x="995" y="528" text-anchor="middle" class="small t-ours">cache fields = PR #582 &#183; Noy</text></a>
 
       <polyline points="1377,176 1377,496 1084,496" class="flow" marker-end="url(#d-arr)"/>
       <text x="1360" y="488" text-anchor="end" class="small">&#9316; response</text>
@@ -301,7 +303,7 @@
       <text x="1120" y="620" class="small t-shane">inserts into the chain later</text>
       <rect x="1100" y="640" width="200" height="64" class="box b-shane"/>
       <text x="1200" y="662" text-anchor="middle" class="mono-t" style="font-size:11.5px">token_rate_limit</text>
-      <text x="1200" y="679" text-anchor="middle" class="small t-shane">proposal #658 &#183; future dogfood</text>
+      <a href="https://github.com/praxis-proxy/ai/pull/658" target="_blank" rel="noopener" class="prlink"><text x="1200" y="679" text-anchor="middle" class="small t-shane">proposal #658 &#183; future dogfood</text></a>
       <text x="1200" y="695" text-anchor="middle" class="small">reserve &#9654; &#183; reconcile &#9664;</text>
     </svg>
     </div>
@@ -328,19 +330,19 @@
   <table>
     <tr><th>Piece</th><th>Lives today</th><th>Upstream status</th><th>Next action</th></tr>
     <tr>
-      <td><code>external_metering</code> <span class="tag tag-ours">#581 &#183; Noy</span></td>
+      <td><code>external_metering</code> <a href="https://github.com/praxis-proxy/ai/pull/581" target="_blank" rel="noopener" class="prlink"><span class="tag tag-ours">#581 &#183; Noy</span></a></td>
       <td>Dogfood branch (old vendored HTTP client) + PR</td>
       <td>PR open, all checks green, SubRequestClient port done</td>
       <td>Maintainer review + CI approval; dogfood rebases onto the merged version</td>
     </tr>
     <tr>
-      <td>cache absent-vs-zero fix <span class="tag tag-ours">#582 &#183; Noy</span></td>
+      <td>cache absent-vs-zero fix <a href="https://github.com/praxis-proxy/ai/pull/582" target="_blank" rel="noopener" class="prlink"><span class="tag tag-ours">#582 &#183; Noy</span></a></td>
       <td>Only in the PR — the dogfood branch still has the bug</td>
       <td>PR open, all checks green, bot findings answered</td>
       <td>Merge; dogfood picks it up on rebase</td>
     </tr>
     <tr>
-      <td><code>identity_header_guard</code> <span class="tag tag-yossi">#709 &#183; Yossi</span></td>
+      <td><code>identity_header_guard</code> <a href="https://github.com/praxis-proxy/ai/pull/709" target="_blank" rel="noopener" class="prlink"><span class="tag tag-yossi">#709 &#183; Yossi</span></a></td>
       <td>Dogfood branch + PR</td>
       <td>PR open but <strong>conflicting</strong> with main</td>
       <td>Yossi rebases</td>
@@ -374,7 +376,7 @@
       other's credential type</td>
     </tr>
     <tr>
-      <td><code>token_rate_limit</code> <span class="tag tag-shane">#658 &#183; Shane</span></td>
+      <td><code>token_rate_limit</code> <a href="https://github.com/praxis-proxy/ai/pull/658" target="_blank" rel="noopener" class="prlink"><span class="tag tag-shane">#658 &#183; Shane</span></a></td>
       <td>Nowhere yet — design proposal</td>
       <td>Proposal PR open (Shane + jland)</td>
       <td>Design review; will be added to the dogfood chain once built</td>
