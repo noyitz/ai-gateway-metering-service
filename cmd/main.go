@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -27,7 +28,20 @@ func main() {
 		port = "8080"
 	}
 
-	store, err := storage.New(databaseURL)
+	// TOKEN_QUOTA is the optional per-user monthly token budget. When unset
+	// or 0, the entitlement endpoint reports usage but never gates access —
+	// quota enforcement belongs in the gateway (praxis-proxy/ai#121).
+	var tokenQuota int64
+	if v := os.Getenv("TOKEN_QUOTA"); v != "" {
+		parsed, parseErr := strconv.ParseInt(v, 10, 64)
+		if parseErr != nil {
+			slog.Error("TOKEN_QUOTA must be an integer", "value", v, "error", parseErr)
+			os.Exit(1)
+		}
+		tokenQuota = parsed
+	}
+
+	store, err := storage.New(databaseURL, tokenQuota)
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)
