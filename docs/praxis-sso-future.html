@@ -306,6 +306,11 @@
     <em>locally</em> against cached JWKS — maas-api is off the request path for SSO traffic but stays as the key
     lifecycle and entitlement system. Both doors write the same verified <code>x-tenant-*</code> metadata, so
     <code>model_access</code>, <code>external_metering</code>, and everything downstream are untouched by the change.
-    Running both doors on one listener needs the small credential-dispatch tweak from the gap map.</figcaption>
+    Running both doors on one listener needs the small credential-dispatch tweak from the gap map.
+    <br><br><strong>Why agents stay on keys (decided):</strong> agents could in principle become OIDC service
+    accounts, but the agent tools (Claude Code, Codex, OpenAI-compatible SDKs) expect one static credential and
+    cannot refresh short-lived tokens, and a long-lived JWT would be a worse API key — <code>jwt_auth</code>
+    validates locally against cached JWKS, so it cannot see revocation, while maas-api keys are individually and
+    instantly revocable. maas-api therefore stays as the long-term key and entitlement system.</figcaption>
   </figure>
 </main>
