@@ -1,0 +1,391 @@
+<title>Praxis Upstreaming Status</title>
+<style>
+  :root {
+    --bg: #f4f7f5;
+    --panel: #ffffff;
+    --ink: #1f2823;
+    --muted: #5c6c64;
+    --line: #d3ddd6;
+    --band: #e9efeb;
+    --ours: #0d7f72;
+    --yossi: #6353c4;
+    --shane: #9a6a10;
+    --gap: #b34a28;
+    --ext: #1f6fb2;
+    --chip-ours: #e0f0ed;
+    --chip-yossi: #e9e5f9;
+    --chip-shane: #f3ead4;
+    --chip-gap: #f7e2d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141a17;
+      --panel: #1b231f;
+      --ink: #e3eae5;
+      --muted: #93a49a;
+      --line: #33403a;
+      --band: #212b26;
+      --ours: #3fc2ad;
+      --yossi: #a89af5;
+      --shane: #d9a63f;
+      --gap: #e8825c;
+      --ext: #64a8e0;
+      --chip-ours: #16362f;
+      --chip-yossi: #292347;
+      --chip-shane: #3a2e12;
+      --chip-gap: #3c2118;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141a17;
+    --panel: #1b231f;
+    --ink: #e3eae5;
+    --muted: #93a49a;
+    --line: #33403a;
+    --band: #212b26;
+    --ours: #3fc2ad;
+    --yossi: #a89af5;
+    --shane: #d9a63f;
+    --gap: #e8825c;
+    --ext: #64a8e0;
+    --chip-ours: #16362f;
+    --chip-yossi: #292347;
+    --chip-shane: #3a2e12;
+    --chip-gap: #3c2118;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    line-height: 1.55;
+    margin: 0;
+    padding: 36px 24px 72px;
+  }
+  main { max-width: 1360px; margin: 0 auto; }
+  code, .mono {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+    font-size: 0.92em;
+  }
+  h1 { font-size: 1.65rem; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 6px; text-wrap: balance; }
+  h2 { font-size: 1.1rem; font-weight: 600; margin: 40px 0 12px; }
+  .lede { color: var(--muted); margin: 0 0 22px; max-width: 80ch; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 0 0 18px; font-size: 0.84rem; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .swatch { width: 22px; height: 12px; border-radius: 3px; border: 2px solid var(--sw, var(--muted)); background: transparent; flex: none; }
+  .swatch.dashed { border-style: dashed; }
+
+  figure { margin: 0 0 8px; }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 14px 8px 8px; }
+  .scroll svg { display: block; height: auto; margin: 0 auto; width: 100%; max-width: 1440px; }
+  figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 10px; max-width: 80ch; }
+
+  svg text { font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; font-size: 12px; fill: currentColor; }
+  svg .mono-t { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+  svg .small { font-size: 10.5px; fill: var(--muted); }
+  svg .cap { font-size: 10px; letter-spacing: 0.08em; fill: var(--muted); }
+  svg .box { fill: var(--panel); stroke: currentColor; stroke-width: 1.2; rx: 8; }
+  svg .b-ours { stroke: var(--ours); stroke-width: 1.6; }
+  svg .b-yossi { stroke: var(--yossi); stroke-width: 1.6; }
+  svg .b-shane { stroke: var(--shane); stroke-width: 1.6; stroke-dasharray: 6 4; }
+  svg .b-gap { stroke: var(--gap); stroke-width: 1.6; }
+  svg .b-neutral { stroke: var(--muted); }
+  svg .b-ext { stroke: var(--ext); stroke-width: 1.6; }
+  svg .t-ours { fill: var(--ours); }
+  svg .t-yossi { fill: var(--yossi); }
+  svg .t-shane { fill: var(--shane); }
+  svg .t-gap { fill: var(--gap); }
+  svg .t-ext { fill: var(--ext); }
+  svg .flow { stroke: currentColor; stroke-width: 1.3; fill: none; }
+  svg .flow-ours { stroke: var(--ours); }
+  svg .flow-yossi { stroke: var(--yossi); }
+  svg .flow-shane { stroke: var(--shane); stroke-dasharray: 5 4; }
+  svg .flow-gap { stroke: var(--gap); }
+  svg .busband { fill: var(--band); stroke: var(--line); }
+  svg .chip { fill: var(--panel); stroke: var(--line); rx: 6; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .tablewrap { overflow-x: auto; border-radius: 10px; max-width: 1000px; }
+  th, td { text-align: left; padding: 9px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 0.72rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { white-space: nowrap; }
+  .tag { display: inline-block; font-size: 0.72rem; font-weight: 600; padding: 1px 8px; border-radius: 99px; }
+  .tag-ours { color: var(--ours); background: var(--chip-ours); }
+  .tag-yossi { color: var(--yossi); background: var(--chip-yossi); }
+  .tag-shane { color: var(--shane); background: var(--chip-shane); }
+  .tag-gap { color: var(--gap); background: var(--chip-gap); }
+  .tag-neutral { color: var(--muted); background: var(--band); }
+</style>
+
+<main>
+  <h1>Praxis gateway — upstreaming status and gaps</h1>
+  <p class="lede">Ongoing work: what the dogfood gateway (<code>feat/dogfood-gateway</code>) runs today, which
+  pieces are already in upstream review, and which still need a PR. Drawn as two lanes: the request lane runs left
+  to right, the response lane runs back right to left — spend is only knowable after the provider answers, so every
+  token action sits on the response lane. Filters cooperate through <code>filter_metadata</code> — in-memory,
+  per-request, dropped when the response completes.</p>
+
+  <div class="legend">
+    <span><i class="swatch" style="--sw: var(--ours)"></i> Noy — PR #581 / #582 in review</span>
+    <span><i class="swatch" style="--sw: var(--yossi)"></i> Yossi — PR #709 in review</span>
+    <span><i class="swatch" style="--sw: var(--gap)"></i> on the dogfood branch only — <strong>needs a PR</strong></span>
+    <span><i class="swatch"></i> upstream, already in-tree</span>
+    <span><i class="swatch" style="--sw: var(--ext)"></i> external services — not part of Praxis</span>
+    <span><i class="swatch dashed" style="--sw: var(--shane)"></i> Shane — proposal #658, added to the dogfood later</span>
+  </div>
+
+  <figure id="dogfood">
+    <div class="scroll">
+    <svg viewBox="0 0 1450 750" role="img"
+         aria-label="Dogfood gateway swimlanes. Request lane: api_key_auth validates the key at maas-api and writes verified identity, model_access checks the model per group, identity_header_guard captures headers into metadata, external_metering checks the balance, token_count passes through. Response lane: token_count extracts usage from the provider's answer, external_metering reads it and posts a CloudEvent to the metering service. token_rate_limit will be inserted later.">
+      <defs>
+        <marker id="d-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="d-arr-gap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--gap)"/>
+        </marker>
+        <marker id="d-arr-ours" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--ours)"/>
+        </marker>
+        <marker id="d-arr-yossi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--yossi)"/>
+        </marker>
+        <marker id="d-arr-shane" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--shane)"/>
+        </marker>
+      </defs>
+
+      <rect x="120" y="56" width="1180" height="520" rx="12" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+      <text x="140" y="78" class="cap">PRAXIS PROXY &#8212; DOGFOOD CHAIN (ANTHROPIC + OPENAI LISTENERS)</text>
+
+      <rect x="14" y="104" width="92" height="56" class="box b-neutral"/>
+      <text x="60" y="137" text-anchor="middle">Client app</text>
+      <rect x="1330" y="104" width="94" height="72" class="box b-neutral"/>
+      <text x="1377" y="133" text-anchor="middle">LLM provider</text>
+      <text x="1377" y="151" text-anchor="middle" class="small">Claude &#183; GPT</text>
+
+      <!-- ===== REQUEST LANE ===== -->
+      <text x="150" y="100" class="cap">REQUEST LANE &#9654; RUNS FIRST, LEFT TO RIGHT</text>
+
+      <rect x="150" y="112" width="170" height="84" class="box b-gap"/>
+      <text x="235" y="136" text-anchor="middle" class="mono-t" style="font-size:11.5px">api_key_auth</text>
+      <text x="235" y="153" text-anchor="middle" class="small t-gap">needs a PR</text>
+      <text x="235" y="170" text-anchor="middle" class="small">&#9312; validate key at maas-api</text>
+      <text x="235" y="186" text-anchor="middle" class="small">writes verified x-tenant-*</text>
+
+      <rect x="340" y="112" width="170" height="84" class="box b-gap"/>
+      <text x="425" y="136" text-anchor="middle" class="mono-t" style="font-size:11.5px">model_access</text>
+      <text x="425" y="153" text-anchor="middle" class="small t-gap">needs a PR</text>
+      <text x="425" y="170" text-anchor="middle" class="small">&#9313; allow / deny the model</text>
+      <text x="425" y="186" text-anchor="middle" class="small">per verified group</text>
+
+      <rect x="530" y="112" width="170" height="84" class="box b-yossi"/>
+      <text x="615" y="136" text-anchor="middle" class="mono-t" style="font-size:11px">identity_header_guard</text>
+      <text x="615" y="153" text-anchor="middle" class="small t-yossi">PR #709 &#183; Yossi</text>
+      <text x="615" y="170" text-anchor="middle" class="small">&#9314; capture + strip x-tenant-*</text>
+      <text x="615" y="186" text-anchor="middle" class="small">headers &#8594; identity.*</text>
+
+      <g opacity="0.55">
+        <rect x="910" y="112" width="170" height="84" class="box b-neutral"/>
+        <text x="995" y="136" text-anchor="middle" class="mono-t" style="font-size:11.5px">token_count</text>
+        <text x="995" y="156" text-anchor="middle" class="small">pass-through on the request</text>
+        <text x="995" y="172" text-anchor="middle" class="small">nothing to count yet</text>
+      </g>
+
+      <rect x="1100" y="112" width="170" height="84" class="box b-neutral"/>
+      <text x="1185" y="136" text-anchor="middle" class="mono-t" style="font-size:11.5px">core builtins</text>
+      <text x="1185" y="153" text-anchor="middle" class="small">router &#183; credential_inject</text>
+      <text x="1185" y="169" text-anchor="middle" class="small">headers &#183; load_balancer</text>
+      <text x="1185" y="185" text-anchor="middle" class="small">&#9664; usage &#8594; response headers</text>
+
+      <line x1="106" y1="154" x2="146" y2="154" class="flow" marker-end="url(#d-arr)"/>
+      <line x1="320" y1="154" x2="336" y2="154" class="flow" marker-end="url(#d-arr)"/>
+      <line x1="510" y1="154" x2="526" y2="154" class="flow" marker-end="url(#d-arr)"/>
+      <line x1="700" y1="154" x2="716" y2="154" class="flow" marker-end="url(#d-arr)"/>
+      <line x1="890" y1="154" x2="906" y2="154" class="flow" marker-end="url(#d-arr)"/>
+      <line x1="1080" y1="154" x2="1096" y2="154" class="flow" marker-end="url(#d-arr)"/>
+      <line x1="1270" y1="154" x2="1326" y2="154" class="flow" marker-end="url(#d-arr)"/>
+
+      <!-- ===== METADATA BUS (behind the tall metering box) ===== -->
+      <rect x="150" y="300" width="930" height="74" class="busband" rx="10"/>
+      <rect x="180" y="312" width="178" height="28" class="chip" style="stroke: var(--gap)"/>
+      <text x="269" y="331" text-anchor="middle" class="mono-t" style="font-size:11px">x-tenant-* &#183; verified</text>
+      <rect x="480" y="312" width="190" height="28" class="chip" style="stroke: var(--yossi)"/>
+      <text x="575" y="331" text-anchor="middle" class="mono-t" style="font-size:11px">identity.x-tenant-*</text>
+      <rect x="900" y="306" width="172" height="26" class="chip"/>
+      <text x="986" y="323" text-anchor="middle" class="mono-t" style="font-size:10.5px">token.input &#183; out &#183; total</text>
+      <rect x="900" y="338" width="172" height="26" class="chip" style="stroke: var(--ours)"/>
+      <text x="986" y="355" text-anchor="middle" class="mono-t t-ours" style="font-size:10.5px">token.cache_read &#183; write</text>
+      <text x="150" y="392" class="cap">FILTER_METADATA &#8212; IN-MEMORY, PER-REQUEST, DROPPED WHEN THE RESPONSE ENDS</text>
+
+      <!-- request-phase metadata arrows -->
+      <line x1="235" y1="196" x2="235" y2="308" class="flow flow-gap" marker-end="url(#d-arr-gap)"/>
+      <line x1="420" y1="300" x2="420" y2="202" class="flow flow-gap" marker-end="url(#d-arr-gap)"/>
+      <text x="428" y="228" class="small t-gap">&#9313; reads verified group</text>
+      <text x="428" y="243" class="small">on the request</text>
+      <line x1="615" y1="196" x2="615" y2="308" class="flow flow-yossi" marker-end="url(#d-arr-yossi)"/>
+      <text x="607" y="268" text-anchor="end" class="small t-yossi">&#9314; writes identity.*</text>
+
+      <!-- ===== EXTERNAL_METERING: one filter, both lanes ===== -->
+      <rect x="720" y="112" width="170" height="420" class="box b-ours"/>
+      <text x="805" y="136" text-anchor="middle" class="mono-t" style="font-size:11.5px">external_metering</text>
+      <text x="805" y="153" text-anchor="middle" class="small t-ours">PR #581 &#183; Noy</text>
+      <text x="805" y="212" text-anchor="middle" class="cap">ON THE REQUEST</text>
+      <text x="805" y="232" text-anchor="middle" class="small">&#9315; reads verified + identity.*</text>
+      <text x="805" y="248" text-anchor="middle" class="small">GET balance &#8594; admit / 429</text>
+      <text x="805" y="448" text-anchor="middle" class="cap">ON THE RESPONSE</text>
+      <text x="805" y="468" text-anchor="middle" class="small">&#9318; reads token.*</text>
+      <text x="805" y="484" text-anchor="middle" class="small">&#9319; POST usage CloudEvent</text>
+
+      <!-- ===== RESPONSE LANE ===== -->
+      <rect x="910" y="460" width="170" height="84" class="box b-neutral"/>
+      <text x="995" y="480" text-anchor="middle" class="mono-t" style="font-size:11.5px">token_count</text>
+      <text x="995" y="497" text-anchor="middle" class="small">&#9317; parses usage from the</text>
+      <text x="995" y="511" text-anchor="middle" class="small">response body</text>
+      <text x="995" y="528" text-anchor="middle" class="small t-ours">cache fields = PR #582 &#183; Noy</text>
+
+      <polyline points="1377,176 1377,496 1084,496" class="flow" marker-end="url(#d-arr)"/>
+      <text x="1360" y="488" text-anchor="end" class="small">&#9316; response</text>
+      <line x1="910" y1="496" x2="894" y2="496" class="flow" marker-end="url(#d-arr)"/>
+      <polyline points="720,496 60,496 60,164" class="flow" marker-end="url(#d-arr)"/>
+      <text x="1100" y="560" class="cap">&#9664; RESPONSE LANE &#8212; HOOKS RUN IN REVERSE ORDER</text>
+
+      <line x1="995" y1="460" x2="995" y2="378" class="flow" marker-end="url(#d-arr)"/>
+      <text x="1004" y="416" class="small">&#9317; writes token.*</text>
+      <text x="1004" y="431" class="small">on the response</text>
+
+      <!-- maas-api callout (request phase) -->
+      <line x1="165" y1="196" x2="165" y2="636" class="flow flow-gap" marker-end="url(#d-arr-gap)"/>
+      <text x="173" y="424" class="small t-gap">&#9312; POST /validate</text>
+      <text x="173" y="439" class="small">blocks the request &#183; cached</text>
+      <rect x="150" y="640" width="180" height="64" class="box b-ext"/>
+      <text x="240" y="666" text-anchor="middle" class="mono-t" style="font-size:11.5px">maas-api</text>
+      <text x="240" y="684" text-anchor="middle" class="small t-ext">key validation service</text>
+
+      <!-- pending OIDC auth entry -->
+      <polyline points="455,636 455,582" class="flow flow-gap" stroke-dasharray="5 4" marker-end="url(#d-arr-gap)"/>
+      <text x="463" y="606" class="small t-gap">alternative auth entry</text>
+      <text x="463" y="621" class="small">slots in beside api_key_auth</text>
+      <rect x="350" y="640" width="210" height="76" class="box b-gap" style="stroke-dasharray: 6 4"/>
+      <text x="455" y="660" text-anchor="middle" class="mono-t" style="font-size:11.5px">jwt_auth &#183; OIDC</text>
+      <text x="455" y="676" text-anchor="middle" class="small t-gap">needs a PR &#183; not in the chain yet</text>
+      <text x="455" y="691" text-anchor="middle" class="small">validates OIDC JWTs via JWKS</text>
+      <text x="455" y="706" text-anchor="middle" class="small">&#8594; Red Hat SSO integration</text>
+
+      <!-- metering service (both phases) -->
+      <line x1="770" y1="532" x2="770" y2="636" class="flow flow-ours" marker-end="url(#d-arr-ours)"/>
+      <line x1="840" y1="532" x2="840" y2="636" class="flow flow-ours" marker-end="url(#d-arr-ours)"/>
+      <text x="760" y="590" text-anchor="end" class="small t-ours">&#9315; GET balance &#8212; on the request</text>
+      <text x="850" y="590" class="small t-ours">&#9319; POST events &#8212; after the response</text>
+      <a href="https://github.com/noyitz/ai-gateway-metering-service" target="_blank" rel="noopener">
+        <rect x="700" y="640" width="220" height="76" class="box b-ext"/>
+        <text x="810" y="660" text-anchor="middle" class="mono-t" style="font-size:11.5px">metering service</text>
+        <text x="810" y="677" text-anchor="middle" class="small t-ext">not part of Praxis &#183; Noy</text>
+        <text x="810" y="693" text-anchor="middle" class="small t-ext" style="text-decoration: underline">noyitz/ai-gateway-metering-service</text>
+        <text x="810" y="708" text-anchor="middle" class="small">balance API + CloudEvents sink</text>
+      </a>
+      <line x1="920" y1="678" x2="946" y2="678" class="flow" stroke="var(--ext)" marker-end="url(#d-arr)"/>
+      <a href="https://github.com/noyitz/ai-gateway-metering-service" target="_blank" rel="noopener">
+        <rect x="950" y="646" width="140" height="64" class="box b-ext"/>
+        <text x="1020" y="670" text-anchor="middle" class="mono-t" style="font-size:11.5px">dashboard</text>
+        <text x="1020" y="687" text-anchor="middle" class="small t-ext">usage &amp; spend</text>
+        <text x="1020" y="701" text-anchor="middle" class="small t-ext">per user &#183; same repo</text>
+      </a>
+
+      <!-- future rate limit -->
+      <polyline points="1195,636 1195,582" class="flow flow-shane" marker-end="url(#d-arr-shane)"/>
+      <text x="1120" y="620" class="small t-shane">inserts into the chain later</text>
+      <rect x="1100" y="640" width="200" height="64" class="box b-shane"/>
+      <text x="1200" y="662" text-anchor="middle" class="mono-t" style="font-size:11.5px">token_rate_limit</text>
+      <text x="1200" y="679" text-anchor="middle" class="small t-shane">proposal #658 &#183; future dogfood</text>
+      <text x="1200" y="695" text-anchor="middle" class="small">reserve &#9654; &#183; reconcile &#9664;</text>
+    </svg>
+    </div>
+    <figcaption>The chain deployed on the dogfood OpenShift cluster. Request lane (&#9312;&#8211;&#9315;):
+    <code>api_key_auth</code> validates the key and writes <em>verified</em> identity, <code>model_access</code>
+    authorizes the model against the verified group, <code>identity_header_guard</code> captures any
+    <code>x-tenant-*</code> headers, and <code>external_metering</code> checks the balance — all before the request
+    is forwarded. Token counts exist only after the provider answers (&#9316;): on the response lane
+    <code>token_count</code> extracts usage (&#9317;) and <code>external_metering</code> reads (&#9318;) and reports
+    it (&#9319;). <code>external_metering</code> is drawn tall because it is one filter acting in both lanes; the
+    metadata band is in-memory scratch space, not a store — the durable write is the CloudEvent into the metering
+    service. A third benchmark listener skips <code>model_access</code> and <code>credential_inject</code>.
+    The dashed <code>jwt_auth</code> box is the pending OIDC path: once wired in beside <code>api_key_auth</code>,
+    users authenticated by Red Hat SSO get the same verified-identity metadata.</figcaption>
+  </figure>
+
+  <h2>Gap map — what still needs a PR</h2>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Piece</th><th>Lives today</th><th>Upstream status</th><th>Next action</th></tr>
+    <tr>
+      <td><code>external_metering</code> <span class="tag tag-ours">#581 &#183; Noy</span></td>
+      <td>Dogfood branch (old vendored HTTP client) + PR</td>
+      <td>PR open, all checks green, SubRequestClient port done</td>
+      <td>Maintainer review + CI approval; dogfood rebases onto the merged version</td>
+    </tr>
+    <tr>
+      <td>cache absent-vs-zero fix <span class="tag tag-ours">#582 &#183; Noy</span></td>
+      <td>Only in the PR — the dogfood branch still has the bug</td>
+      <td>PR open, all checks green, bot findings answered</td>
+      <td>Merge; dogfood picks it up on rebase</td>
+    </tr>
+    <tr>
+      <td><code>identity_header_guard</code> <span class="tag tag-yossi">#709 &#183; Yossi</span></td>
+      <td>Dogfood branch + PR</td>
+      <td>PR open but <strong>conflicting</strong> with main</td>
+      <td>Yossi rebases</td>
+    </tr>
+    <tr>
+      <td><code>api_key_auth</code> <span class="tag tag-gap">needs PR</span></td>
+      <td>Dogfood branch, deployed in every listener</td>
+      <td>Nothing upstream</td>
+      <td>New PR: lean key-auth filter (validate callout + cache + verified identity metadata)</td>
+    </tr>
+    <tr>
+      <td><code>model_access</code> <span class="tag tag-gap">needs PR</span></td>
+      <td>Dogfood branch, deployed</td>
+      <td>Nothing upstream</td>
+      <td>New PR: per-group model allow/deny lists</td>
+    </tr>
+    <tr>
+      <td>OpenAI Responses usage parsing <span class="tag tag-gap">needs PR</span></td>
+      <td>Dogfood branch (<code>token_count</code> extension)</td>
+      <td>Nothing upstream</td>
+      <td>New PR after #582 lands — natural follow-up slice</td>
+    </tr>
+    <tr>
+      <td>OIDC / Red Hat SSO via <code>jwt_auth</code> <span class="tag tag-gap">needs PR</span></td>
+      <td>Dogfood branch (<code>jwt_auth</code>, JWKS validation), <em>not</em> in the deployed chain</td>
+      <td>Nothing upstream</td>
+      <td>IT confirmed: OIDC support is enough to integrate Red Hat SSO, and the filter is already written
+      (JWKS cache, issuer/audience validation, 11 tests, example config, docs). Needs: the upstream PR, SSO
+      issuer/JWKS configuration, and — to run <em>alongside</em> <code>api_key_auth</code> on one listener rather
+      than replacing it — a small credential-dispatch tweak, since today each filter 401s traffic carrying the
+      other's credential type</td>
+    </tr>
+    <tr>
+      <td><code>token_rate_limit</code> <span class="tag tag-shane">#658 &#183; Shane</span></td>
+      <td>Nowhere yet — design proposal</td>
+      <td>Proposal PR open (Shane + jland)</td>
+      <td>Design review; will be added to the dogfood chain once built</td>
+    </tr>
+    <tr>
+      <td>metering service + dashboard <span class="tag tag-neutral">external</span></td>
+      <td><a href="https://github.com/noyitz/ai-gateway-metering-service">noyitz/ai-gateway-metering-service</a>, deployed on the cluster</td>
+      <td>Not part of Praxis, by design</td>
+      <td>No PR — stays its own service; the dashboard ships from the same repo</td>
+    </tr>
+    <tr>
+      <td>Deploy manifests, scripts, status page <span class="tag tag-neutral">dogfood-only</span></td>
+      <td>Dogfood branch</td>
+      <td>Deployment-specific</td>
+      <td>Stays on the branch</td>
+    </tr>
+  </table>
+  </div>
+</main>
