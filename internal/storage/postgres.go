@@ -37,9 +37,15 @@ type UsageStats struct {
 
 type Store struct {
 	db *sql.DB
+
+	// tokenQuota is the per-user monthly token budget enforced by the
+	// entitlement endpoint. A value <= 0 means unlimited: the service
+	// reports usage but does not gate access. Real quota enforcement
+	// belongs in the gateway (see praxis-proxy/ai#121), not here.
+	tokenQuota int64
 }
 
-func New(databaseURL string) (*Store, error) {
+func New(databaseURL string, tokenQuota int64) (*Store, error) {
 	db, err := sql.Open("postgres", databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
@@ -55,7 +61,7 @@ func New(databaseURL string) (*Store, error) {
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	s := &Store{db: db}
+	s := &Store{db: db, tokenQuota: tokenQuota}
 	if err := s.migrate(ctx); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
@@ -163,8 +169,20 @@ func (s *Store) GetMonthlyUsage(ctx context.Context, username, model string) (Us
 		return UsageStats{}, err
 	}
 
-	quota := float64(100000000)
+	return computeUsageStats(used, s.tokenQuota), nil
+}
+
+// computeUsageStats derives entitlement stats from token usage and a quota.
+// A quota <= 0 means unlimited: usage is reported but access is never gated.
+// Quota enforcement is the gateway's responsibility (praxis-proxy/ai#121).
+func computeUsageStats(used, tokenQuota int64) UsageStats {
 	usage := float64(used)
+
+	if tokenQuota <= 0 {
+		return UsageStats{HasAccess: true, Usage: usage}
+	}
+
+	quota := float64(tokenQuota)
 	balance := quota - usage
 	overage := float64(0)
 	if balance < 0 {
@@ -177,7 +195,7 @@ func (s *Store) GetMonthlyUsage(ctx context.Context, username, model string) (Us
 		Balance:   balance,
 		Usage:     usage,
 		Overage:   overage,
-	}, nil
+	}
 }
 
 // Dashboard types
