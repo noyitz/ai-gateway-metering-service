@@ -33,6 +33,7 @@ kubectl apply -f deploy/
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
 | `PORT` | No | `8080` | HTTP listen port |
+| `TOKEN_QUOTA` | No | `0` (unlimited) | Per-user monthly token budget for the entitlement endpoint. `0` reports usage without gating access; enforcement belongs in the gateway. |
 
 ## CloudEvents Format
 
