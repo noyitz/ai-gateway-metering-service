@@ -42,6 +42,11 @@ func oldDoubleChargeCostUSD(promptTokens, cachedRead, cacheCreation, completion 
 // Fable list pricing (per the metering rate table), USD per million tokens.
 var fablePrices = testPrices{input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5}
 
+// defaultFallbackPrices mirrors the COALESCE fallbacks in costUSDExpr, used
+// when a model has no pricing row. Cache-write defaults to 1.25x the input
+// fallback so unpriced cache-creation tokens are estimated, not billed at $0.
+var defaultFallbackPrices = testPrices{input: 15, output: 75, cacheRead: 0.5, cacheWrite: 18.75}
+
 func TestPerRequestCostUSD(t *testing.T) {
 	const eps = 0.005
 
@@ -98,6 +103,26 @@ func TestColdTurnNoLongerDoubleCharged(t *testing.T) {
 	}
 	if buggy <= fixed {
 		t.Errorf("expected old formula to overcharge cold turns: buggy=%.5f fixed=%.5f", buggy, fixed)
+	}
+}
+
+// TestUnpricedModelCacheCreationBilled guards the COALESCE fallbacks: an
+// unpriced model with cache-creation tokens must be estimated at the
+// cache-write fallback rate, not dropped to $0. Because the fix subtracts
+// cache-creation from the uncached term, a 0 cache-write fallback would
+// make cold turns on unpriced models show $0 real spend.
+func TestUnpricedModelCacheCreationBilled(t *testing.T) {
+	const prompt, cacheCreation, completion = 234_800, 234_800, 173
+
+	cost := perRequestCostUSD(prompt, 0, cacheCreation, completion, defaultFallbackPrices)
+
+	// 234800 * 18.75/1e6 + 173 * 75/1e6 = 4.4025 + 0.012975
+	want := 4.415475
+	if math.Abs(cost-want) > 0.005 {
+		t.Errorf("unpriced cold cost = %.5f, want ~%.5f", cost, want)
+	}
+	if cost == 0 {
+		t.Fatal("unpriced cache-creation must not bill at $0")
 	}
 }
 
