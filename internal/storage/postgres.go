@@ -11,14 +11,14 @@ import (
 )
 
 type UsageEvent struct {
-	EventID          string
-	Timestamp        time.Time
-	Username         string
-	GroupName        string
-	Subscription     string
-	Provider         string
-	Model            string
-	PromptTokens     int
+	EventID             string
+	Timestamp           time.Time
+	Username            string
+	GroupName           string
+	Subscription        string
+	Provider            string
+	Model               string
+	PromptTokens        int
 	CompletionTokens    int
 	TotalTokens         int
 	CachedInputTokens   int
@@ -84,39 +84,55 @@ func (s *Store) InsertEvent(ctx context.Context, e UsageEvent) error {
 }
 
 type TeamUserUsage struct {
-	Username         string             `json:"username"`
-	Requests         int                `json:"requests"`
-	PromptTokens     int                `json:"prompt_tokens"`
-	CompletionTokens int                `json:"completion_tokens"`
-	TotalTokens      int                `json:"total_tokens"`
-	CostUSD          float64            `json:"cost_usd"`
-	Models           []ModelUsage       `json:"models"`
+	Username         string       `json:"username"`
+	Requests         int          `json:"requests"`
+	PromptTokens     int          `json:"prompt_tokens"`
+	CompletionTokens int          `json:"completion_tokens"`
+	TotalTokens      int          `json:"total_tokens"`
+	CostUSD          float64      `json:"cost_usd"`
+	Models           []ModelUsage `json:"models"`
 }
 
 type ModelUsage struct {
-	Model            string  `json:"model"`
-	Provider         string  `json:"provider"`
-	Requests         int     `json:"requests"`
-	TotalTokens      int     `json:"total_tokens"`
-	CostUSD          float64 `json:"cost_usd"`
+	Model       string  `json:"model"`
+	Provider    string  `json:"provider"`
+	Requests    int     `json:"requests"`
+	TotalTokens int     `json:"total_tokens"`
+	CostUSD     float64 `json:"cost_usd"`
 }
 
+// costUSDExpr is the SQL arithmetic for per-row inference cost, shared by
+// every cost query so the model lives in exactly one place.
+//
+// Provider usage fields are disjoint: prompt_tokens already includes the
+// cache-read and cache-creation tokens, so BOTH are subtracted here to
+// bill the uncached remainder at the base input rate exactly once.
+// Cache-read and cache-creation tokens are then billed once each at their
+// own rates. (Subtracting only cache-read — the earlier form — billed
+// cache-creation tokens at the input rate AND the cache-write rate,
+// overstating cache-miss turns by up to ~1.8x.)
+//
+// Requires usage_events aliased as `e` and model_pricing as `p`. See
+// perRequestCostUSD in postgres_test.go for the executable reference model.
+const costUSDExpr = `GREATEST(e.prompt_tokens - COALESCE(e.cached_input_tokens, 0) - COALESCE(e.cache_creation_tokens, 0), 0) * COALESCE(p.input_cost_per_mtok, 15)/1000000.0 +
+			COALESCE(e.cached_input_tokens, 0) * COALESCE(p.cache_read_cost_per_mtok, 0.5)/1000000.0 +
+			COALESCE(e.cache_creation_tokens, 0) * COALESCE(p.cache_write_cost_per_mtok, 0)/1000000.0 +
+			e.completion_tokens * COALESCE(p.output_cost_per_mtok, 75)/1000000.0`
+
 func (s *Store) GetTeamUsage(ctx context.Context, groupName string) ([]TeamUserUsage, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	query := fmt.Sprintf(`
 		SELECT e.username, e.model, e.provider,
 			COUNT(*) as requests,
 			SUM(e.prompt_tokens) as prompt_tokens,
 			SUM(e.completion_tokens) as completion_tokens,
 			SUM(e.total_tokens) as total_tokens,
-			ROUND(SUM(GREATEST(e.prompt_tokens - COALESCE(e.cached_input_tokens, 0), 0) * COALESCE(p.input_cost_per_mtok, 15)/1000000.0 +
-				COALESCE(e.cached_input_tokens, 0) * COALESCE(p.cache_read_cost_per_mtok, 0.5)/1000000.0 +
-				COALESCE(e.cache_creation_tokens, 0) * COALESCE(p.cache_write_cost_per_mtok, 0)/1000000.0 +
-				e.completion_tokens * COALESCE(p.output_cost_per_mtok, 75)/1000000.0)::numeric, 4) as cost_usd
+			ROUND(SUM(%s)::numeric, 4) as cost_usd
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
 		WHERE e.group_name = $1
 		GROUP BY e.username, e.model, e.provider
-		ORDER BY e.username, total_tokens DESC`, groupName)
+		ORDER BY e.username, total_tokens DESC`, costUSDExpr)
+	rows, err := s.db.QueryContext(ctx, query, groupName)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +170,9 @@ func (s *Store) GetTeamUsage(ctx context.Context, groupName string) ([]TeamUserU
 	for _, name := range order {
 		result = append(result, *userMap[name])
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -228,15 +246,15 @@ type UserSummary struct {
 }
 
 type ModelSummary struct {
-	Model              string  `json:"model"`
-	Provider           string  `json:"provider"`
-	Requests           int     `json:"requests"`
-	TotalTokens        int64   `json:"total_tokens"`
-	PromptTokens       int64   `json:"prompt_tokens"`
-	CompletionTokens   int64   `json:"completion_tokens"`
-	CachedInputTokens  int64   `json:"cached_input_tokens"`
-	CacheCreationTokens int64  `json:"cache_creation_tokens"`
-	CostUSD            float64 `json:"cost_usd"`
+	Model               string  `json:"model"`
+	Provider            string  `json:"provider"`
+	Requests            int     `json:"requests"`
+	TotalTokens         int64   `json:"total_tokens"`
+	PromptTokens        int64   `json:"prompt_tokens"`
+	CompletionTokens    int64   `json:"completion_tokens"`
+	CachedInputTokens   int64   `json:"cached_input_tokens"`
+	CacheCreationTokens int64   `json:"cache_creation_tokens"`
+	CostUSD             float64 `json:"cost_usd"`
 }
 
 type TimelineBucket struct {
@@ -248,43 +266,33 @@ type TimelineBucket struct {
 
 func (s *Store) GetDashboardOverview(ctx context.Context, since time.Time) (DashboardOverview, error) {
 	var o DashboardOverview
-	err := s.db.QueryRowContext(ctx, `
+	err := s.db.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT COUNT(*),
 			COALESCE(SUM(e.prompt_tokens),0),
 			COALESCE(SUM(e.completion_tokens),0),
 			COALESCE(SUM(e.total_tokens),0),
 			COUNT(DISTINCT e.username),
-			COALESCE(ROUND(SUM(
-				GREATEST(e.prompt_tokens - COALESCE(e.cached_input_tokens, 0), 0) * COALESCE(p.input_cost_per_mtok, 15)/1000000.0 +
-				COALESCE(e.cached_input_tokens, 0) * COALESCE(p.cache_read_cost_per_mtok, 0.5)/1000000.0 +
-				COALESCE(e.cache_creation_tokens, 0) * COALESCE(p.cache_write_cost_per_mtok, 0)/1000000.0 +
-				e.completion_tokens * COALESCE(p.output_cost_per_mtok, 75)/1000000.0
-			)::numeric, 2), 0)
+			COALESCE(ROUND(SUM(%s)::numeric, 2), 0)
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
-		WHERE e.timestamp >= $1`, since).Scan(
+		WHERE e.timestamp >= $1`, costUSDExpr), since).Scan(
 		&o.TotalRequests, &o.TotalPromptTokens, &o.TotalCompletionTokens,
 		&o.TotalTokens, &o.ActiveUsers, &o.TotalCostUSD)
 	return o, err
 }
 
 func (s *Store) GetDashboardGroups(ctx context.Context, since time.Time) ([]GroupSummary, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT COALESCE(e.group_name, 'unknown'),
 			COUNT(*),
 			COALESCE(SUM(e.total_tokens),0),
 			COUNT(DISTINCT e.username),
-			COALESCE(ROUND(SUM(
-				GREATEST(e.prompt_tokens - COALESCE(e.cached_input_tokens, 0), 0) * COALESCE(p.input_cost_per_mtok, 15)/1000000.0 +
-				COALESCE(e.cached_input_tokens, 0) * COALESCE(p.cache_read_cost_per_mtok, 0.5)/1000000.0 +
-				COALESCE(e.cache_creation_tokens, 0) * COALESCE(p.cache_write_cost_per_mtok, 0)/1000000.0 +
-				e.completion_tokens * COALESCE(p.output_cost_per_mtok, 75)/1000000.0
-			)::numeric, 2), 0)
+			COALESCE(ROUND(SUM(%s)::numeric, 2), 0)
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
 		WHERE e.timestamp >= $1
 		GROUP BY COALESCE(e.group_name, 'unknown')
-		ORDER BY SUM(e.total_tokens) DESC`, since)
+		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr), since)
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +306,9 @@ func (s *Store) GetDashboardGroups(ctx context.Context, since time.Time) ([]Grou
 		}
 		result = append(result, g)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -327,18 +337,13 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since time.Time, group, u
 			COALESCE(SUM(e.prompt_tokens),0) as prompt_tokens,
 			COALESCE(SUM(e.completion_tokens),0) as completion_tokens,
 			COALESCE(SUM(e.total_tokens),0) as total_tokens,
-			COALESCE(ROUND(SUM(
-				GREATEST(e.prompt_tokens - COALESCE(e.cached_input_tokens, 0), 0) * COALESCE(p.input_cost_per_mtok, 15)/1000000.0 +
-				COALESCE(e.cached_input_tokens, 0) * COALESCE(p.cache_read_cost_per_mtok, 0.5)/1000000.0 +
-				COALESCE(e.cache_creation_tokens, 0) * COALESCE(p.cache_write_cost_per_mtok, 0)/1000000.0 +
-				e.completion_tokens * COALESCE(p.output_cost_per_mtok, 75)/1000000.0
-			)::numeric, 2), 0) as cost_usd
+			COALESCE(ROUND(SUM(%s)::numeric, 2), 0) as cost_usd
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
 		WHERE e.timestamp >= $1 AND ($2 = '' OR e.group_name = $2) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)
 		GROUP BY e.username, COALESCE(e.group_name, '')
 		ORDER BY %s %s
-		LIMIT $3`, sortExpr, direction)
+		LIMIT $3`, costUSDExpr, sortExpr, direction)
 
 	rows, err := s.db.QueryContext(ctx, query, since, group, limit, user, model)
 	if err != nil {
@@ -354,12 +359,14 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since time.Time, group, u
 		}
 		result = append(result, u)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
 func (s *Store) GetDashboardModels(ctx context.Context, since time.Time, username string) ([]ModelSummary, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT e.model, COALESCE(e.provider, ''),
 			COUNT(*),
 			COALESCE(SUM(e.total_tokens),0),
@@ -367,17 +374,12 @@ func (s *Store) GetDashboardModels(ctx context.Context, since time.Time, usernam
 			COALESCE(SUM(e.completion_tokens),0),
 			COALESCE(SUM(e.cached_input_tokens),0),
 			COALESCE(SUM(e.cache_creation_tokens),0),
-			COALESCE(ROUND(SUM(
-				GREATEST(e.prompt_tokens - COALESCE(e.cached_input_tokens, 0), 0) * COALESCE(p.input_cost_per_mtok, 15)/1000000.0 +
-				COALESCE(e.cached_input_tokens, 0) * COALESCE(p.cache_read_cost_per_mtok, 0.5)/1000000.0 +
-				COALESCE(e.cache_creation_tokens, 0) * COALESCE(p.cache_write_cost_per_mtok, 0)/1000000.0 +
-				e.completion_tokens * COALESCE(p.output_cost_per_mtok, 75)/1000000.0
-			)::numeric, 2), 0)
+			COALESCE(ROUND(SUM(%s)::numeric, 2), 0)
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
 		WHERE e.timestamp >= $1 AND ($2 = '' OR e.username = $2)
 		GROUP BY e.model, COALESCE(e.provider, '')
-		ORDER BY SUM(e.total_tokens) DESC`, since, username)
+		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr), since, username)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +393,9 @@ func (s *Store) GetDashboardModels(ctx context.Context, since time.Time, usernam
 		}
 		result = append(result, m)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -431,7 +435,9 @@ func (s *Store) GetDashboardTimeline(ctx context.Context, since time.Time, group
 		}
 		result = append(result, t)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -454,21 +460,16 @@ func (s *Store) GetRecentEvents(ctx context.Context, limit int) ([]RecentEvent, 
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT e.timestamp, e.username, COALESCE(e.group_name,''), e.model, COALESCE(e.provider,''),
 			e.prompt_tokens, e.completion_tokens, e.total_tokens,
 			COALESCE(e.cached_input_tokens, 0), COALESCE(e.cache_creation_tokens, 0),
-			COALESCE(ROUND((
-				GREATEST(e.prompt_tokens - COALESCE(e.cached_input_tokens, 0), 0) * COALESCE(p.input_cost_per_mtok, 15)/1000000.0 +
-				COALESCE(e.cached_input_tokens, 0) * COALESCE(p.cache_read_cost_per_mtok, 0.5)/1000000.0 +
-				COALESCE(e.cache_creation_tokens, 0) * COALESCE(p.cache_write_cost_per_mtok, 0)/1000000.0 +
-				e.completion_tokens * COALESCE(p.output_cost_per_mtok, 75)/1000000.0
-			)::numeric, 4), 0),
+			COALESCE(ROUND((%s)::numeric, 4), 0),
 			COALESCE(e.user_agent, '')
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
 		ORDER BY e.timestamp DESC
-		LIMIT $1`, limit)
+		LIMIT $1`, costUSDExpr), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -482,7 +483,9 @@ func (s *Store) GetRecentEvents(ctx context.Context, limit int) ([]RecentEvent, 
 		}
 		result = append(result, r)
 	}
-	if err := rows.Err(); err != nil { return nil, err }
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
