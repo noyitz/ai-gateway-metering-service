@@ -112,11 +112,16 @@ type ModelUsage struct {
 // cache-creation tokens at the input rate AND the cache-write rate,
 // overstating cache-miss turns by up to ~1.8x.)
 //
+// The cache-write fallback is 18.75 (1.25x the 15 input fallback, the
+// standard cache-write premium) so an unpriced model with cache-creation
+// tokens is estimated, not billed at $0 — subtracting those tokens from
+// the uncached term means a 0 fallback here would drop them entirely.
+//
 // Requires usage_events aliased as `e` and model_pricing as `p`. See
 // perRequestCostUSD in postgres_test.go for the executable reference model.
 const costUSDExpr = `GREATEST(e.prompt_tokens - COALESCE(e.cached_input_tokens, 0) - COALESCE(e.cache_creation_tokens, 0), 0) * COALESCE(p.input_cost_per_mtok, 15)/1000000.0 +
 			COALESCE(e.cached_input_tokens, 0) * COALESCE(p.cache_read_cost_per_mtok, 0.5)/1000000.0 +
-			COALESCE(e.cache_creation_tokens, 0) * COALESCE(p.cache_write_cost_per_mtok, 0)/1000000.0 +
+			COALESCE(e.cache_creation_tokens, 0) * COALESCE(p.cache_write_cost_per_mtok, 18.75)/1000000.0 +
 			e.completion_tokens * COALESCE(p.output_cost_per_mtok, 75)/1000000.0`
 
 func (s *Store) GetTeamUsage(ctx context.Context, groupName string) ([]TeamUserUsage, error) {
