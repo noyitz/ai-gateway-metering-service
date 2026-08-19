@@ -1,6 +1,130 @@
 package storage
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
+
+// testPrices holds per-million-token rates for the cost model tests.
+type testPrices struct {
+	input, output, cacheRead, cacheWrite float64
+}
+
+// perRequestCostUSD is the executable reference model that costUSDExpr
+// (in postgres.go) must mirror. Provider usage fields are disjoint:
+// promptTokens already includes cachedRead and cacheCreation, so both are
+// subtracted to bill the uncached remainder at the input rate exactly once.
+func perRequestCostUSD(promptTokens, cachedRead, cacheCreation, completion int64, p testPrices) float64 {
+	uncached := promptTokens - cachedRead - cacheCreation
+	if uncached < 0 {
+		uncached = 0
+	}
+	return float64(uncached)*p.input/1e6 +
+		float64(cachedRead)*p.cacheRead/1e6 +
+		float64(cacheCreation)*p.cacheWrite/1e6 +
+		float64(completion)*p.output/1e6
+}
+
+// oldDoubleChargeCostUSD reproduces the pre-fix formula, which subtracted
+// only cachedRead — billing cache-creation tokens at BOTH the input and
+// cache-write rates. Kept to prove the fix changes cache-miss turns.
+func oldDoubleChargeCostUSD(promptTokens, cachedRead, cacheCreation, completion int64, p testPrices) float64 {
+	uncached := promptTokens - cachedRead
+	if uncached < 0 {
+		uncached = 0
+	}
+	return float64(uncached)*p.input/1e6 +
+		float64(cachedRead)*p.cacheRead/1e6 +
+		float64(cacheCreation)*p.cacheWrite/1e6 +
+		float64(completion)*p.output/1e6
+}
+
+// Fable list pricing (per the metering rate table), USD per million tokens.
+var fablePrices = testPrices{input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5}
+
+// defaultFallbackPrices mirrors the COALESCE fallbacks in costUSDExpr, used
+// when a model has no pricing row. Cache-write defaults to 1.25x the input
+// fallback so unpriced cache-creation tokens are estimated, not billed at $0.
+var defaultFallbackPrices = testPrices{input: 15, output: 75, cacheRead: 0.5, cacheWrite: 18.75}
+
+func TestPerRequestCostUSD(t *testing.T) {
+	const eps = 0.005
+
+	tests := []struct {
+		name          string
+		prompt        int64 // includes cachedRead + cacheCreation (disjoint fields summed)
+		cachedRead    int64
+		cacheCreation int64
+		completion    int64
+		want          float64
+	}{
+		{
+			// Warm turn: almost all input served from cache read.
+			name: "warm cache read", prompt: 237_000, cachedRead: 236_700,
+			cacheCreation: 0, completion: 173, want: 0.24835,
+		},
+		{
+			// Cold turn: input written to cache (cache creation), no read.
+			// Correct cost bills these once at the cache-write rate.
+			name: "cold cache creation", prompt: 234_800, cachedRead: 0,
+			cacheCreation: 234_800, completion: 173, want: 2.94365,
+		},
+		{
+			// No caching at all: plain input + output.
+			name: "no cache", prompt: 1_000, cachedRead: 0,
+			cacheCreation: 0, completion: 500, want: 0.035,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := perRequestCostUSD(tt.prompt, tt.cachedRead, tt.cacheCreation, tt.completion, fablePrices)
+			if math.Abs(got-tt.want) > eps {
+				t.Errorf("perRequestCostUSD = %.5f, want %.5f", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestColdTurnNoLongerDoubleCharged pins the exact bug the fix addresses:
+// a cache-creation-heavy turn must be billed at the cache-write rate only,
+// not the cache-write rate plus the base input rate.
+func TestColdTurnNoLongerDoubleCharged(t *testing.T) {
+	const prompt, cacheCreation, completion = 234_800, 234_800, 173
+
+	fixed := perRequestCostUSD(prompt, 0, cacheCreation, completion, fablePrices)
+	buggy := oldDoubleChargeCostUSD(prompt, 0, cacheCreation, completion, fablePrices)
+
+	if math.Abs(fixed-2.94365) > 0.005 {
+		t.Errorf("fixed cold cost = %.5f, want ~2.94", fixed)
+	}
+	if math.Abs(buggy-5.29165) > 0.005 {
+		t.Errorf("old formula cold cost = %.5f, want ~5.29 (the overcharge)", buggy)
+	}
+	if buggy <= fixed {
+		t.Errorf("expected old formula to overcharge cold turns: buggy=%.5f fixed=%.5f", buggy, fixed)
+	}
+}
+
+// TestUnpricedModelCacheCreationBilled guards the COALESCE fallbacks: an
+// unpriced model with cache-creation tokens must be estimated at the
+// cache-write fallback rate, not dropped to $0. Because the fix subtracts
+// cache-creation from the uncached term, a 0 cache-write fallback would
+// make cold turns on unpriced models show $0 real spend.
+func TestUnpricedModelCacheCreationBilled(t *testing.T) {
+	const prompt, cacheCreation, completion = 234_800, 234_800, 173
+
+	cost := perRequestCostUSD(prompt, 0, cacheCreation, completion, defaultFallbackPrices)
+
+	// 234800 * 18.75/1e6 + 173 * 75/1e6 = 4.4025 + 0.012975
+	want := 4.415475
+	if math.Abs(cost-want) > 0.005 {
+		t.Errorf("unpriced cold cost = %.5f, want ~%.5f", cost, want)
+	}
+	if cost == 0 {
+		t.Fatal("unpriced cache-creation must not bill at $0")
+	}
+}
 
 func TestComputeUsageStats(t *testing.T) {
 	tests := []struct {
