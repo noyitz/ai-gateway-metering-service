@@ -31,20 +31,24 @@ func (h *DashboardHandler) ServeDashboard(w http.ResponseWriter, r *http.Request
 }
 
 func (h *DashboardHandler) HandleOverview(w http.ResponseWriter, r *http.Request) {
-	since := parseTimeRange(r)
-	result, err := h.store.GetDashboardOverview(r.Context(), since)
+	since, until := parseTimeWindow(r)
+	group, user, model := parseFilters(r)
+	result, err := h.store.GetDashboardOverview(r.Context(), since, until, group, user, model)
 	if err != nil {
-		slog.Error("dashboard query failed", "error", err); http.Error(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("dashboard query failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, result)
 }
 
 func (h *DashboardHandler) HandleGroups(w http.ResponseWriter, r *http.Request) {
-	since := parseTimeRange(r)
-	result, err := h.store.GetDashboardGroups(r.Context(), since)
+	since, until := parseTimeWindow(r)
+	group, user, model := parseFilters(r)
+	result, err := h.store.GetDashboardGroups(r.Context(), since, until, group, user, model)
 	if err != nil {
-		slog.Error("dashboard query failed", "error", err); http.Error(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("dashboard query failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if result == nil {
@@ -54,19 +58,18 @@ func (h *DashboardHandler) HandleGroups(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *DashboardHandler) HandleUsers(w http.ResponseWriter, r *http.Request) {
-	since := parseTimeRange(r)
-	group := r.URL.Query().Get("group")
-	user := r.URL.Query().Get("user")
-	model := r.URL.Query().Get("model")
+	since, until := parseTimeWindow(r)
+	group, user, model := parseFilters(r)
 	sortCol := r.URL.Query().Get("sort")
 	sortOrder := r.URL.Query().Get("order")
 	limit := 100
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
 		limit = l
 	}
-	result, err := h.store.GetDashboardUsers(r.Context(), since, group, user, model, sortCol, sortOrder, limit)
+	result, err := h.store.GetDashboardUsers(r.Context(), since, until, group, user, model, sortCol, sortOrder, limit)
 	if err != nil {
-		slog.Error("dashboard query failed", "error", err); http.Error(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("dashboard query failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if result == nil {
@@ -76,11 +79,12 @@ func (h *DashboardHandler) HandleUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DashboardHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
-	since := parseTimeRange(r)
-	user := r.URL.Query().Get("user")
-	result, err := h.store.GetDashboardModels(r.Context(), since, user)
+	since, until := parseTimeWindow(r)
+	group, user, model := parseFilters(r)
+	result, err := h.store.GetDashboardModels(r.Context(), since, until, group, user, model)
 	if err != nil {
-		slog.Error("dashboard query failed", "error", err); http.Error(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("dashboard query failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if result == nil {
@@ -90,14 +94,16 @@ func (h *DashboardHandler) HandleModels(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *DashboardHandler) HandleTimeline(w http.ResponseWriter, r *http.Request) {
-	since := parseTimeRange(r)
+	since, until := parseTimeWindow(r)
+	group, user, model := parseFilters(r)
 	groupBy := r.URL.Query().Get("group_by")
 	if groupBy != "user" {
 		groupBy = "model"
 	}
-	result, err := h.store.GetDashboardTimeline(r.Context(), since, groupBy)
+	result, err := h.store.GetDashboardTimeline(r.Context(), since, until, group, user, model, groupBy)
 	if err != nil {
-		slog.Error("dashboard query failed", "error", err); http.Error(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("dashboard query failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if result == nil {
@@ -113,7 +119,8 @@ func (h *DashboardHandler) HandleRecent(w http.ResponseWriter, r *http.Request) 
 	}
 	result, err := h.store.GetRecentEvents(r.Context(), limit)
 	if err != nil {
-		slog.Error("dashboard query failed", "error", err); http.Error(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("dashboard query failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if result == nil {
@@ -122,15 +129,33 @@ func (h *DashboardHandler) HandleRecent(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, result)
 }
 
-func parseTimeRange(r *http.Request) time.Time {
+// parseTimeWindow resolves the [since, until) time window from the request.
+// until defaults to now. A "custom" range reads from/to date params
+// (YYYY-MM-DD); to is treated as inclusive end-of-day (to + 24h). Any
+// missing/unparseable custom bound falls back to the last-7-days window.
+func parseTimeWindow(r *http.Request) (since, until time.Time) {
+	now := time.Now()
 	switch r.URL.Query().Get("range") {
 	case "24h":
-		return time.Now().Add(-24 * time.Hour)
+		return now.Add(-24 * time.Hour), now
 	case "30d":
-		return time.Now().Add(-30 * 24 * time.Hour)
+		return now.Add(-30 * 24 * time.Hour), now
+	case "custom":
+		const layout = "2006-01-02"
+		from, errFrom := time.Parse(layout, r.URL.Query().Get("from"))
+		to, errTo := time.Parse(layout, r.URL.Query().Get("to"))
+		if errFrom != nil || errTo != nil {
+			return now.Add(-7 * 24 * time.Hour), now
+		}
+		return from, to.Add(24 * time.Hour)
 	default:
-		return time.Now().Add(-7 * 24 * time.Hour)
+		return now.Add(-7 * 24 * time.Hour), now
 	}
+}
+
+// parseFilters extracts the common group/user/model filter params.
+func parseFilters(r *http.Request) (group, user, model string) {
+	return r.URL.Query().Get("group"), r.URL.Query().Get("user"), r.URL.Query().Get("model")
 }
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
