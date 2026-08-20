@@ -269,7 +269,7 @@ type TimelineBucket struct {
 	Requests    int       `json:"requests"`
 }
 
-func (s *Store) GetDashboardOverview(ctx context.Context, since time.Time) (DashboardOverview, error) {
+func (s *Store) GetDashboardOverview(ctx context.Context, since, until time.Time, group, user, model string) (DashboardOverview, error) {
 	var o DashboardOverview
 	err := s.db.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT COUNT(*),
@@ -280,13 +280,14 @@ func (s *Store) GetDashboardOverview(ctx context.Context, since time.Time) (Dash
 			COALESCE(ROUND(SUM(%s)::numeric, 2), 0)
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
-		WHERE e.timestamp >= $1`, costUSDExpr), since).Scan(
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)`, costUSDExpr),
+		since, until, group, user, model).Scan(
 		&o.TotalRequests, &o.TotalPromptTokens, &o.TotalCompletionTokens,
 		&o.TotalTokens, &o.ActiveUsers, &o.TotalCostUSD)
 	return o, err
 }
 
-func (s *Store) GetDashboardGroups(ctx context.Context, since time.Time) ([]GroupSummary, error) {
+func (s *Store) GetDashboardGroups(ctx context.Context, since, until time.Time, group, user, model string) ([]GroupSummary, error) {
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT COALESCE(e.group_name, 'unknown'),
 			COUNT(*),
@@ -295,9 +296,9 @@ func (s *Store) GetDashboardGroups(ctx context.Context, since time.Time) ([]Grou
 			COALESCE(ROUND(SUM(%s)::numeric, 2), 0)
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
-		WHERE e.timestamp >= $1
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)
 		GROUP BY COALESCE(e.group_name, 'unknown')
-		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr), since)
+		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr), since, until, group, user, model)
 	if err != nil {
 		return nil, err
 	}
@@ -317,7 +318,7 @@ func (s *Store) GetDashboardGroups(ctx context.Context, since time.Time) ([]Grou
 	return result, nil
 }
 
-func (s *Store) GetDashboardUsers(ctx context.Context, since time.Time, group, user, model, sortCol, sortOrder string, limit int) ([]UserSummary, error) {
+func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, group, user, model, sortCol, sortOrder string, limit int) ([]UserSummary, error) {
 	validSorts := map[string]string{
 		"total_tokens": "total_tokens", "cost_usd": "cost_usd",
 		"requests": "requests", "username": "e.username",
@@ -345,12 +346,12 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since time.Time, group, u
 			COALESCE(ROUND(SUM(%s)::numeric, 2), 0) as cost_usd
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
-		WHERE e.timestamp >= $1 AND ($2 = '' OR e.group_name = $2) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)
 		GROUP BY e.username, COALESCE(e.group_name, '')
 		ORDER BY %s %s
-		LIMIT $3`, costUSDExpr, sortExpr, direction)
+		LIMIT $6`, costUSDExpr, sortExpr, direction)
 
-	rows, err := s.db.QueryContext(ctx, query, since, group, limit, user, model)
+	rows, err := s.db.QueryContext(ctx, query, since, until, group, user, model, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +371,7 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since time.Time, group, u
 	return result, nil
 }
 
-func (s *Store) GetDashboardModels(ctx context.Context, since time.Time, username string) ([]ModelSummary, error) {
+func (s *Store) GetDashboardModels(ctx context.Context, since, until time.Time, group, user, model string) ([]ModelSummary, error) {
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT e.model, COALESCE(e.provider, ''),
 			COUNT(*),
@@ -382,9 +383,9 @@ func (s *Store) GetDashboardModels(ctx context.Context, since time.Time, usernam
 			COALESCE(ROUND(SUM(%s)::numeric, 2), 0)
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
-		WHERE e.timestamp >= $1 AND ($2 = '' OR e.username = $2)
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)
 		GROUP BY e.model, COALESCE(e.provider, '')
-		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr), since, username)
+		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr), since, until, group, user, model)
 	if err != nil {
 		return nil, err
 	}
@@ -404,8 +405,8 @@ func (s *Store) GetDashboardModels(ctx context.Context, since time.Time, usernam
 	return result, nil
 }
 
-func (s *Store) GetDashboardTimeline(ctx context.Context, since time.Time, groupBy string) ([]TimelineBucket, error) {
-	hours := time.Since(since).Hours()
+func (s *Store) GetDashboardTimeline(ctx context.Context, since, until time.Time, group, user, model, groupBy string) ([]TimelineBucket, error) {
+	hours := until.Sub(since).Hours()
 	truncInterval := "day"
 	if hours <= 48 {
 		truncInterval = "hour"
@@ -422,11 +423,11 @@ func (s *Store) GetDashboardTimeline(ctx context.Context, since time.Time, group
 			COALESCE(SUM(e.total_tokens),0),
 			COUNT(*)
 		FROM usage_events e
-		WHERE e.timestamp >= $1
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)
 		GROUP BY bucket, series
 		ORDER BY bucket, series`, truncInterval, seriesCol)
 
-	rows, err := s.db.QueryContext(ctx, query, since)
+	rows, err := s.db.QueryContext(ctx, query, since, until, group, user, model)
 	if err != nil {
 		return nil, err
 	}

@@ -81,14 +81,14 @@ tr.clickable{cursor:pointer}
 
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
   <div style="display:flex;gap:4px">
-    <a href="/me" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My Account</a>
+    <a href="/me" class="auth-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My Account</a>
     <a href="/dashboard" style="background:var(--blue);color:#fff;border:1px solid var(--blue);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
     <a href="/routing" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
     <a href="/compression" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
   </div>
   <div style="display:flex;align-items:center;gap:12px">
     <span id="userInfo" style="font-size:11px;color:var(--text2)"></span>
-    <a href="/oauth/sign_out" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600;letter-spacing:.3px">Logout</a>
+    <a href="/oauth/sign_out" class="auth-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600;letter-spacing:.3px">Logout</a>
   </div>
 </div>
 
@@ -132,7 +132,8 @@ tr.clickable{cursor:pointer}
     <span style="font-size:11px;color:var(--text2)">User:</span>
     <input type="text" id="user-filter-input" placeholder="Search..." autocomplete="off"
       style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:5px;font-size:12px;width:130px"
-      oninput="showUserSuggestions(this.value)" onfocus="showUserSuggestions(this.value)">
+      oninput="showUserSuggestions(this.value)" onfocus="showUserSuggestions(this.value)"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('user-suggestions').style.display='none';selectUserFilter(this.value);}">
     <div id="user-suggestions" style="display:none;position:absolute;top:100%;left:30px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;max-height:180px;overflow-y:auto;width:160px;z-index:50;margin-top:2px;box-shadow:0 6px 20px rgba(0,0,0,.5)"></div>
   </div>
 
@@ -236,21 +237,27 @@ async function refresh(){
   var uf=userFilter?'&user='+encodeURIComponent(userFilter):'';
   var gf=groupFilter?'&group='+encodeURIComponent(groupFilter):'';
   var mf=modelFilter?'&model='+encodeURIComponent(modelFilter):'';
-  var filters='range='+r+gf+uf;
-  const [ov,gr,us,mo,tl,rc]=await Promise.all([
+  var filters='range='+r+gf+uf+mf;
+  var rangeOnly='range='+r;
+  // Charts use the filtered set; the filter dropdowns/roster use
+  // unfiltered "catalog" fetches so selecting a filter never shrinks
+  // the list of things you can still pick.
+  const [ov,gr,us,mo,tl,rc,rosterCat,modelCat]=await Promise.all([
     api('/api/v1/dashboard/overview?'+filters),
-    api('/api/v1/dashboard/groups?range='+r),
-    api('/api/v1/dashboard/users?'+filters+mf+'&sort='+currentSort+'&order='+currentOrder),
+    api('/api/v1/dashboard/groups?'+filters),
+    api('/api/v1/dashboard/users?'+filters+'&sort='+currentSort+'&order='+currentOrder),
     api('/api/v1/dashboard/models?'+filters),
-    api('/api/v1/dashboard/timeline?range='+r+'&group_by='+tlGroupBy),
-    api('/api/v1/dashboard/recent?limit=20')
+    api('/api/v1/dashboard/timeline?'+filters+'&group_by='+tlGroupBy),
+    api('/api/v1/dashboard/recent?limit=20'),
+    api('/api/v1/dashboard/users?'+rangeOnly+'&limit=200'),
+    api('/api/v1/dashboard/models?'+rangeOnly)
   ]);
   cachedGroups=gr;
   cachedModels=modelFilter?mo.filter(function(m){return m.model===modelFilter}):mo;
   cachedUsers=us;
   renderKPI(ov);
   renderGroupFilterBtns(gr);
-  populateFilterDropdowns(mo, us);
+  populateFilterDropdowns(modelCat, rosterCat);
   renderUsers(us);
   renderRecent(rc);
   renderModelChart();
@@ -621,7 +628,6 @@ function renderTimeline(data){
 function setGroupFilter(g){groupFilter=g;userFilter='';expandedUser='';refresh()}
 function clearGroupFilter(){groupFilter='';userFilter='';expandedUser='';refresh()}
 function setUserFilter(u){userFilter=userFilter===u?'':u;refresh()}
-function clearUserFilter(){userFilter='';refresh()}
 function sortBy(col){if(currentSort===col)currentOrder=currentOrder==='desc'?'asc':'desc';else{currentSort=col;currentOrder='desc'}refresh()}
 
 document.getElementById('range-btns').addEventListener('click',e=>{
@@ -673,6 +679,10 @@ setInterval(refresh,30000);
 fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
   if(d.user){
     document.getElementById('userInfo').textContent=d.user;
+    // Only surface auth-only nav (My Account, Logout) when an
+    // identity is present (SSO/oauth-proxy). On the unauthenticated
+    // dogfood there is no X-Forwarded-User, so these stay hidden.
+    document.querySelectorAll('.auth-only').forEach(function(el){el.style.display='';});
     if(d.user!=='admin'&&d.user!=='kube:admin'&&!userFilter){
       selectUserFilter(d.user);
     }
