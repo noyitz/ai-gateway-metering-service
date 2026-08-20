@@ -132,7 +132,7 @@
 
   <div class="legend">
     <span><i class="swatch" style="--sw: var(--ours)"></i> Noy — <a href="https://github.com/praxis-proxy/ai/pull/581">PR #581</a> / <a href="https://github.com/praxis-proxy/ai/pull/582">#582</a> in review &#183; <a href="https://github.com/praxis-proxy/ai/issues/577">issue #577</a></span>
-    <span><i class="swatch" style="--sw: var(--yossi)"></i> Yossi — <a href="https://github.com/praxis-proxy/ai/pull/709">PR #709</a> in review &#183; <a href="https://github.com/praxis-proxy/ai/issues/698">issue #698</a></span>
+    <span><i class="swatch" style="--sw: var(--yossi)"></i> Yossi — <a href="https://github.com/praxis-proxy/ai/pull/709">PR #709</a> / <a href="https://github.com/praxis-proxy/ai/pull/769">#769</a> in review &#183; <a href="https://github.com/praxis-proxy/ai/issues/698">issue #698</a></span>
     <span><i class="swatch" style="--sw: var(--gap)"></i> on the dogfood branch only — <strong>needs a PR</strong></span>
     <span><i class="swatch"></i> upstream, already in-tree</span>
     <span><i class="swatch" style="--sw: var(--ext)"></i> external services — not part of Praxis</span>
@@ -366,9 +366,9 @@
       <td>New PR after #582 lands — natural follow-up slice</td>
     </tr>
     <tr>
-      <td>OIDC / Red Hat SSO via <code>jwt_auth</code> <span class="tag tag-gap">needs PR</span></td>
+      <td>OIDC / Red Hat SSO via <code>jwt_auth</code> <a href="https://github.com/praxis-proxy/ai/pull/769" class="prlink"><span class="tag tag-yossi">#769 &#183; Yossi</span></a></td>
       <td>Dogfood branch (<code>jwt_auth</code>, JWKS validation), <em>not</em> in the deployed chain</td>
-      <td>Nothing upstream</td>
+      <td><a href="https://github.com/praxis-proxy/ai/pull/769">PR #769</a> open (in review)</td>
       <td>IT confirmed: OIDC support is enough to integrate Red Hat SSO, and the filter is already written
       (JWKS cache, issuer/audience validation, 11 tests, example config, docs). Needs: the upstream PR, SSO
       issuer/JWKS configuration, and — to run <em>alongside</em> <code>api_key_auth</code> on one listener rather
