@@ -87,7 +87,7 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
 
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
   <div style="display:flex;gap:4px">
-    <a href="/me" style="background:var(--cyn);color:#fff;border:1px solid var(--cyn);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My Account</a>
+    <a href="/me" class="auth-only" style="display:none;background:var(--cyn);color:#fff;border:1px solid var(--cyn);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My Account</a>
   </div>
   <div style="display:flex;align-items:center;gap:12px">
     <span id="userInfo" style="font-size:11px;color:var(--t2)"></span>
@@ -248,6 +248,7 @@ async function init(){
     me=w.user||'';
     myGroup=w.groups||'';
     if(myGroup.startsWith('[')){try{myGroup=JSON.parse(myGroup)[0]||'';}catch(e){myGroup='';}}
+    if(me){document.querySelectorAll('.auth-only').forEach(function(el){el.style.display='';});}
     document.getElementById('userInfo').textContent=me;
     document.getElementById('pageTitle').textContent='Welcome, '+me;
     document.getElementById('groupInfo').textContent=myGroup?'Group: '+myGroup:'';
