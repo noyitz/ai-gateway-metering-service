@@ -136,7 +136,7 @@
     <span><i class="swatch" style="--sw: var(--gap)"></i> on the dogfood branch only — <strong>needs a PR</strong></span>
     <span><i class="swatch"></i> upstream, already in-tree</span>
     <span><i class="swatch" style="--sw: var(--ext)"></i> external services — not part of Praxis</span>
-    <span><i class="swatch dashed" style="--sw: var(--shane)"></i> Shane — <a href="https://github.com/praxis-proxy/ai/pull/658">proposal #658</a> (<a href="https://github.com/praxis-proxy/ai/issues/121">issue #121</a>), added to the dogfood later</span>
+    <span><i class="swatch dashed" style="--sw: var(--shane)"></i> Token rate limiting — <a href="https://github.com/praxis-proxy/ai/issues/121">issue #121</a>: impl <a href="https://github.com/praxis-proxy/ai/pull/790">#790</a> / <a href="https://github.com/praxis-proxy/ai/pull/796">#796</a> in flight, added to the dogfood later</span>
   </div>
 
   <figure id="dogfood">
@@ -303,7 +303,7 @@
       <text x="1120" y="620" class="small t-shane">inserts into the chain later</text>
       <rect x="1100" y="640" width="200" height="64" class="box b-shane"/>
       <text x="1200" y="662" text-anchor="middle" class="mono-t" style="font-size:11.5px">token_rate_limit</text>
-      <a href="https://github.com/praxis-proxy/ai/pull/658" target="_blank" rel="noopener" class="prlink"><text x="1200" y="679" text-anchor="middle" class="small t-shane">proposal #658 &#183; issue #121</text></a>
+      <a href="https://github.com/praxis-proxy/ai/issues/121" target="_blank" rel="noopener" class="prlink"><text x="1200" y="679" text-anchor="middle" class="small t-shane">impl #790 / #796 &#183; #121</text></a>
       <text x="1200" y="695" text-anchor="middle" class="small">reserve &#9654; &#183; reconcile &#9664;</text>
     </svg>
     </div>
@@ -344,8 +344,8 @@
     <tr>
       <td><code>identity_header_guard</code> <a href="https://github.com/praxis-proxy/ai/pull/709" target="_blank" rel="noopener" class="prlink"><span class="tag tag-yossi">#709 &#183; Yossi</span></a> &#183; <a href="https://github.com/praxis-proxy/ai/issues/698">#698</a></td>
       <td>Dogfood branch + PR</td>
-      <td>PR open but <strong>conflicting</strong> with main</td>
-      <td>Yossi rebases</td>
+      <td>PR open, rebased &amp; <strong>mergeable</strong></td>
+      <td>Maintainer review + CI approval</td>
     </tr>
     <tr>
       <td><code>api_key_auth</code> <span class="tag tag-gap">needs PR</span></td>
@@ -376,10 +376,10 @@
       other's credential type</td>
     </tr>
     <tr>
-      <td><code>token_rate_limit</code> <a href="https://github.com/praxis-proxy/ai/pull/658" target="_blank" rel="noopener" class="prlink"><span class="tag tag-shane">#658 &#183; Shane</span></a> &#183; <a href="https://github.com/praxis-proxy/ai/issues/121">#121</a></td>
-      <td>Nowhere yet — design proposal</td>
-      <td>Proposal PR open (Shane + jland)</td>
-      <td>Design review; will be added to the dogfood chain once built</td>
+      <td><code>token_rate_limit</code> <a href="https://github.com/praxis-proxy/ai/issues/121" target="_blank" rel="noopener" class="prlink"><span class="tag tag-shane">#121 &#183; epic</span></a></td>
+      <td>Nowhere in-tree yet — implementation in flight</td>
+      <td>Proposal <a href="https://github.com/praxis-proxy/ai/pull/658">#658</a> closed (proposals moved to <a href="https://github.com/praxis-proxy/enhancements">praxis-proxy/enhancements</a>); impl PRs open: <a href="https://github.com/praxis-proxy/ai/pull/790">#790</a> (nerdalert, draft) + <a href="https://github.com/praxis-proxy/ai/pull/796">#796</a> (jordigilh)</td>
+      <td>Review/merge the impl PRs; added to the dogfood chain once built</td>
     </tr>
     <tr>
       <td>metering service + dashboard <span class="tag tag-neutral">external</span></td>
