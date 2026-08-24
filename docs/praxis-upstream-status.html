@@ -132,11 +132,11 @@
 
   <div class="legend">
     <span><i class="swatch" style="--sw: var(--ours)"></i> Noy — <a href="https://github.com/praxis-proxy/ai/pull/581">PR #581</a> / <a href="https://github.com/praxis-proxy/ai/pull/582">#582</a> in review &#183; <a href="https://github.com/praxis-proxy/ai/issues/577">issue #577</a></span>
-    <span><i class="swatch" style="--sw: var(--yossi)"></i> Yossi — <a href="https://github.com/praxis-proxy/ai/pull/709">PR #709</a> / <a href="https://github.com/praxis-proxy/ai/pull/769">#769</a> in review &#183; <a href="https://github.com/praxis-proxy/ai/issues/698">issue #698</a></span>
+    <span><i class="swatch" style="--sw: var(--yossi)"></i> Yossi — <a href="https://github.com/praxis-proxy/ai/pull/709">PR #709</a> / <a href="https://github.com/praxis-proxy/ai/pull/714">#714</a> / <a href="https://github.com/praxis-proxy/ai/pull/769">#769</a> in review &#183; <a href="https://github.com/praxis-proxy/ai/issues/698">issue #698</a></span>
     <span><i class="swatch" style="--sw: var(--gap)"></i> on the dogfood branch only — <strong>needs a PR</strong></span>
     <span><i class="swatch"></i> upstream, already in-tree</span>
     <span><i class="swatch" style="--sw: var(--ext)"></i> external services — not part of Praxis</span>
-    <span><i class="swatch dashed" style="--sw: var(--shane)"></i> Shane — <a href="https://github.com/praxis-proxy/ai/pull/658">proposal #658</a> (<a href="https://github.com/praxis-proxy/ai/issues/121">issue #121</a>), added to the dogfood later</span>
+    <span><i class="swatch dashed" style="--sw: var(--shane)"></i> Shane — <a href="https://github.com/praxis-proxy/ai/pull/658">proposal #658</a> (<a href="https://github.com/praxis-proxy/ai/issues/121">issue #121</a>) <strong>now closed</strong>, moved to <a href="https://github.com/praxis-proxy/enhancements">enhancements</a>; added to the dogfood later</span>
   </div>
 
   <figure id="dogfood">
@@ -326,60 +326,77 @@
   for humans) — has its own diagram: <a href="praxis-sso-future.html">Praxis after SSO integration</a>.</p>
 
   <h2>Gap map — what still needs a PR</h2>
+  <p class="lede">Verified against GitHub on <strong>24 August 2026</strong>. Nothing from the metering and identity
+  chain has merged yet. Four things changed since the previous revision: <a href="https://github.com/praxis-proxy/ai/pull/581">#581</a>
+  is rebased and no longer conflicting, <a href="https://github.com/praxis-proxy/ai/pull/709">#709</a> is no longer
+  conflicting either, <code>model_access</code> and OpenAI Responses parsing already have an issue and a PR
+  respectively, and <a href="https://github.com/praxis-proxy/ai/pull/658">#658</a> was closed in a repository move.
+  Separately, <a href="https://github.com/praxis-proxy/ai/pull/760"><code>http_callout</code> #760</a> merged the same
+  day and changes the shape of both <code>api_key_auth</code> and the <code>identity_header_guard</code> decision.</p>
   <div class="tablewrap">
   <table>
     <tr><th>Piece</th><th>Lives today</th><th>Upstream status</th><th>Next action</th></tr>
     <tr>
       <td><code>external_metering</code> <a href="https://github.com/praxis-proxy/ai/pull/581" target="_blank" rel="noopener" class="prlink"><span class="tag tag-ours">#581 &#183; Noy</span></a> &#183; <a href="https://github.com/praxis-proxy/ai/issues/577">#577</a></td>
       <td>Dogfood branch (old vendored HTTP client) + PR</td>
-      <td>PR open, all checks green, SubRequestClient port done</td>
-      <td>Maintainer review + CI approval; dogfood rebases onto the merged version</td>
+      <td>PR open, <strong>rebased onto main</strong> (incl. <a href="https://github.com/praxis-proxy/ai/pull/760">#760</a>) &#183; mergeable, build + 1122 tests + clippy green &#183; all six of Jordi's findings answered</td>
+      <td>Awaiting an approving review &#8212; nothing outstanding on our side; dogfood rebases onto the merged version</td>
     </tr>
     <tr>
       <td>cache absent-vs-zero fix <a href="https://github.com/praxis-proxy/ai/pull/582" target="_blank" rel="noopener" class="prlink"><span class="tag tag-ours">#582 &#183; Noy</span></a> &#183; <a href="https://github.com/praxis-proxy/ai/issues/577">#577</a></td>
       <td>Only in the PR — the dogfood branch still has the bug</td>
-      <td>PR open, all checks green, bot findings answered</td>
-      <td>Merge; dogfood picks it up on rebase</td>
+      <td>PR open, mergeable, checks clean, bot findings answered (cache counts now <code>Option&lt;u64&gt;</code> end to end)</td>
+      <td>Awaiting an approving review &#8212; Shane is prioritising this one. The audit failure was RUSTSEC-2026-0258 (<code>h2</code> 0.4.15), fixed on main independently by <a href="https://github.com/praxis-proxy/ai/pull/764">#764</a></td>
     </tr>
     <tr>
       <td><code>identity_header_guard</code> <a href="https://github.com/praxis-proxy/ai/pull/709" target="_blank" rel="noopener" class="prlink"><span class="tag tag-yossi">#709 &#183; Yossi</span></a> &#183; <a href="https://github.com/praxis-proxy/ai/issues/698">#698</a></td>
       <td>Dogfood branch + PR</td>
-      <td>PR open but <strong>conflicting</strong> with main</td>
-      <td>Yossi rebases</td>
+      <td>PR open, <strong>rebased &#8212; no longer conflicting</strong>, mergeable</td>
+      <td>Shane is making the call on standalone filter vs. a core capture-and-strip primitive. Aslak raised the same question on the PR. Fresh input: <a href="https://github.com/praxis-proxy/ai/pull/760">#760 <code>http_callout</code></a> merged 24 Aug as a generic primitive, which leans the precedent toward primitive-plus-config</td>
     </tr>
     <tr>
-      <td><code>api_key_auth</code> <span class="tag tag-gap">needs PR</span></td>
+      <td><code>api_key_auth</code> <span class="tag tag-gap">needs PR</span> &#183; <a href="https://github.com/praxis-proxy/ai/issues/707">#707</a></td>
       <td>Dogfood branch, deployed in every listener</td>
-      <td>Nothing upstream</td>
-      <td>New PR: lean key-auth filter (validate callout + cache + verified identity metadata)</td>
+      <td><a href="https://github.com/praxis-proxy/ai/issues/707">Issue #707 open</a> &#8212; no PR yet</td>
+      <td><strong>Scope shrank:</strong> <a href="https://github.com/praxis-proxy/ai/pull/760">#760 <code>http_callout</code></a> merged 24 Aug, so the callout plumbing, SSRF hardening and circuit breaking are now core. Left to write: TTL cache, identity-metadata contract, key strip. <strong>Settle the target repo first</strong> &#8212; <a href="https://github.com/praxis-proxy/ai/issues/758">epic #758</a> routes this to <code>praxis-proxy/experimental</code> as interim, but Shane wants it native and permanent</td>
     </tr>
     <tr>
-      <td><code>model_access</code> <span class="tag tag-gap">needs PR</span></td>
+      <td><code>model_access</code> <span class="tag tag-gap">needs PR</span> &#183; <a href="https://github.com/praxis-proxy/ai/issues/712">#712</a></td>
       <td>Dogfood branch, deployed</td>
-      <td>Nothing upstream</td>
-      <td>New PR: per-group model allow/deny lists</td>
+      <td><a href="https://github.com/praxis-proxy/ai/issues/712">Issue #712 open</a> &#8212; no PR yet</td>
+      <td>New PR: per-group model allow/deny lists. The issue exists, so this needs an owner and code, not tracking</td>
     </tr>
     <tr>
-      <td>OpenAI Responses usage parsing <span class="tag tag-gap">needs PR</span></td>
-      <td>Dogfood branch (<code>token_count</code> extension)</td>
-      <td>Nothing upstream</td>
-      <td>New PR after #582 lands — natural follow-up slice</td>
+      <td>OpenAI Responses usage parsing <a href="https://github.com/praxis-proxy/ai/pull/714" target="_blank" rel="noopener" class="prlink"><span class="tag tag-yossi">#714 &#183; Yossi</span></a> &#183; <a href="https://github.com/praxis-proxy/ai/issues/713">#713</a></td>
+      <td>Dogfood branch (<code>token_count</code> extension) + PR</td>
+      <td><strong>PR open</strong>, mergeable, checks clean</td>
+      <td>Awaiting review. <strong>Not blocked on #582</strong> &#8212; it is a separate fallback branch in <code>parse_openai</code>, so it can be reviewed in parallel</td>
     </tr>
     <tr>
       <td>OIDC / Red Hat SSO via <code>jwt_auth</code> <a href="https://github.com/praxis-proxy/ai/pull/769" class="prlink"><span class="tag tag-yossi">#769 &#183; Yossi</span></a></td>
       <td>Dogfood branch (<code>jwt_auth</code>, JWKS validation), <em>not</em> in the deployed chain</td>
-      <td><a href="https://github.com/praxis-proxy/ai/pull/769">PR #769</a> open (in review)</td>
+      <td><a href="https://github.com/praxis-proxy/ai/pull/769">PR #769</a> open &#183; <strong>changes requested</strong> and <strong>conflicting</strong> with main</td>
       <td>IT confirmed: OIDC support is enough to integrate Red Hat SSO, and the filter is already written
-      (JWKS cache, issuer/audience validation, 11 tests, example config, docs). Needs: the upstream PR, SSO
-      issuer/JWKS configuration, and — to run <em>alongside</em> <code>api_key_auth</code> on one listener rather
-      than replacing it — a small credential-dispatch tweak, since today each filter 401s traffic carrying the
-      other's credential type</td>
+      (JWKS cache, issuer/audience validation, 11 tests, example config, docs). <strong>Blocking now:</strong>
+      11 inline review comments from rikatz (21 Aug) are unanswered &#8212; exponential backoff on JWKS failure
+      (a 30&nbsp;s cooldown turns a transient IdP blip into an auth outage), configurable JWKS TTL, RFC-6750
+      Bearer parsing, and a test-fixture RSA private key that will trip code scanners &#8212; plus a rebase.
+      Then: SSO issuer/JWKS configuration, and &#8212; to run <em>alongside</em> <code>api_key_auth</code> on one
+      listener rather than replacing it &#8212; a small credential-dispatch tweak, since today each filter 401s
+      traffic carrying the other's credential type. Shane wants the bridge-vs-native question settled before merge</td>
     </tr>
     <tr>
       <td><code>token_rate_limit</code> <a href="https://github.com/praxis-proxy/ai/pull/658" target="_blank" rel="noopener" class="prlink"><span class="tag tag-shane">#658 &#183; Shane</span></a> &#183; <a href="https://github.com/praxis-proxy/ai/issues/121">#121</a></td>
-      <td>Nowhere yet — design proposal</td>
-      <td>Proposal PR open (Shane + jland)</td>
-      <td>Design review; will be added to the dogfood chain once built</td>
+      <td>Nowhere yet &#8212; design proposal</td>
+      <td><strong>#658 was closed 20 Aug</strong> &#8212; proposals moved to <a href="https://github.com/praxis-proxy/enhancements">praxis-proxy/enhancements</a> and it has not been retargeted yet</td>
+      <td>Retarget the proposal. Implementation is already moving ahead of it:
+      <a href="https://github.com/praxis-proxy/ai/pull/790">#790</a> shared Valkey quota enforcement (Brent),
+      <a href="https://github.com/praxis-proxy/ai/pull/796">#796</a> per-header bucket keys (Jordi),
+      <a href="https://github.com/praxis-proxy/ai/issues/789">#789</a> sliding-window (unassigned).
+      Jordi's point on #658 stands: sliding-window and distributed counters are <em>two</em> missing primitives &#8212;
+      a distributed token-bucket will not satisfy the proposal as written, and a single-instance sliding-window
+      will not either. Meanwhile <code>external_metering</code>'s balance check is the sanctioned interim for
+      multi-instance quota</td>
     </tr>
     <tr>
       <td>metering service + dashboard <span class="tag tag-neutral">external</span></td>
