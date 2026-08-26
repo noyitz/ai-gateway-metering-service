@@ -75,6 +75,29 @@ func LoadPrices(ctx context.Context) ([]ModelPrice, string) {
 	return prices, "bundled"
 }
 
+// LocalPrices returns pricing for self-hosted / on-prem models that LiteLLM's
+// catalog does not carry. These run on our own GPUs at no per-token cost, so
+// they price at $0 and appear as "free" in the dashboard's savings view.
+//
+// They must be seeded explicitly for two reasons: LiteLLM never emits them (its
+// $0 entries are dropped in entryToModelPrice), and without a model_pricing row
+// the cost query falls back to the default paid rate (~$15/M in), silently
+// turning free traffic into phantom spend. Seeding here makes the rows
+// reproducible across DB rebuilds instead of relying on manual INSERTs.
+//
+// Model strings MUST match exactly what the gateway records in
+// usage_events.model — model_pricing keys on the model name alone.
+func LocalPrices() []ModelPrice {
+	return []ModelPrice{
+		// Self-hosted Qwen on vLLM — the model id billed traffic records.
+		{Model: "Qwen3.8-27B-FP8", Provider: "vllm"},
+		// Legacy alias: older events recorded model="qwen" before the id above
+		// was adopted. Kept at $0 so historical rows don't reprice to the paid
+		// default. Safe to drop once no events with model="qwen" remain.
+		{Model: "qwen", Provider: "qwen"},
+	}
+}
+
 // FetchLatest downloads the current LiteLLM pricing file from GitHub.
 func FetchLatest(ctx context.Context) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
