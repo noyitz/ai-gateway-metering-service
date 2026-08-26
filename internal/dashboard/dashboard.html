@@ -32,9 +32,9 @@ header h1 span{color:var(--text2);font-weight:400;font-size:14px;margin-left:8px
 
 .savings-ref{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0}
 .savings-ref select{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:3px 6px;border-radius:5px;font-size:11px;cursor:pointer}
-.savings-note{font-size:12px;color:var(--text2);margin:2px 0 10px;min-height:16px}
+.savings-note{font-size:13px;color:var(--text);margin:2px 0 10px;min-height:18px}
 .savings-note b{color:var(--text)}
-.savings-amt{color:var(--green);font-weight:800}
+.savings-amt{color:var(--green);font-weight:800;font-size:16px}
 .chart-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
 .chart-head h2{margin-bottom:0}
 
@@ -479,7 +479,14 @@ var SAVINGS_REF_MODELS=['claude-opus-5','claude-fable-5','claude-opus-4-8','clau
 function populateSavingsRef(){
   var sel=document.getElementById('savings-ref-select');
   if(!sel||sel.options.length)return;
-  sel.innerHTML=SAVINGS_REF_MODELS.map(function(m){
+  // Order most-expensive first (input+output rate), tie-break alphabetically,
+  // so the "priced vs" list reads top-down from the costliest reference.
+  var ordered=SAVINGS_REF_MODELS.slice().sort(function(a,b){
+    var pa=MODEL_PRICING_JS[a]||{i:0,o:0}, pb=MODEL_PRICING_JS[b]||{i:0,o:0};
+    var d=(pb.i+pb.o)-(pa.i+pa.o);
+    return d!==0?d:a.localeCompare(b);
+  });
+  sel.innerHTML=ordered.map(function(m){
     return '<option value="'+m+'"'+(m===savingsRef?' selected':'')+'>'+m+'</option>';
   }).join('');
 }
