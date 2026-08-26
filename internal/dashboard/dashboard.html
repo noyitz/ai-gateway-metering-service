@@ -293,7 +293,7 @@ async function refresh(){
     api('/api/v1/dashboard/users?'+filters+'&sort='+currentSort+'&order='+currentOrder),
     api('/api/v1/dashboard/models?'+filters),
     api('/api/v1/dashboard/timeline?'+filters+'&group_by='+tlGroupBy),
-    api('/api/v1/dashboard/recent?limit=20'),
+    api('/api/v1/dashboard/recent?limit=20'+gf+uf+mf),
     api('/api/v1/dashboard/users?'+rangeOnly+'&limit=200'),
     api('/api/v1/dashboard/models?'+rangeOnly)
   ]);
