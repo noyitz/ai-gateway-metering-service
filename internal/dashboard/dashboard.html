@@ -30,11 +30,7 @@ header h1 span{color:var(--text2);font-weight:400;font-size:14px;margin-left:8px
 .kpi-value.blue{color:var(--blue)}.kpi-value.green{color:var(--green)}.kpi-value.orange{color:var(--orange)}.kpi-value.purple{color:var(--purple)}
 .kpi-sub{display:block;font-size:11px;color:var(--text2);margin-top:6px}
 
-.savings-ref{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0}
-.savings-ref select{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:3px 6px;border-radius:5px;font-size:11px;cursor:pointer}
-.savings-note{font-size:13px;color:var(--text);margin:2px 0 10px;min-height:18px}
-.savings-note b{color:var(--text)}
-.savings-amt{color:var(--green);font-weight:800;font-size:16px}
+.kpi-sub select{background:var(--bg);color:var(--green);border:1px solid rgba(63,185,80,.4);padding:2px 6px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;margin-left:4px}
 .chart-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
 .chart-head h2{margin-bottom:0}
 
@@ -155,19 +151,13 @@ tr.clickable{cursor:pointer}
   <div class="kpi"><span class="kpi-label">Total Requests</span><span id="kpi-requests" class="kpi-value blue">--</span></div>
   <div class="kpi"><span class="kpi-label">Total Tokens</span><span id="kpi-tokens" class="kpi-value green">--</span></div>
   <div class="kpi"><span class="kpi-label">Estimated Cost</span><span id="kpi-cost" class="kpi-value orange">--</span></div>
-  <div class="kpi saved"><span class="kpi-label">Saved · Free Models</span><span id="kpi-savings" class="kpi-value green">--</span><span id="kpi-savings-sub" class="kpi-sub"></span></div>
+  <div class="kpi saved"><span class="kpi-label">Saved · Free Models</span><span id="kpi-savings" class="kpi-value green">--</span><span id="kpi-savings-sub" class="kpi-sub">vs <select id="savings-ref-select" onchange="savingsRef=this.value;renderSavings();"></select></span></div>
   <div class="kpi"><span class="kpi-label">Active Users</span><span id="kpi-users" class="kpi-value purple">--</span></div>
 </div>
 
 <div class="charts-row three-col">
   <div class="chart-box">
-    <div class="chart-head">
-      <h2>Free Model Savings</h2>
-      <span class="savings-ref">priced vs
-        <select id="savings-ref-select" onchange="savingsRef=this.value;renderSavings();"></select>
-      </span>
-    </div>
-    <div id="savings-note" class="savings-note"></div>
+    <h2>Token Usage · Free vs Paid</h2>
     <canvas id="savings-chart"></canvas>
   </div>
   <div class="chart-box">
@@ -516,16 +506,8 @@ function renderSavings(){
       +(m.cache_creation_tokens||0)*ref.cw/1e6;
   });
   var paidTokens=Math.max(totalTokens-freeTokens,0);
-  var freePct=totalTokens>0?(freeTokens/totalTokens*100):0;
 
   var kpi=document.getElementById('kpi-savings');if(kpi)kpi.textContent=fmtC(totalSaved);
-  var kpiSub=document.getElementById('kpi-savings-sub');if(kpiSub)kpiSub.textContent=freeTokens>0?('vs '+savingsRef):'';
-  var note=document.getElementById('savings-note');
-  if(note){
-    note.innerHTML=freeTokens>0
-      ? '<b class="savings-amt">'+fmtC(totalSaved)+'</b> avoided vs <b>'+savingsRef+'</b> — free models are <b>'+freePct.toFixed(1)+'%</b> of tokens'
-      : 'No free-model usage in this range.';
-  }
 
   if(savingsChart)savingsChart.destroy();
   var canvas=document.getElementById('savings-chart');
