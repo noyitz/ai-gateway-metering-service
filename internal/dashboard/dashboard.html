@@ -30,19 +30,13 @@ header h1 span{color:var(--text2);font-weight:400;font-size:14px;margin-left:8px
 .kpi-value.blue{color:var(--blue)}.kpi-value.green{color:var(--green)}.kpi-value.orange{color:var(--orange)}.kpi-value.purple{color:var(--purple)}
 .kpi-sub{display:block;font-size:11px;color:var(--text2);margin-top:6px}
 
-.savings-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
-.savings-hero{display:flex;flex-direction:column}
-.savings-hero h2{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .savings-ref{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0}
 .savings-ref select{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:3px 6px;border-radius:5px;font-size:11px;cursor:pointer}
-.savings-amount{display:block;font-size:44px;font-weight:800;color:var(--green);line-height:1.1;margin-top:6px}
-.savings-note{font-size:12px;color:var(--text2);margin-top:6px}
+.savings-note{font-size:12px;color:var(--text2);margin:2px 0 10px;min-height:16px}
 .savings-note b{color:var(--text)}
-.cov-wrap{margin-top:auto;padding-top:16px}
-.cov-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:5px}
-.cov-bar{display:flex;height:20px;border-radius:5px;overflow:hidden;background:var(--border)}
-.cov-free{background:var(--green);height:100%}
-.cov-paid{background:var(--orange);height:100%}
+.savings-amt{color:var(--green);font-weight:800}
+.chart-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.chart-head h2{margin-bottom:0}
 
 h2{font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text)}
 h2 .filter-tag{font-size:12px;color:var(--blue);background:rgba(88,166,255,.15);padding:2px 8px;border-radius:4px;margin-left:8px;cursor:pointer}
@@ -89,7 +83,7 @@ tr.clickable{cursor:pointer}
 .recent-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 
 @media(max-width:1100px){.charts-row{grid-template-columns:1fr 1fr}}
-@media(max-width:900px){.kpi-row{grid-template-columns:repeat(2,1fr)}.charts-row{grid-template-columns:1fr}.savings-row{grid-template-columns:1fr}}
+@media(max-width:900px){.kpi-row{grid-template-columns:repeat(2,1fr)}.charts-row{grid-template-columns:1fr}}
 @media(max-width:600px){.kpi-row{grid-template-columns:1fr}}
 </style>
 </head>
@@ -165,50 +159,27 @@ tr.clickable{cursor:pointer}
   <div class="kpi"><span class="kpi-label">Active Users</span><span id="kpi-users" class="kpi-value purple">--</span></div>
 </div>
 
-<div class="savings-row">
-  <div class="chart-box savings-hero">
-    <h2>Free Model Savings
+<div class="charts-row three-col">
+  <div class="chart-box">
+    <div class="chart-head">
+      <h2>Free Model Savings</h2>
       <span class="savings-ref">priced vs
         <select id="savings-ref-select" onchange="savingsRef=this.value;renderSavings();"></select>
       </span>
-    </h2>
-    <span id="savings-amount" class="savings-amount">--</span>
-    <span id="savings-note" class="savings-note"></span>
-    <div class="cov-wrap">
-      <div class="cov-labels">
-        <span>Free models <b id="cov-free-pct" style="color:var(--green)">--</b></span>
-        <span><b id="cov-paid-pct" style="color:var(--orange)">--</b> Paid models</span>
-      </div>
-      <div class="cov-bar">
-        <div class="cov-free" id="cov-free-bar" style="width:0%"></div>
-        <div class="cov-paid" id="cov-paid-bar" style="width:0%"></div>
-      </div>
-      <div style="font-size:11px;color:var(--text2);margin-top:5px">Share of total tokens served</div>
     </div>
-  </div>
-  <div class="chart-box">
-    <h2>Avoided Cost by Free Model</h2>
+    <div id="savings-note" class="savings-note"></div>
     <canvas id="savings-chart"></canvas>
   </div>
-</div>
-
-<div class="charts-row three-col">
   <div class="chart-box">
-    <h2>By Model</h2>
-    <div class="tl-toggle" id="model-metric-toggle">
-      <button data-mm="cost" class="active">Cost</button>
-      <button data-mm="tokens">Tokens</button>
-      <button data-mm="requests">Requests</button>
+    <div class="chart-head">
+      <h2>By Model</h2>
+      <div class="tl-toggle" id="model-metric-toggle">
+        <button data-mm="cost">Cost</button>
+        <button data-mm="tokens" class="active">Tokens</button>
+        <button data-mm="requests">Requests</button>
+      </div>
     </div>
     <canvas id="token-chart"></canvas>
-  </div>
-  <div class="chart-box">
-    <h2>By Token Type</h2>
-    <div class="tl-toggle" id="token-type-toggle">
-      <button data-tt="tokens" class="active">Tokens</button>
-      <button data-tt="cost">Cost</button>
-    </div>
-    <div id="token-type-bars"></div>
   </div>
   <div class="chart-box">
     <h2>By User (Top 10)</h2>
@@ -262,9 +233,9 @@ tr.clickable{cursor:pointer}
 
 <script>
 let range='7d', groupFilter='', userFilter='', modelFilter='', tlGroupBy='model';
-let tokenTypeMetric='tokens', modelMetric='cost', userPieMetric='cost';
+let modelMetric='tokens', userPieMetric='cost';
 let savingsRef='claude-opus-4-8';
-let tokenChart=null, tokenTypeChart=null, userCostChart=null, tlChart=null, savingsChart=null;
+let tokenChart=null, userCostChart=null, tlChart=null, savingsChart=null;
 let currentSort='total_tokens', currentOrder='desc';
 let cachedGroups=[], cachedModels=[], cachedUsers=[];
 
@@ -306,7 +277,6 @@ async function refresh(){
   renderUsers(us);
   renderRecent(rc);
   renderModelChart();
-  renderTokenTypeChart();
   renderUserCostChart();
   renderSavings();
   renderTimeline(tl);
@@ -478,6 +448,7 @@ function pieUnit(metric){
 }
 
 var MODEL_PRICING_JS={
+  'claude-opus-5':{i:5,o:25,cr:0.5,cw:6.25},'claude-fable-5':{i:10,o:50,cr:1,cw:12.5},
   'claude-opus-4-8':{i:5,o:25,cr:0.5,cw:6.25},'claude-opus-4-6':{i:5,o:25,cr:0.5,cw:6.25},
   'claude-sonnet-4-6':{i:3,o:15,cr:0.3,cw:3.75},'claude-sonnet-4-20250514':{i:3,o:15,cr:0.3,cw:3.75},
   'claude-haiku-4-5':{i:1,o:5,cr:0.1,cw:1.25},'claude-haiku-4-5-20251001':{i:1,o:5,cr:0.1,cw:1.25},
@@ -500,47 +471,10 @@ function renderModelChart(){
 }
 
 
-function renderTokenTypeChart(){
-  var data=cachedModels;
-  var totNewInput=0, totOutput=0, totCacheRead=0, totCacheWrite=0;
-  var costInput=0, costOutput=0, costCR=0, costCW=0;
-  data.forEach(function(m){
-    var ni=Math.max((m.prompt_tokens||0)-(m.cached_input_tokens||0),0);
-    totNewInput+=ni; totOutput+=(m.completion_tokens||0);
-    totCacheRead+=(m.cached_input_tokens||0); totCacheWrite+=(m.cache_creation_tokens||0);
-    var p=MODEL_PRICING_JS[m.model]||{i:5,o:25,cr:0.5,cw:0};
-    costInput+=ni*p.i/1e6; costOutput+=(m.completion_tokens||0)*p.o/1e6;
-    costCR+=(m.cached_input_tokens||0)*p.cr/1e6; costCW+=(m.cache_creation_tokens||0)*p.cw/1e6;
-  });
-  var isCost=tokenTypeMetric==='cost';
-  var items=[
-    {label:'New Input',color:'#e2e6ec',tok:totNewInput,cost:costInput,rate:'input'},
-    {label:'Output',color:'var(--green)',tok:totOutput,cost:costOutput,rate:'output'},
-    {label:'Cache Read',color:'var(--cyan)',tok:totCacheRead,cost:costCR,rate:'cache read'},
-    {label:'Cache Write',color:'var(--purple)',tok:totCacheWrite,cost:costCW,rate:'cache write'}
-  ];
-  var total=items.reduce(function(s,x){return s+(isCost?x.cost:x.tok);},0);
-
-  var el=document.getElementById('token-type-bars');
-  el.innerHTML=items.map(function(x){
-    var val=isCost?x.cost:x.tok;
-    var share=total>0?((val/total)*100).toFixed(1):'0';
-    var pct=parseFloat(share);
-    var display=isCost?fmtC(val):fmtN(val);
-    return '<div style="margin:10px 0">'
-      +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">'
-      +'<span style="font-size:12px;font-weight:600;color:var(--text)">'+x.label+'</span>'
-      +'<span style="font-size:12px;font-weight:700;color:var(--text)">'+display+' <span style="color:var(--text2);font-weight:400;font-size:11px">('+share+'%)</span></span>'
-      +'</div>'
-      +'<div style="background:var(--border);border-radius:4px;height:18px;overflow:hidden">'
-      +'<div style="background:'+x.color+';height:100%;width:'+pct+'%;border-radius:4px;transition:width .4s"></div>'
-      +'</div></div>';
-  }).join('');
-}
 
 // Reference models offered for the "priced vs" savings comparison.
 // Kept to the flagship paid models so the choice stays legible.
-var SAVINGS_REF_MODELS=['claude-opus-4-8','claude-sonnet-4-6','claude-haiku-4-5','gpt-5.5','gpt-5.4','gpt-4o'];
+var SAVINGS_REF_MODELS=['claude-opus-5','claude-fable-5','claude-opus-4-8','claude-sonnet-4-6','claude-haiku-4-5','gpt-5.5','gpt-5.4','gpt-4o'];
 
 function populateSavingsRef(){
   var sel=document.getElementById('savings-ref-select');
@@ -555,10 +489,13 @@ function populateSavingsRef(){
 // would have cost on the selected paid reference model. The reference
 // is user-selectable and always shown, so the number is never a hidden
 // assumption.
+// Free vs paid token split as a pie, annotated with the dollars those free
+// tokens would have cost on the selected paid reference model. A model counts
+// as "free" when it served real tokens but metered at $0 (local / self-hosted).
 function renderSavings(){
   populateSavingsRef();
   var ref=MODEL_PRICING_JS[savingsRef]||{i:5,o:25,cr:0.5,cw:0};
-  var rows=[], totalSaved=0, freeTokens=0, totalTokens=0;
+  var totalSaved=0, freeTokens=0, totalTokens=0;
   (cachedModels||[]).forEach(function(m){
     var tot=m.total_tokens||0;
     totalTokens+=tot;
@@ -566,53 +503,36 @@ function renderSavings(){
     if(!isFree)return;
     freeTokens+=tot;
     var newInput=Math.max((m.prompt_tokens||0)-(m.cached_input_tokens||0),0);
-    var saved=newInput*ref.i/1e6
+    totalSaved+=newInput*ref.i/1e6
       +(m.completion_tokens||0)*ref.o/1e6
       +(m.cached_input_tokens||0)*ref.cr/1e6
       +(m.cache_creation_tokens||0)*ref.cw/1e6;
-    totalSaved+=saved;
-    rows.push({model:m.model,saved:saved,tokens:tot});
   });
-  rows.sort(function(a,b){return b.saved-a.saved});
-
+  var paidTokens=Math.max(totalTokens-freeTokens,0);
   var freePct=totalTokens>0?(freeTokens/totalTokens*100):0;
-  var paidPct=100-freePct;
 
   var kpi=document.getElementById('kpi-savings');if(kpi)kpi.textContent=fmtC(totalSaved);
-  var kpiSub=document.getElementById('kpi-savings-sub');if(kpiSub)kpiSub.textContent=rows.length?('vs '+savingsRef):'';
-  var amt=document.getElementById('savings-amount');if(amt)amt.textContent=fmtC(totalSaved);
+  var kpiSub=document.getElementById('kpi-savings-sub');if(kpiSub)kpiSub.textContent=freeTokens>0?('vs '+savingsRef):'';
   var note=document.getElementById('savings-note');
   if(note){
-    note.innerHTML=rows.length
-      ? 'Free models served <b>'+fmtN(freeTokens)+'</b> tokens ('+freePct.toFixed(1)+'% of total) that would have cost <b>'+fmtC(totalSaved)+'</b> at <b>'+savingsRef+'</b> rates.'
+    note.innerHTML=freeTokens>0
+      ? '<b class="savings-amt">'+fmtC(totalSaved)+'</b> avoided vs <b>'+savingsRef+'</b> — free models are <b>'+freePct.toFixed(1)+'%</b> of tokens'
       : 'No free-model usage in this range.';
   }
-  var cf=document.getElementById('cov-free-pct');if(cf)cf.textContent=freePct.toFixed(1)+'%';
-  var cp=document.getElementById('cov-paid-pct');if(cp)cp.textContent=paidPct.toFixed(1)+'%';
-  var cfb=document.getElementById('cov-free-bar');if(cfb)cfb.style.width=freePct+'%';
-  var cpb=document.getElementById('cov-paid-bar');if(cpb)cpb.style.width=paidPct+'%';
 
   if(savingsChart)savingsChart.destroy();
   var canvas=document.getElementById('savings-chart');
   if(!canvas)return;
   savingsChart=new Chart(canvas,{
-    type:'bar',
+    type:'doughnut',
     data:{
-      labels:rows.map(function(r){return r.model}),
-      datasets:[{label:'Avoided cost',data:rows.map(function(r){return r.saved}),backgroundColor:'#3fb950',borderWidth:0,borderRadius:4}]
+      labels:['Free — '+fmtN(freeTokens),'Paid — '+fmtN(paidTokens)],
+      datasets:[{data:[freeTokens,paidTokens],backgroundColor:['#3fb950','#d29922'],borderWidth:0}]
     },
-    options:{
-      indexAxis:'y',
-      responsive:true,
-      plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:function(ctx){return fmtC(ctx.raw)+' saved ('+fmtN(rows[ctx.dataIndex].tokens)+' tokens)';}}}
-      },
-      scales:{
-        x:{ticks:{color:'#8b949e',callback:function(v){return fmtC(v)}},grid:{color:'#2c3138'}},
-        y:{ticks:{color:'#8b949e',font:{size:11}},grid:{display:false}}
-      }
-    }
+    options:{responsive:true,plugins:{
+      legend:{position:'right',labels:{color:'#8b949e',font:{size:12},padding:12}},
+      tooltip:{callbacks:{label:function(ctx){var tot=freeTokens+paidTokens;var lbl=ctx.dataIndex===0?'Free':'Paid';return lbl+': '+fmtN(ctx.raw)+' tokens ('+(tot>0?((ctx.raw/tot)*100).toFixed(1):'0')+'%)';}}}
+    }}
   });
 }
 
@@ -763,14 +683,6 @@ document.getElementById('range-btns').addEventListener('click',e=>{
   refresh();
 });
 
-
-document.getElementById('token-type-toggle').addEventListener('click',e=>{
-  if(e.target.tagName!=='BUTTON')return;
-  document.querySelector('#token-type-toggle .active').classList.remove('active');
-  e.target.classList.add('active');
-  tokenTypeMetric=e.target.dataset.tt;
-  renderTokenTypeChart();
-});
 
 document.getElementById('model-metric-toggle').addEventListener('click',e=>{
   if(e.target.tagName!=='BUTTON')return;
