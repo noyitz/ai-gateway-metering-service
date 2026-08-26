@@ -226,3 +226,28 @@ func TestPricesEqual(t *testing.T) {
 		t.Error("different prices should not be equal")
 	}
 }
+
+func TestLocalPrices_ZeroCostAndExactIDs(t *testing.T) {
+	prices := LocalPrices()
+	if len(prices) == 0 {
+		t.Fatal("LocalPrices returned no entries")
+	}
+
+	// The self-hosted Qwen id must match billed traffic exactly, or model_pricing
+	// (keyed on model name) misses and the row reprices at the paid default.
+	var haveQwen bool
+	for _, p := range prices {
+		if p.Model == "" {
+			t.Errorf("local price with empty model: %+v", p)
+		}
+		if p.InputCost != 0 || p.OutputCost != 0 || p.CacheReadCost != 0 || p.CacheWriteCost != 0 {
+			t.Errorf("local model %q must be $0, got %+v", p.Model, p)
+		}
+		if p.Model == "Qwen3.8-27B-FP8" {
+			haveQwen = true
+		}
+	}
+	if !haveQwen {
+		t.Error(`missing self-hosted "Qwen3.8-27B-FP8" entry`)
+	}
+}

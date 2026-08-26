@@ -68,6 +68,24 @@ func main() {
 		}
 	}
 
+	// Seed self-hosted / on-prem model pricing ($0). These are not in LiteLLM's
+	// catalog, so they must be seeded independently — even when the LiteLLM load
+	// above fails — or the cost query reprices free traffic at the paid default.
+	localPrices := pricing.LocalPrices()
+	storeLocal := make([]storage.ModelPrice, len(localPrices))
+	for i, p := range localPrices {
+		storeLocal[i] = storage.ModelPrice{
+			Model: p.Model, Provider: p.Provider,
+			InputCost: p.InputCost, OutputCost: p.OutputCost,
+			CacheWriteCost: p.CacheWriteCost, CacheReadCost: p.CacheReadCost,
+		}
+	}
+	if updated, seedErr := store.SeedPricing(ctx, storeLocal); seedErr != nil {
+		slog.Warn("local pricing seed failed — free models may show as paid", "error", seedErr)
+	} else {
+		slog.Info("local model pricing seeded", "models", len(storeLocal), "updated", updated)
+	}
+
 	eventsHandler := handler.NewEventsHandler(store)
 	entitlementsHandler := handler.NewEntitlementsHandler(store)
 	teamUsageHandler := handler.NewTeamUsageHandler(store)
