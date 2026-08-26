@@ -154,7 +154,9 @@ func parseTimeWindow(r *http.Request) (since, until time.Time) {
 	}
 }
 
-// parseFilters extracts the common group/user/model filter params.
+// parseFilters extracts the common group/user/model filter params. The user
+// param may be a comma-separated list of usernames (multi-select); an empty
+// value means no user filter. The storage layer matches it via string_to_array.
 func parseFilters(r *http.Request) (group, user, model string) {
 	return r.URL.Query().Get("group"), r.URL.Query().Get("user"), r.URL.Query().Get("model")
 }
