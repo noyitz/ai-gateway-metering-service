@@ -462,7 +462,7 @@ type RecentEvent struct {
 	UserAgent           string    `json:"user_agent"`
 }
 
-func (s *Store) GetRecentEvents(ctx context.Context, limit int) ([]RecentEvent, error) {
+func (s *Store) GetRecentEvents(ctx context.Context, limit int, group, user, model string) ([]RecentEvent, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
@@ -474,8 +474,9 @@ func (s *Store) GetRecentEvents(ctx context.Context, limit int) ([]RecentEvent, 
 			COALESCE(e.user_agent, '')
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
+		WHERE ($2 = '' OR e.group_name = $2) AND ($3 = '' OR e.username = $3) AND ($4 = '' OR e.model = $4)
 		ORDER BY e.timestamp DESC
-		LIMIT $1`, costUSDExpr), limit)
+		LIMIT $1`, costUSDExpr), limit, group, user, model)
 	if err != nil {
 		return nil, err
 	}

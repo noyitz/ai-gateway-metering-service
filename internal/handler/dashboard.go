@@ -117,7 +117,8 @@ func (h *DashboardHandler) HandleRecent(w http.ResponseWriter, r *http.Request) 
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
 		limit = l
 	}
-	result, err := h.store.GetRecentEvents(r.Context(), limit)
+	group, user, model := parseFilters(r)
+	result, err := h.store.GetRecentEvents(r.Context(), limit, group, user, model)
 	if err != nil {
 		slog.Error("dashboard query failed", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
