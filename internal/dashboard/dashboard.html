@@ -22,11 +22,27 @@ header h1 span{color:var(--text2);font-weight:400;font-size:14px;margin-left:8px
 .range-btns button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 #last-refresh{color:var(--text2);font-size:12px}
 
-.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px}
 .kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;text-align:center}
+.kpi.saved{border-color:rgba(63,185,80,.4);background:linear-gradient(180deg,rgba(63,185,80,.08),var(--bg-card))}
 .kpi-label{display:block;font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
 .kpi-value{display:block;font-size:32px;font-weight:700}
 .kpi-value.blue{color:var(--blue)}.kpi-value.green{color:var(--green)}.kpi-value.orange{color:var(--orange)}.kpi-value.purple{color:var(--purple)}
+.kpi-sub{display:block;font-size:11px;color:var(--text2);margin-top:6px}
+
+.savings-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+.savings-hero{display:flex;flex-direction:column}
+.savings-hero h2{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.savings-ref{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0}
+.savings-ref select{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:3px 6px;border-radius:5px;font-size:11px;cursor:pointer}
+.savings-amount{display:block;font-size:44px;font-weight:800;color:var(--green);line-height:1.1;margin-top:6px}
+.savings-note{font-size:12px;color:var(--text2);margin-top:6px}
+.savings-note b{color:var(--text)}
+.cov-wrap{margin-top:auto;padding-top:16px}
+.cov-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:5px}
+.cov-bar{display:flex;height:20px;border-radius:5px;overflow:hidden;background:var(--border)}
+.cov-free{background:var(--green);height:100%}
+.cov-paid{background:var(--orange);height:100%}
 
 h2{font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text)}
 h2 .filter-tag{font-size:12px;color:var(--blue);background:rgba(88,166,255,.15);padding:2px 8px;border-radius:4px;margin-left:8px;cursor:pointer}
@@ -73,7 +89,7 @@ tr.clickable{cursor:pointer}
 .recent-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 
 @media(max-width:1100px){.charts-row{grid-template-columns:1fr 1fr}}
-@media(max-width:900px){.kpi-row{grid-template-columns:repeat(2,1fr)}.charts-row{grid-template-columns:1fr}}
+@media(max-width:900px){.kpi-row{grid-template-columns:repeat(2,1fr)}.charts-row{grid-template-columns:1fr}.savings-row{grid-template-columns:1fr}}
 @media(max-width:600px){.kpi-row{grid-template-columns:1fr}}
 </style>
 </head>
@@ -145,7 +161,35 @@ tr.clickable{cursor:pointer}
   <div class="kpi"><span class="kpi-label">Total Requests</span><span id="kpi-requests" class="kpi-value blue">--</span></div>
   <div class="kpi"><span class="kpi-label">Total Tokens</span><span id="kpi-tokens" class="kpi-value green">--</span></div>
   <div class="kpi"><span class="kpi-label">Estimated Cost</span><span id="kpi-cost" class="kpi-value orange">--</span></div>
+  <div class="kpi saved"><span class="kpi-label">Saved · Free Models</span><span id="kpi-savings" class="kpi-value green">--</span><span id="kpi-savings-sub" class="kpi-sub"></span></div>
   <div class="kpi"><span class="kpi-label">Active Users</span><span id="kpi-users" class="kpi-value purple">--</span></div>
+</div>
+
+<div class="savings-row">
+  <div class="chart-box savings-hero">
+    <h2>Free Model Savings
+      <span class="savings-ref">priced vs
+        <select id="savings-ref-select" onchange="savingsRef=this.value;renderSavings();"></select>
+      </span>
+    </h2>
+    <span id="savings-amount" class="savings-amount">--</span>
+    <span id="savings-note" class="savings-note"></span>
+    <div class="cov-wrap">
+      <div class="cov-labels">
+        <span>Free models <b id="cov-free-pct" style="color:var(--green)">--</b></span>
+        <span><b id="cov-paid-pct" style="color:var(--orange)">--</b> Paid models</span>
+      </div>
+      <div class="cov-bar">
+        <div class="cov-free" id="cov-free-bar" style="width:0%"></div>
+        <div class="cov-paid" id="cov-paid-bar" style="width:0%"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-top:5px">Share of total tokens served</div>
+    </div>
+  </div>
+  <div class="chart-box">
+    <h2>Avoided Cost by Free Model</h2>
+    <canvas id="savings-chart"></canvas>
+  </div>
 </div>
 
 <div class="charts-row three-col">
@@ -219,7 +263,8 @@ tr.clickable{cursor:pointer}
 <script>
 let range='7d', groupFilter='', userFilter='', modelFilter='', tlGroupBy='model';
 let tokenTypeMetric='tokens', modelMetric='cost', userPieMetric='cost';
-let tokenChart=null, tokenTypeChart=null, userCostChart=null, tlChart=null;
+let savingsRef='claude-opus-4-8';
+let tokenChart=null, tokenTypeChart=null, userCostChart=null, tlChart=null, savingsChart=null;
 let currentSort='total_tokens', currentOrder='desc';
 let cachedGroups=[], cachedModels=[], cachedUsers=[];
 
@@ -263,6 +308,7 @@ async function refresh(){
   renderModelChart();
   renderTokenTypeChart();
   renderUserCostChart();
+  renderSavings();
   renderTimeline(tl);
   document.getElementById('last-refresh').textContent=' • '+new Date().toLocaleTimeString();
 }
@@ -490,6 +536,84 @@ function renderTokenTypeChart(){
       +'<div style="background:'+x.color+';height:100%;width:'+pct+'%;border-radius:4px;transition:width .4s"></div>'
       +'</div></div>';
   }).join('');
+}
+
+// Reference models offered for the "priced vs" savings comparison.
+// Kept to the flagship paid models so the choice stays legible.
+var SAVINGS_REF_MODELS=['claude-opus-4-8','claude-sonnet-4-6','claude-haiku-4-5','gpt-5.5','gpt-5.4','gpt-4o'];
+
+function populateSavingsRef(){
+  var sel=document.getElementById('savings-ref-select');
+  if(!sel||sel.options.length)return;
+  sel.innerHTML=SAVINGS_REF_MODELS.map(function(m){
+    return '<option value="'+m+'"'+(m===savingsRef?' selected':'')+'>'+m+'</option>';
+  }).join('');
+}
+
+// A model is "free" when it served real tokens but was metered at $0 --
+// i.e. a local / self-hosted model. Savings = what those same tokens
+// would have cost on the selected paid reference model. The reference
+// is user-selectable and always shown, so the number is never a hidden
+// assumption.
+function renderSavings(){
+  populateSavingsRef();
+  var ref=MODEL_PRICING_JS[savingsRef]||{i:5,o:25,cr:0.5,cw:0};
+  var rows=[], totalSaved=0, freeTokens=0, totalTokens=0;
+  (cachedModels||[]).forEach(function(m){
+    var tot=m.total_tokens||0;
+    totalTokens+=tot;
+    var isFree=(m.cost_usd||0)===0 && tot>0;
+    if(!isFree)return;
+    freeTokens+=tot;
+    var newInput=Math.max((m.prompt_tokens||0)-(m.cached_input_tokens||0),0);
+    var saved=newInput*ref.i/1e6
+      +(m.completion_tokens||0)*ref.o/1e6
+      +(m.cached_input_tokens||0)*ref.cr/1e6
+      +(m.cache_creation_tokens||0)*ref.cw/1e6;
+    totalSaved+=saved;
+    rows.push({model:m.model,saved:saved,tokens:tot});
+  });
+  rows.sort(function(a,b){return b.saved-a.saved});
+
+  var freePct=totalTokens>0?(freeTokens/totalTokens*100):0;
+  var paidPct=100-freePct;
+
+  var kpi=document.getElementById('kpi-savings');if(kpi)kpi.textContent=fmtC(totalSaved);
+  var kpiSub=document.getElementById('kpi-savings-sub');if(kpiSub)kpiSub.textContent=rows.length?('vs '+savingsRef):'';
+  var amt=document.getElementById('savings-amount');if(amt)amt.textContent=fmtC(totalSaved);
+  var note=document.getElementById('savings-note');
+  if(note){
+    note.innerHTML=rows.length
+      ? 'Free models served <b>'+fmtN(freeTokens)+'</b> tokens ('+freePct.toFixed(1)+'% of total) that would have cost <b>'+fmtC(totalSaved)+'</b> at <b>'+savingsRef+'</b> rates.'
+      : 'No free-model usage in this range.';
+  }
+  var cf=document.getElementById('cov-free-pct');if(cf)cf.textContent=freePct.toFixed(1)+'%';
+  var cp=document.getElementById('cov-paid-pct');if(cp)cp.textContent=paidPct.toFixed(1)+'%';
+  var cfb=document.getElementById('cov-free-bar');if(cfb)cfb.style.width=freePct+'%';
+  var cpb=document.getElementById('cov-paid-bar');if(cpb)cpb.style.width=paidPct+'%';
+
+  if(savingsChart)savingsChart.destroy();
+  var canvas=document.getElementById('savings-chart');
+  if(!canvas)return;
+  savingsChart=new Chart(canvas,{
+    type:'bar',
+    data:{
+      labels:rows.map(function(r){return r.model}),
+      datasets:[{label:'Avoided cost',data:rows.map(function(r){return r.saved}),backgroundColor:'#3fb950',borderWidth:0,borderRadius:4}]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:function(ctx){return fmtC(ctx.raw)+' saved ('+fmtN(rows[ctx.dataIndex].tokens)+' tokens)';}}}
+      },
+      scales:{
+        x:{ticks:{color:'#8b949e',callback:function(v){return fmtC(v)}},grid:{color:'#2c3138'}},
+        y:{ticks:{color:'#8b949e',font:{size:11}},grid:{display:false}}
+      }
+    }
+  });
 }
 
 function populateFilterDropdowns(models, users){
