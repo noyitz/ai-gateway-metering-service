@@ -280,7 +280,7 @@ func (s *Store) GetDashboardOverview(ctx context.Context, since, until time.Time
 			COALESCE(ROUND(SUM(%s)::numeric, 2), 0)
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
-		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)`, costUSDExpr),
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)`, costUSDExpr),
 		since, until, group, user, model).Scan(
 		&o.TotalRequests, &o.TotalPromptTokens, &o.TotalCompletionTokens,
 		&o.TotalTokens, &o.ActiveUsers, &o.TotalCostUSD)
@@ -296,7 +296,7 @@ func (s *Store) GetDashboardGroups(ctx context.Context, since, until time.Time, 
 			COALESCE(ROUND(SUM(%s)::numeric, 2), 0)
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
-		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 		GROUP BY COALESCE(e.group_name, 'unknown')
 		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr), since, until, group, user, model)
 	if err != nil {
@@ -346,7 +346,7 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 			COALESCE(ROUND(SUM(%s)::numeric, 2), 0) as cost_usd
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
-		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 		GROUP BY e.username, COALESCE(e.group_name, '')
 		ORDER BY %s %s
 		LIMIT $6`, costUSDExpr, sortExpr, direction)
@@ -383,7 +383,7 @@ func (s *Store) GetDashboardModels(ctx context.Context, since, until time.Time, 
 			COALESCE(ROUND(SUM(%s)::numeric, 2), 0)
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
-		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 		GROUP BY e.model, COALESCE(e.provider, '')
 		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr), since, until, group, user, model)
 	if err != nil {
@@ -423,7 +423,7 @@ func (s *Store) GetDashboardTimeline(ctx context.Context, since, until time.Time
 			COALESCE(SUM(e.total_tokens),0),
 			COUNT(*)
 		FROM usage_events e
-		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = $4) AND ($5 = '' OR e.model = $5)
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 		GROUP BY bucket, series
 		ORDER BY bucket, series`, truncInterval, seriesCol)
 
@@ -474,7 +474,7 @@ func (s *Store) GetRecentEvents(ctx context.Context, limit int, group, user, mod
 			COALESCE(e.user_agent, '')
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
-		WHERE ($2 = '' OR e.group_name = $2) AND ($3 = '' OR e.username = $3) AND ($4 = '' OR e.model = $4)
+		WHERE ($2 = '' OR e.group_name = $2) AND ($3 = '' OR e.username = ANY(string_to_array($3, ','))) AND ($4 = '' OR e.model = $4)
 		ORDER BY e.timestamp DESC
 		LIMIT $1`, costUSDExpr), limit, group, user, model)
 	if err != nil {
