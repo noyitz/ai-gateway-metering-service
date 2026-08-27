@@ -50,6 +50,26 @@ func TestHandleEvent_ParsesCloudEvent(t *testing.T) {
 	}
 }
 
+func TestCloudEventData_StatusCode(t *testing.T) {
+	// Success/usage events omit status_code -> nil (rendered as 200).
+	var success cloudEventData
+	if err := json.Unmarshal([]byte(`{"user":"u","model":"m","total_tokens":10}`), &success); err != nil {
+		t.Fatalf("unmarshal success: %v", err)
+	}
+	if success.StatusCode != nil {
+		t.Errorf("success status_code: got %v, want nil", *success.StatusCode)
+	}
+
+	// Error events carry status_code with zero tokens.
+	var errored cloudEventData
+	if err := json.Unmarshal([]byte(`{"user":"u","model":"m","status_code":429}`), &errored); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if errored.StatusCode == nil || *errored.StatusCode != 429 {
+		t.Errorf("error status_code: got %v, want 429", errored.StatusCode)
+	}
+}
+
 func TestHandleEvent_RejectsGet(t *testing.T) {
 	h := &EventsHandler{}
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
