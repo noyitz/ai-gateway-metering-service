@@ -7,6 +7,8 @@ import (
 	"log/slog"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/noyitz/ai-gateway-metering-service/internal/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -15,23 +17,9 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-var (
-	providerGVR = schema.GroupVersionResource{
-		Group:    "inference.opendatahub.io",
-		Version:  "v1alpha1",
-		Resource: "externalproviders",
-	}
-	modelGVR = schema.GroupVersionResource{
-		Group:    "inference.opendatahub.io",
-		Version:  "v1alpha1",
-		Resource: "externalmodels",
-	}
-	legacyModelGVR = schema.GroupVersionResource{
-		Group:    "maas.opendatahub.io",
-		Version:  "v1alpha1",
-		Resource: "externalmodels",
-	}
-)
+// This adapter reads a model catalogue from custom resources. Resource
+// coordinates come from configuration rather than being compiled in,
+// because each gateway names and versions its catalogue differently.
 
 type ProviderInfo struct {
 	Name           string `json:"name"`
@@ -62,27 +50,47 @@ type ModelInfo struct {
 type Client struct {
 	client    dynamic.Interface
 	namespace string
+	cfg       config.Kubernetes
 }
 
-func NewClient(namespace string) (*Client, error) {
-	config, err := rest.InClusterConfig()
+func NewClient(cfg config.Kubernetes) (*Client, error) {
+	restConfig, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get in-cluster config: %w", err)
 	}
 
-	dynClient, err := dynamic.NewForConfig(config)
+	dynClient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
 	}
 
-	slog.Info("k8s client initialized", "namespace", namespace)
-	return &Client{client: dynClient, namespace: namespace}, nil
+	slog.Info("kubernetes adapter initialized",
+		"namespace", cfg.Namespace,
+		"modelResource", cfg.ModelResource,
+		"modelGroup", cfg.ModelGroup)
+	return &Client{client: dynClient, namespace: cfg.Namespace, cfg: cfg}, nil
+}
+
+func (c *Client) modelGVR() schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    c.cfg.ModelGroup,
+		Version:  c.cfg.ModelVersion,
+		Resource: c.cfg.ModelResource,
+	}
+}
+
+func (c *Client) providerGVR() schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    c.cfg.ProviderGroup,
+		Version:  c.cfg.ProviderVersion,
+		Resource: c.cfg.ProviderResource,
+	}
 }
 
 func (c *Client) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
-	list, err := c.client.Resource(providerGVR).Namespace(c.namespace).List(ctx, metav1.ListOptions{})
+	list, err := c.client.Resource(c.providerGVR()).Namespace(c.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("list ExternalProviders: %w", err)
+		return nil, fmt.Errorf("list %s: %w", c.cfg.ProviderResource, err)
 	}
 
 	var result []ProviderInfo
@@ -108,13 +116,17 @@ func (c *Client) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
 }
 
 func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
-	// Try new CRD first, fall back to legacy if empty or error
-	list, err := c.client.Resource(modelGVR).Namespace(c.namespace).List(ctx, metav1.ListOptions{})
-	if err != nil || len(list.Items) == 0 {
-		list, err = c.client.Resource(legacyModelGVR).Namespace(c.namespace).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("list ExternalModels: %w", err)
-		}
+	list, err := c.client.Resource(c.modelGVR()).Namespace(c.namespace).List(ctx, metav1.ListOptions{})
+
+	// A configured fallback group covers catalogues mid-migration between
+	// two API groups.
+	if (err != nil || len(list.Items) == 0) && c.cfg.ModelFallbackGroup != "" {
+		fallback := c.modelGVR()
+		fallback.Group = c.cfg.ModelFallbackGroup
+		list, err = c.client.Resource(fallback).Namespace(c.namespace).List(ctx, metav1.ListOptions{})
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list %s: %w", c.cfg.ModelResource, err)
 	}
 
 	var result []ModelInfo
@@ -158,9 +170,9 @@ func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
 }
 
 func (c *Client) UpdateModelWeights(ctx context.Context, modelName string, weights map[string]int64) error {
-	model, err := c.client.Resource(modelGVR).Namespace(c.namespace).Get(ctx, modelName, metav1.GetOptions{})
+	model, err := c.client.Resource(c.modelGVR()).Namespace(c.namespace).Get(ctx, modelName, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("get ExternalModel %s: %w", modelName, err)
+		return fmt.Errorf("get %s %s: %w", c.cfg.ModelResource, modelName, err)
 	}
 
 	refs, found, _ := unstructured.NestedSlice(model.Object, "spec", "externalProviderRefs")
@@ -191,7 +203,7 @@ func (c *Client) UpdateModelWeights(ctx context.Context, modelName string, weigh
 	}
 	patchBytes, _ := json.Marshal(patch)
 
-	_, err = c.client.Resource(modelGVR).Namespace(c.namespace).Patch(
+	_, err = c.client.Resource(c.modelGVR()).Namespace(c.namespace).Patch(
 		ctx, modelName, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 	return err
 }
@@ -202,37 +214,59 @@ type ProfileInfo struct {
 	ResponsePlugins []string `json:"responsePlugins"`
 }
 
-type IPPConfig struct {
+// PipelineConfig is a read-only view of the gateway's filter pipeline,
+// surfaced in the admin console so an operator can see which filters are
+// active alongside the usage they produce.
+type PipelineConfig struct {
 	Profiles      []ProfileInfo `json:"profiles"`
 	ActiveProfile string        `json:"activeProfile"`
 }
 
-func (c *Client) GetIPPConfig(ctx context.Context, configNamespace string) (*IPPConfig, error) {
-	cmGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}
-	cm, err := c.client.Resource(cmGVR).Namespace(configNamespace).Get(ctx, "ipp-config", metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("get ipp-config ConfigMap: %w", err)
+// GetPipelineConfig reads the gateway pipeline description from a
+// ConfigMap. It returns an empty config when no ConfigMap is configured,
+// so the admin console degrades to showing usage only.
+func (c *Client) GetPipelineConfig(ctx context.Context) (*PipelineConfig, error) {
+	empty := &PipelineConfig{Profiles: []ProfileInfo{}, ActiveProfile: "default"}
+	name := c.cfg.PipelineConfigMap
+	if name == "" {
+		return empty, nil
 	}
 
-	configYAML, found, _ := unstructured.NestedString(cm.Object, "data", "config.yaml")
+	namespace := c.cfg.PipelineConfigMapNamespace
+	if namespace == "" {
+		namespace = c.namespace
+	}
+
+	cmGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}
+	cm, err := c.client.Resource(cmGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get ConfigMap %s/%s: %w", namespace, name, err)
+	}
+
+	key := c.cfg.PipelineConfigMapKey
+	configYAML, found, _ := unstructured.NestedString(cm.Object, "data", key)
 	if !found {
-		return nil, fmt.Errorf("config.yaml not found in ipp-config ConfigMap")
+		return nil, fmt.Errorf("key %q not found in ConfigMap %s/%s", key, namespace, name)
 	}
 
 	var raw struct {
 		Profiles []struct {
 			Name    string `yaml:"name"`
 			Plugins struct {
-				Request  []struct{ PluginRef string `yaml:"pluginRef"` } `yaml:"request"`
-				Response []struct{ PluginRef string `yaml:"pluginRef"` } `yaml:"response"`
+				Request []struct {
+					PluginRef string `yaml:"pluginRef"`
+				} `yaml:"request"`
+				Response []struct {
+					PluginRef string `yaml:"pluginRef"`
+				} `yaml:"response"`
 			} `yaml:"plugins"`
 		} `yaml:"profiles"`
 	}
 	if err := yaml.Unmarshal([]byte(configYAML), &raw); err != nil {
-		return nil, fmt.Errorf("parse ipp-config YAML: %w", err)
+		return nil, fmt.Errorf("parse pipeline config YAML: %w", err)
 	}
 
-	result := &IPPConfig{ActiveProfile: "default"}
+	result := &PipelineConfig{ActiveProfile: "default"}
 	for _, p := range raw.Profiles {
 		pi := ProfileInfo{Name: p.Name}
 		for _, rp := range p.Plugins.Request {
@@ -247,9 +281,9 @@ func (c *Client) GetIPPConfig(ctx context.Context, configNamespace string) (*IPP
 }
 
 func (c *Client) UpdateModelProvider(ctx context.Context, modelName string, providerName string, targetModel string, apiFormat string) error {
-	model, err := c.client.Resource(modelGVR).Namespace(c.namespace).Get(ctx, modelName, metav1.GetOptions{})
+	model, err := c.client.Resource(c.modelGVR()).Namespace(c.namespace).Get(ctx, modelName, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("get ExternalModel %s: %w", modelName, err)
+		return fmt.Errorf("get %s %s: %w", c.cfg.ModelResource, modelName, err)
 	}
 
 	refs, found, _ := unstructured.NestedSlice(model.Object, "spec", "externalProviderRefs")
@@ -277,7 +311,7 @@ func (c *Client) UpdateModelProvider(ctx context.Context, modelName string, prov
 	}
 	patchBytes, _ := json.Marshal(patch)
 
-	_, err = c.client.Resource(modelGVR).Namespace(c.namespace).Patch(
+	_, err = c.client.Resource(c.modelGVR()).Namespace(c.namespace).Patch(
 		ctx, modelName, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 	if err != nil {
 		return err
@@ -296,8 +330,19 @@ func (c *Client) secretExists(ctx context.Context, name string) bool {
 	return err == nil
 }
 
+// GetUserGroups resolves a user's group membership from a cluster-scoped
+// resource whose objects carry a `users` list. Returns nothing when no
+// group resource is configured.
 func (c *Client) GetUserGroups(username string) ([]string, error) {
-	groupGVR := schema.GroupVersionResource{Group: "user.openshift.io", Version: "v1", Resource: "groups"}
+	if c.cfg.GroupGroup == "" {
+		return nil, nil
+	}
+
+	groupGVR := schema.GroupVersionResource{
+		Group:    c.cfg.GroupGroup,
+		Version:  c.cfg.GroupVersion,
+		Resource: c.cfg.GroupResource,
+	}
 	list, err := c.client.Resource(groupGVR).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return nil, err
