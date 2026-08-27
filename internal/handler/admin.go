@@ -7,28 +7,42 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/noyitz/ai-gateway-metering-service/internal/config"
 	"github.com/noyitz/ai-gateway-metering-service/internal/dashboard"
 	"github.com/noyitz/ai-gateway-metering-service/internal/k8s"
 )
 
 type AdminHandler struct {
 	k8sClient *k8s.Client
+	cfg       config.Config
 }
 
-func NewAdminHandler(k8sClient *k8s.Client) *AdminHandler {
-	return &AdminHandler{k8sClient: k8sClient}
+func NewAdminHandler(k8sClient *k8s.Client, cfg config.Config) *AdminHandler {
+	return &AdminHandler{k8sClient: k8sClient, cfg: cfg}
 }
 
-func isAdmin(r *http.Request) bool {
-	user := r.Header.Get("X-Forwarded-User")
-	return user == "" || user == "admin" || user == "kube:admin"
+// IsAdmin reports whether the caller may reach the operator views. Identity
+// comes from the header an authenticating proxy sets in front of this
+// service; the service performs no authentication of its own.
+func IsAdmin(cfg config.Config, r *http.Request) bool {
+	user := r.Header.Get(cfg.UserHeader)
+	if user == "" {
+		return cfg.AllowUnauthenticatedAdmin
+	}
+	for _, admin := range cfg.AdminUsers {
+		if user == admin {
+			return true
+		}
+	}
+	return false
 }
 
-func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
+// RequireAdmin gates a handler behind IsAdmin, sending everyone else to
+// their own account page.
+func RequireAdmin(cfg config.Config, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user := r.Header.Get("X-Forwarded-User")
-		slog.Info("RequireAdmin check", "path", r.URL.Path, "X-Forwarded-User", user, "isAdmin", isAdmin(r))
-		if !isAdmin(r) {
+		if !IsAdmin(cfg, r) {
+			slog.Debug("admin access denied", "path", r.URL.Path)
 			http.Redirect(w, r, "/me", http.StatusFound)
 			return
 		}
@@ -110,15 +124,15 @@ func (h *AdminHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 
 func (h *AdminHandler) HandleConfig(w http.ResponseWriter, r *http.Request) {
 	if h.k8sClient == nil {
-		writeJSON(w, &k8s.IPPConfig{Profiles: []k8s.ProfileInfo{}, ActiveProfile: "default"})
+		writeJSON(w, &k8s.PipelineConfig{Profiles: []k8s.ProfileInfo{}, ActiveProfile: "default"})
 		return
 	}
-	config, err := h.k8sClient.GetIPPConfig(r.Context(), "openshift-ingress")
+	pipeline, err := h.k8sClient.GetPipelineConfig(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, config)
+	writeJSON(w, pipeline)
 }
 
 func (h *AdminHandler) HandleUpdateProvider(w http.ResponseWriter, r *http.Request) {

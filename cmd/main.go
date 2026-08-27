@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/noyitz/ai-gateway-metering-service/internal/config"
 	"github.com/noyitz/ai-gateway-metering-service/internal/handler"
 	"github.com/noyitz/ai-gateway-metering-service/internal/k8s"
 	"github.com/noyitz/ai-gateway-metering-service/internal/pricing"
@@ -17,31 +17,16 @@ import (
 )
 
 func main() {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
+	cfg := config.Load()
+	if cfg.DatabaseURL == "" {
 		slog.Error("DATABASE_URL is required")
 		os.Exit(1)
 	}
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	// TOKEN_QUOTA is the optional per-user monthly token budget. When unset
-	// or 0, the entitlement endpoint reports usage but never gates access —
-	// quota enforcement belongs in the gateway (praxis-proxy/ai#121).
-	var tokenQuota int64
-	if v := os.Getenv("TOKEN_QUOTA"); v != "" {
-		parsed, parseErr := strconv.ParseInt(v, 10, 64)
-		if parseErr != nil {
-			slog.Error("TOKEN_QUOTA must be an integer", "value", v, "error", parseErr)
-			os.Exit(1)
-		}
-		tokenQuota = parsed
-	}
-
-	store, err := storage.New(databaseURL, tokenQuota)
+	// MonthlyTokenQuota is the per-user monthly token budget the entitlement
+	// endpoint reports against. Enforcement of actual traffic belongs in the
+	// gateway (praxis-proxy/ai#121); here it only shapes the reported balance.
+	store, err := storage.New(cfg.DatabaseURL, int64(cfg.MonthlyTokenQuota))
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)
@@ -91,29 +76,30 @@ func main() {
 	teamUsageHandler := handler.NewTeamUsageHandler(store)
 	dashboardHandler := handler.NewDashboardHandler(store)
 
-	// K8s client for admin API (optional — fails gracefully if not in cluster)
-	k8sNamespace := os.Getenv("K8S_NAMESPACE")
-	if k8sNamespace == "" {
-		k8sNamespace = "llm"
-	}
-	var adminHandler *handler.AdminHandler
-	k8sClient, err := k8s.NewClient(k8sNamespace)
-	if err != nil {
-		slog.Warn("k8s client not available — admin API will return empty data", "error", err)
-		adminHandler = handler.NewAdminHandler(nil)
+	// Kubernetes adapter for the admin API — optional. It stays disabled
+	// until model/provider CRD coordinates are configured, and even when
+	// enabled it degrades gracefully to empty data if the cluster is
+	// unreachable, so the service runs anywhere the CloudEvents contract holds.
+	var k8sClient *k8s.Client
+	if cfg.Kubernetes.Enabled() {
+		k8sClient, err = k8s.NewClient(cfg.Kubernetes)
+		if err != nil {
+			slog.Warn("kubernetes adapter unavailable — admin API will return empty data", "error", err)
+			k8sClient = nil
+		}
 	} else {
-		adminHandler = handler.NewAdminHandler(k8sClient)
+		slog.Info("kubernetes adapter disabled — set MODEL_CRD_GROUP/PROVIDER_CRD_GROUP to enable")
 	}
+	adminHandler := handler.NewAdminHandler(k8sClient, cfg)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/events", eventsHandler.HandleEvent)
 	mux.HandleFunc("/api/v1/customers/", entitlementsHandler.HandleEntitlement)
 	mux.HandleFunc("/api/v1/team-usage", teamUsageHandler.HandleTeamUsage)
-	keysHandler := handler.NewKeysHandler(k8sClient)
+	keysHandler := handler.NewKeysHandler(k8sClient, cfg)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
-			user := r.Header.Get("X-Forwarded-User")
-			if user == "" || user == "admin" || user == "kube:admin" {
+			if handler.IsAdmin(cfg, r) {
 				http.Redirect(w, r, "/dashboard", http.StatusFound)
 			} else {
 				http.Redirect(w, r, "/me", http.StatusFound)
@@ -123,17 +109,17 @@ func main() {
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/me", adminHandler.ServeMyAccount)
-	mux.HandleFunc("/dashboard", handler.RequireAdmin(dashboardHandler.ServeDashboard))
+	mux.HandleFunc("/dashboard", handler.RequireAdmin(cfg, dashboardHandler.ServeDashboard))
 	mux.HandleFunc("/api/v1/dashboard/overview", dashboardHandler.HandleOverview)
 	mux.HandleFunc("/api/v1/dashboard/groups", dashboardHandler.HandleGroups)
 	mux.HandleFunc("/api/v1/dashboard/users", dashboardHandler.HandleUsers)
 	mux.HandleFunc("/api/v1/dashboard/models", dashboardHandler.HandleModels)
 	mux.HandleFunc("/api/v1/dashboard/timeline", dashboardHandler.HandleTimeline)
 	mux.HandleFunc("/api/v1/dashboard/recent", dashboardHandler.HandleRecent)
-	mux.HandleFunc("/admin", handler.RequireAdmin(adminHandler.ServeAdmin))
-	mux.HandleFunc("/routing", handler.RequireAdmin(adminHandler.ServeRouting))
-	mux.HandleFunc("/admin2", handler.RequireAdmin(adminHandler.ServeRouting))
-	mux.HandleFunc("/compression", handler.RequireAdmin(adminHandler.ServeCompression))
+	mux.HandleFunc("/admin", handler.RequireAdmin(cfg, adminHandler.ServeAdmin))
+	mux.HandleFunc("/routing", handler.RequireAdmin(cfg, adminHandler.ServeRouting))
+	mux.HandleFunc("/admin2", handler.RequireAdmin(cfg, adminHandler.ServeRouting))
+	mux.HandleFunc("/compression", handler.RequireAdmin(cfg, adminHandler.ServeCompression))
 	mux.HandleFunc("/api/v1/admin/providers", adminHandler.HandleProviders)
 	mux.HandleFunc("/api/v1/admin/models", adminHandler.HandleModels)
 	mux.HandleFunc("/api/v1/admin/models/", adminHandler.HandleUpdateWeights)
@@ -147,10 +133,10 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
-	server := &http.Server{Addr: ":" + port, Handler: mux}
+	server := &http.Server{Addr: ":" + cfg.Port, Handler: mux}
 
 	go func() {
-		slog.Info("metering service starting", "port", port)
+		slog.Info("metering service starting", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "error", err)
 			os.Exit(1)
