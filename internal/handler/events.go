@@ -33,6 +33,10 @@ type cloudEventData struct {
 	CacheCreationTokens int `json:"cache_creation_tokens"`
 	ReasoningTokens    int    `json:"reasoning_tokens"`
 	UserAgent          string `json:"user_agent"`
+	// StatusCode is the upstream HTTP status. The gateway sets it only on
+	// error events (inference.request.error); success/usage events omit it,
+	// so a nil pointer means the request succeeded (HTTP 200).
+	StatusCode *int `json:"status_code"`
 }
 
 type EventsHandler struct {
@@ -71,6 +75,15 @@ func (h *EventsHandler) HandleEvent(w http.ResponseWriter, r *http.Request) {
 		total = event.Data.PromptTokens + event.Data.CompletionTokens
 	}
 
+	// HTTP status: the gateway carries status_code only on error events
+	// (which is why those rows show 0/0/0/0 tokens). A success/usage event
+	// has no status_code, so it is a 200. Store a concrete value on every
+	// new row; historical rows predating this column stay NULL (unknown).
+	status := http.StatusOK
+	if event.Data.StatusCode != nil {
+		status = *event.Data.StatusCode
+	}
+
 	usageEvent := storage.UsageEvent{
 		EventID:             event.ID,
 		Timestamp:           ts,
@@ -87,6 +100,7 @@ func (h *EventsHandler) HandleEvent(w http.ResponseWriter, r *http.Request) {
 		ReasoningTokens:     event.Data.ReasoningTokens,
 		Source:              event.Source,
 		UserAgent:           event.Data.UserAgent,
+		StatusCode:          &status,
 	}
 
 	if h.store == nil {

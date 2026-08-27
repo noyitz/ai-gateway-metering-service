@@ -204,6 +204,7 @@ tr.clickable{cursor:pointer}
         <th style="cursor:default">Client</th>
         <th style="cursor:default">Model</th>
         <th style="cursor:default">Provider</th>
+        <th style="cursor:default">Status</th>
         <th style="cursor:default" class="num">Input</th>
         <th style="cursor:default" class="num">Output</th>
         <th style="cursor:default" class="num">Cached</th>
@@ -305,12 +306,22 @@ function friendlyClient(ua){
   return ua.split('/')[0];
 }
 
+// statusCell maps an HTTP status to a colored cell: green for 2xx, red for
+// anything else, neutral for unknown (null — rows ingested before the status
+// column existed). Code 0 means the upstream never responded.
+function statusCell(code){
+  if(code===null||code===undefined)return{text:'—',color:'var(--text2)',title:'unknown (recorded before status tracking)'};
+  if(code===0)return{text:'ERR',color:'var(--red)',title:'no upstream response'};
+  const ok=code>=200&&code<300;
+  return{text:String(code),color:ok?'var(--green)':'var(--red)',title:ok?'success':'error response'};
+}
 function renderRecent(data){
   const tbody=document.getElementById('recent-tbody');
   tbody.innerHTML=data.map(r=>{
     const provColor=r.provider==='anthropic'?'var(--orange)':r.provider==='openai'?'var(--green)':'var(--cyan)';
     const client=friendlyClient(r.user_agent);
     const clientColor=client==='Claude Code'?'var(--orange)':client==='OpenCLAW'?'var(--cyan)':client==='curl'?'var(--text2)':'var(--green)';
+    const st=statusCell(r.status_code);
     return `<tr>
       <td style="white-space:nowrap;color:var(--text2)">${timeAgo(r.timestamp)}</td>
       <td><strong>${r.username}</strong></td>
@@ -318,6 +329,7 @@ function renderRecent(data){
       <td style="color:${clientColor}" title="${r.user_agent||''}">${client||'—'}</td>
       <td>${r.model}</td>
       <td style="color:${provColor}">${r.provider}</td>
+      <td style="color:${st.color};font-weight:600" title="${st.title}">${st.text}</td>
       <td class="num">${fmtN(r.prompt_tokens)}</td>
       <td class="num">${fmtN(r.completion_tokens)}</td>
       <td class="num" style="color:var(--cyan)">${fmtN(r.cached_input_tokens||0)}</td>

@@ -26,6 +26,9 @@ type UsageEvent struct {
 	ReasoningTokens     int
 	Source              string
 	UserAgent           string
+	// StatusCode is the upstream HTTP status for the request. nil means
+	// unknown (a row ingested before this column existed).
+	StatusCode *int
 }
 
 type UsageStats struct {
@@ -75,10 +78,10 @@ func (s *Store) Close() error {
 
 func (s *Store) InsertEvent(ctx context.Context, e UsageEvent) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO usage_events (event_id, timestamp, username, group_name, subscription, provider, model, prompt_tokens, completion_tokens, total_tokens, cached_input_tokens, cache_creation_tokens, reasoning_tokens, source, user_agent)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+		`INSERT INTO usage_events (event_id, timestamp, username, group_name, subscription, provider, model, prompt_tokens, completion_tokens, total_tokens, cached_input_tokens, cache_creation_tokens, reasoning_tokens, source, user_agent, status_code)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 		e.EventID, e.Timestamp, e.Username, e.GroupName, e.Subscription, e.Provider, e.Model,
-		e.PromptTokens, e.CompletionTokens, e.TotalTokens, e.CachedInputTokens, e.CacheCreationTokens, e.ReasoningTokens, e.Source, e.UserAgent,
+		e.PromptTokens, e.CompletionTokens, e.TotalTokens, e.CachedInputTokens, e.CacheCreationTokens, e.ReasoningTokens, e.Source, e.UserAgent, e.StatusCode,
 	)
 	return err
 }
@@ -460,6 +463,8 @@ type RecentEvent struct {
 	CacheCreationTokens int       `json:"cache_creation_tokens"`
 	CostUSD             float64   `json:"cost_usd"`
 	UserAgent           string    `json:"user_agent"`
+	// StatusCode is the upstream HTTP status; nil (JSON null) when unknown.
+	StatusCode *int `json:"status_code"`
 }
 
 func (s *Store) GetRecentEvents(ctx context.Context, limit int, group, user, model string) ([]RecentEvent, error) {
@@ -471,7 +476,8 @@ func (s *Store) GetRecentEvents(ctx context.Context, limit int, group, user, mod
 			e.prompt_tokens, e.completion_tokens, e.total_tokens,
 			COALESCE(e.cached_input_tokens, 0), COALESCE(e.cache_creation_tokens, 0),
 			COALESCE(ROUND((%s)::numeric, 4), 0),
-			COALESCE(e.user_agent, '')
+			COALESCE(e.user_agent, ''),
+			e.status_code
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
 		WHERE ($2 = '' OR e.group_name = $2) AND ($3 = '' OR e.username = ANY(string_to_array($3, ','))) AND ($4 = '' OR e.model = $4)
@@ -485,7 +491,7 @@ func (s *Store) GetRecentEvents(ctx context.Context, limit int, group, user, mod
 	var result []RecentEvent
 	for rows.Next() {
 		var r RecentEvent
-		if err := rows.Scan(&r.Timestamp, &r.Username, &r.GroupName, &r.Model, &r.Provider, &r.PromptTokens, &r.CompletionTokens, &r.TotalTokens, &r.CachedInputTokens, &r.CacheCreationTokens, &r.CostUSD, &r.UserAgent); err != nil {
+		if err := rows.Scan(&r.Timestamp, &r.Username, &r.GroupName, &r.Model, &r.Provider, &r.PromptTokens, &r.CompletionTokens, &r.TotalTokens, &r.CachedInputTokens, &r.CacheCreationTokens, &r.CostUSD, &r.UserAgent, &r.StatusCode); err != nil {
 			return nil, err
 		}
 		result = append(result, r)
@@ -534,6 +540,10 @@ var migrations = []string{
 	`CREATE INDEX IF NOT EXISTS idx_usage_events_model ON usage_events (model)`,
 	`CREATE INDEX IF NOT EXISTS idx_usage_events_ts_user_model ON usage_events (timestamp, username, model)`,
 	`ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS user_agent TEXT NOT NULL DEFAULT ''`,
+	// Nullable on purpose: rows ingested before this column existed have an
+	// unknown status (rendered neutral), while every new row carries a
+	// concrete code (200 on success, the upstream code on error).
+	`ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS status_code INTEGER`,
 	`CREATE TABLE IF NOT EXISTS model_pricing (
 		model TEXT PRIMARY KEY,
 		provider TEXT NOT NULL,
