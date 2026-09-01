@@ -91,7 +91,7 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
   </div>
   <div style="display:flex;align-items:center;gap:12px">
     <span id="userInfo" style="font-size:11px;color:var(--t2)"></span>
-    <a href="/oauth/sign_out" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600">Logout</a>
+    <a href="/logout" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600">Logout</a>
   </div>
 </div>
 
@@ -146,75 +146,9 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
   </div>
 </div>
 
-<!-- API Keys -->
-<div class="section">
-  <div class="section-title">
-    <span>API Keys</span>
-    <button class="btn btn-primary" onclick="openGenModal()">Generate New Key</button>
-  </div>
-  <table><thead><tr><th>Name</th><th>Status</th><th>Created</th><th>Expires</th><th>Last Used</th><th></th></tr></thead>
-  <tbody id="keysBody"></tbody></table>
-  <div id="keysEmpty" style="display:none;text-align:center;padding:20px;color:var(--t2);font-size:12px">No API keys found. Generate one to get started.</div>
-</div>
+<!-- API Keys section hidden — key management is admin-only via manage-keys.sh -->
 
-<!-- Generate Key Modal -->
-<div class="modal-bg" id="genModal">
-  <div class="modal">
-    <div class="modal-title" id="modalTitle">Generate New API Key</div>
-    <div id="modalStep1">
-      <label style="font-size:11px;color:var(--t2);display:block;margin-bottom:4px">Key Name</label>
-      <input type="text" id="keyNameInput" placeholder="e.g., my-laptop, ci-pipeline">
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-secondary" onclick="closeGenModal()">Cancel</button>
-        <button class="btn btn-primary" id="genBtn" onclick="generateKey()">Generate</button>
-      </div>
-    </div>
-    <div id="modalStep2" style="display:none">
-      <div style="background:rgba(63,185,80,.06);border:1px solid rgba(63,185,80,.3);border-radius:8px;padding:14px 16px;margin-bottom:16px">
-        <div style="font-size:13px;font-weight:600;color:var(--grn);margin-bottom:6px">Key created successfully</div>
-        <div style="font-size:11px;color:var(--t2)">Copy it now — you won't be able to see it again.</div>
-      </div>
-      <div style="position:relative;margin-bottom:20px">
-        <div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Your API Key</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <code id="keyValue" style="flex:1;background:var(--bg);border:1px solid var(--grn);border-radius:6px;padding:10px 12px;font-family:'SF Mono',Menlo,monospace;font-size:12px;color:var(--grn);word-break:break-all"></code>
-          <button class="btn btn-secondary" onclick="copyText(document.getElementById('keyValue').textContent)" style="flex-shrink:0;padding:8px 14px">Copy</button>
-        </div>
-      </div>
-      <div style="font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Quick Setup</div>
-      <div class="tabs">
-        <button class="active" onclick="showTab('claude',this)">Claude Code</button>
-        <button onclick="showTab('codex',this)">Codex</button>
-      </div>
-      <div id="tabClaude">
-        <div style="font-size:11px;color:var(--t2);margin-bottom:8px">Paste this into your terminal. It sets the env vars and starts Claude Code.</div>
-        <div class="setup-block">
-          <div class="setup-label"><span></span>
-            <button class="setup-copy" onclick="copyText(document.getElementById('claudeAll').textContent)">Copy</button>
-          </div>
-          <pre class="setup-code" id="claudeAll"></pre>
-        </div>
-      </div>
-      <div id="tabCodex" style="display:none">
-        <div class="setup-block">
-          <div class="setup-label"><span style="color:var(--pur)">Step 1</span> — Create config <span style="color:var(--t2)">(~/.codex/config.toml)</span>
-            <button class="setup-copy" onclick="copyText(document.getElementById('codexStep1').textContent)">Copy</button>
-          </div>
-          <pre class="setup-code" id="codexStep1"></pre>
-        </div>
-        <div class="setup-block" style="margin-top:10px">
-          <div class="setup-label"><span style="color:var(--pur)">Step 2</span> — Set key and start Codex
-            <button class="setup-copy" onclick="copyText(document.getElementById('codexStep2').textContent)">Copy</button>
-          </div>
-          <pre class="setup-code" id="codexStep2"></pre>
-        </div>
-      </div>
-      <div style="margin-top:16px;text-align:right">
-        <button class="btn btn-primary" onclick="closeGenModal();loadKeys()">Done</button>
-      </div>
-    </div>
-  </div>
-</div>
+
 
 <div id="toast" class="toast"></div>
 
