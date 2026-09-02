@@ -1,0 +1,10 @@
+[
+  {"username": "bsalisbu@redhat.com", "first_name": "Brent", "last_name": "Salisbury"},
+  {"username": "jstrunk@redhat.com", "first_name": "John", "last_name": "Strunk"},
+  {"username": "nitzikow@redhat.com", "first_name": "Noy", "last_name": "Itzikowitz"},
+  {"username": "yovadia@redhat.com", "first_name": "Yossi", "last_name": "Ovadia"},
+  {"username": "tcoufal@redhat.com", "first_name": "Tom", "last_name": "Coufal"},
+  {"username": "rhaberma@redhat.com", "first_name": "Ron", "last_name": "Haberman"},
+  {"username": "taagarwa@redhat.com", "first_name": "Taylor", "last_name": "Agarwal"},
+  {"username": "ricmitch@redhat.com", "first_name": "Richard", "last_name": "Mitchell"}
+]
