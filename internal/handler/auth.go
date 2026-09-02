@@ -22,12 +22,20 @@ import (
 const (
 	cookieName   = "metering_session"
 	cookieMaxAge = 7 * 24 * time.Hour
+
+	// realUserHeader carries the true session identity while an admin is
+	// "viewing as" another user, so the UI can render a banner and the
+	// whoami endpoint can report both identities.
+	realUserHeader = "X-Forwarded-Real-User"
 )
 
 type sessionPayload struct {
 	Username string   `json:"username"`
 	Groups   []string `json:"groups"`
-	Exp      int64    `json:"exp"`
+	// As, when set by an admin via HandleImpersonate, swaps the identity
+	// header to this user for the rest of the session.
+	As  string `json:"as,omitempty"`
+	Exp int64  `json:"exp"`
 }
 
 type AuthHandler struct {
@@ -63,10 +71,11 @@ func (h *AuthHandler) verify(data []byte, sig string) bool {
 	return hmac.Equal([]byte(expected), []byte(sig))
 }
 
-func (h *AuthHandler) setCookie(w http.ResponseWriter, username string, groups []string) {
+func (h *AuthHandler) setCookie(w http.ResponseWriter, username string, groups []string, as string) {
 	payload := sessionPayload{
 		Username: username,
 		Groups:   groups,
+		As:       as,
 		Exp:      time.Now().Add(cookieMaxAge).Unix(),
 	}
 	data, _ := json.Marshal(payload)
@@ -172,8 +181,43 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("user logged in", "username", result.Username)
-	h.setCookie(w, result.Username, result.Groups)
+	h.setCookie(w, result.Username, result.Groups, "")
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
+}
+
+// HandleImpersonate lets an admin open another user's view. With ?as=USER the
+// target is stored in the signed session and the browser is sent to that
+// user's account page; without it any active impersonation is cleared and the
+// browser returns to the dashboard. The admin check uses the real session
+// identity (not the swapped header), so it still works mid-impersonation.
+func (h *AuthHandler) HandleImpersonate(w http.ResponseWriter, r *http.Request) {
+	session := h.readCookie(r)
+	if session == nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	isAdmin := false
+	for _, admin := range h.cfg.AdminUsers {
+		if session.Username == admin {
+			isAdmin = true
+			break
+		}
+	}
+	if !isAdmin {
+		http.Redirect(w, r, "/dashboard", http.StatusFound)
+		return
+	}
+
+	target := strings.TrimSpace(r.URL.Query().Get("as"))
+	if target == "" {
+		h.setCookie(w, session.Username, session.Groups, "")
+		http.Redirect(w, r, "/dashboard", http.StatusFound)
+		return
+	}
+
+	slog.Info("admin viewing as user", "admin", session.Username, "as", target)
+	h.setCookie(w, session.Username, session.Groups, target)
+	http.Redirect(w, r, "/me", http.StatusFound)
 }
 
 func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +246,16 @@ func (h *AuthHandler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 		r.Header.Set(h.cfg.UserHeader, session.Username)
 		if len(session.Groups) > 0 {
 			r.Header.Set(h.cfg.GroupsHeader, fmt.Sprintf(`["%s"]`, strings.Join(session.Groups, `","`)))
+		}
+		// Admin "view as" mode: swap the identity header to the target user
+		// so every downstream handler (per-user scoping, IsAdmin) behaves
+		// exactly as it would for that user. The real identity is preserved
+		// in realUserHeader for the UI banner and the impersonate-clear
+		// endpoint. Non-admins can never set this — only HandleImpersonate
+		// writes the claim, and the cookie is HMAC-signed.
+		if session.As != "" && IsAdmin(h.cfg, r) {
+			r.Header.Set(realUserHeader, session.Username)
+			r.Header.Set(h.cfg.UserHeader, session.As)
 		}
 		next(w, r)
 	}

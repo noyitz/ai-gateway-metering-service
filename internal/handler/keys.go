@@ -132,13 +132,24 @@ func (h *KeysHandler) forward(w http.ResponseWriter, method, path string, hdrs m
 }
 
 // HandleWhoAmI echoes the identity the authenticating proxy asserted, which
-// the account page uses to decide what to show.
+// the account page uses to decide what to show. While an admin is "viewing
+// as" another user, `user` is the impersonated identity and `real_user` the
+// admin's own, so the page can render a banner with a way back.
 func (h *KeysHandler) HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
+	user := r.Header.Get(h.cfg.UserHeader)
+	real := r.Header.Get(realUserHeader)
+	impersonating := real != "" && real != user
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck // response already committed
-		"user":              r.Header.Get(h.cfg.UserHeader),
+	resp := map[string]any{
+		"user":              user,
 		"groups":            r.Header.Get(h.cfg.GroupsHeader),
 		"isAdmin":           IsAdmin(h.cfg, r),
 		"keyServiceEnabled": h.cfg.KeyService.Enabled(),
-	})
+		"impersonating":     impersonating,
+		"real_user":         "",
+	}
+	if impersonating {
+		resp["real_user"] = real
+	}
+	json.NewEncoder(w).Encode(resp) //nolint:errcheck // response already committed
 }
