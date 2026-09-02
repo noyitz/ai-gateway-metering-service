@@ -140,7 +140,7 @@ func main() {
 	maasClient := maasapi.NewClient(maasAPIURL, maasTenant)
 
 	adminHandler := handler.NewAdminHandler(k8sClient, maasClient, cfg)
-	authHandler := handler.NewAuthHandler(cfg, store)
+	authHandler := handler.NewAuthHandler(cfg)
 	keysHandler := handler.NewKeysHandler(k8sClient, cfg, store)
 	profilesHandler := handler.NewProfilesHandler(store)
 	auth := authHandler.RequireAuth
