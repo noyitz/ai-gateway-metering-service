@@ -355,7 +355,8 @@ const COLS=[
   {key:'prompt_tokens',label:'Prompt Tokens',cls:'num'},
   {key:'completion_tokens',label:'Completion Tokens',cls:'num'},
   {key:'total_tokens',label:'Total Tokens',cls:'num'},
-  {key:'cost_usd',label:'Cost ($)',cls:'num'}
+  {key:'cost_usd',label:'Cost ($)',cls:'num'},
+  {key:'saved_usd',label:'Cost Saved ($)',cls:'num'}
 ];
 
 let expandedUser='';
@@ -385,8 +386,9 @@ function renderUsers(data){
       <td class="num">${fmtN(u.completion_tokens)}</td>
       <td class="num">${fmtN(u.total_tokens)}</td>
       <td class="num">${fmtC(u.cost_usd)}</td>
+      <td class="num">${fmtC(u.saved_usd||0)}</td>
     </tr>`;
-    if(isExpanded)row+=`<tr id="expand-${u.username}"><td colspan="8" style="padding:0"><div class="expand-loading" id="expand-content-${u.username}">Loading...</div></td></tr>`;
+    if(isExpanded)row+=`<tr id="expand-${u.username}"><td colspan="9" style="padding:0"><div class="expand-loading" id="expand-content-${u.username}">Loading...</div></td></tr>`;
     return row;
   }).join('');
 
