@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/noyitz/ai-gateway-metering-service/internal/pricing"
@@ -17,11 +18,12 @@ func NewPricingRefreshHandler(store *storage.Store) *PricingRefreshHandler {
 }
 
 type refreshResponse struct {
-	Updated   int      `json:"updated"`
-	Total     int      `json:"total"`
-	Source    string   `json:"source"`
-	Changed  []string `json:"changed,omitempty"`
-	Error    string   `json:"error,omitempty"`
+	Updated     int      `json:"updated"`
+	Total       int      `json:"total"`
+	Source      string   `json:"source"`
+	Changed     []string `json:"changed,omitempty"`
+	ListUpdated int      `json:"list_updated,omitempty"`
+	Error       string   `json:"error,omitempty"`
 }
 
 func (h *PricingRefreshHandler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
@@ -80,10 +82,32 @@ func (h *PricingRefreshHandler) HandleRefresh(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// List prices for the cost-saved column. Best-effort on top of the main
+	// refresh: a list-price fetch failure logs but doesn't fail the refresh
+	// (SeedListPricing is UPDATE-only, so a stale set stays in place).
+	listUpdated := 0
+	if listPrices, listErr := pricing.LoadListPrices(ctx); listErr != nil {
+		slog.Warn("pricing refresh: list prices fetch failed — cost-saved column may be stale", "error", listErr)
+	} else {
+		listSeed := make([]storage.ModelPrice, 0, len(listPrices)+len(pricing.LocalListPrices()))
+		for _, p := range append(append([]pricing.ModelPrice{}, listPrices...), pricing.LocalListPrices()...) {
+			listSeed = append(listSeed, storage.ModelPrice{
+				Model: p.Model, Provider: p.Provider,
+				ListInputCost: p.ListInputCost, ListOutputCost: p.ListOutputCost,
+				ListCacheWriteCost: p.ListCacheWriteCost, ListCacheReadCost: p.ListCacheReadCost,
+			})
+		}
+		listUpdated, seedErr = h.store.SeedListPricing(ctx, listSeed)
+		if seedErr != nil {
+			slog.Warn("pricing refresh: list pricing seed failed", "error", seedErr)
+		}
+	}
+
 	json.NewEncoder(w).Encode(refreshResponse{
-		Updated: updated,
-		Total:   len(prices),
-		Source:  source,
-		Changed: changed,
+		Updated:     updated,
+		Total:       len(prices),
+		Source:      source,
+		Changed:     changed,
+		ListUpdated: listUpdated,
 	})
 }

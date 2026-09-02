@@ -49,21 +49,21 @@ func TestParseBundled(t *testing.T) {
 func TestParseLiteLLMRaw(t *testing.T) {
 	raw := map[string]liteLLMEntry{
 		"claude-opus-4-8": {
-			InputCostPerToken:  0.000005,
-			OutputCostPerToken: 0.000025,
-			CacheReadInputTokenCost: 0.0000005,
+			InputCostPerToken:           0.000005,
+			OutputCostPerToken:          0.000025,
+			CacheReadInputTokenCost:     0.0000005,
 			CacheCreationInputTokenCost: 0.00000625,
-			Provider: "anthropic",
+			Provider:                    "anthropic",
 		},
 		"vertex_ai/claude-sonnet-4-6": {
 			InputCostPerToken:  0.000003,
 			OutputCostPerToken: 0.000015,
-			Provider: "vertex_ai",
+			Provider:           "vertex_ai",
 		},
 		"some-irrelevant-model": {
 			InputCostPerToken:  0.001,
 			OutputCostPerToken: 0.002,
-			Provider: "unknown",
+			Provider:           "unknown",
 		},
 		"sample_spec": {},
 	}
@@ -249,5 +249,103 @@ func TestLocalPrices_ZeroCostAndExactIDs(t *testing.T) {
 	}
 	if !haveQwen {
 		t.Error(`missing self-hosted "Qwen3.8-27B-FP8" entry`)
+	}
+}
+
+func TestParseListRaw_NativeEntriesOnly(t *testing.T) {
+	raw := map[string]liteLLMEntry{
+		// Vendor-native: bare key + native provider → list price kept.
+		"claude-opus-4-8": {
+			InputCostPerToken:           0.000005,
+			OutputCostPerToken:          0.000025,
+			CacheReadInputTokenCost:     0.0000005,
+			CacheCreationInputTokenCost: 0.00000625,
+			Provider:                    "anthropic",
+		},
+		"gpt-5.4": {
+			InputCostPerToken:  0.00000175,
+			OutputCostPerToken: 0.000014,
+			Provider:           "openai",
+		},
+		// Reseller route: prefixed key → excluded (reseller price ≠ list).
+		"vertex_ai/claude-sonnet-5": {
+			InputCostPerToken:  0.000002,
+			OutputCostPerToken: 0.00001,
+			Provider:           "vertex_ai",
+		},
+		"azure/eu.gpt-5.2": {
+			InputCostPerToken:  0.000001,
+			OutputCostPerToken: 0.00001,
+			Provider:           "azure",
+		},
+		// Bare key but non-listed (reseller) provider → excluded.
+		"us.anthropic.claude-fable-5": {
+			InputCostPerToken:  0.00001,
+			OutputCostPerToken: 0.00005,
+			Provider:           "bedrock_converse",
+		},
+		// Bare key, native provider, but not a model we track → excluded.
+		"gemini-2.0-flash": {
+			InputCostPerToken:  0.0000001,
+			OutputCostPerToken: 0.0000004,
+			Provider:           "google",
+		},
+		"sample_spec": {},
+	}
+	data, _ := json.Marshal(raw)
+
+	prices, err := parseListRaw(data)
+	if err != nil {
+		t.Fatalf("parseListRaw: %v", err)
+	}
+	if len(prices) != 2 {
+		t.Fatalf("expected 2 list entries, got %d: %+v", len(prices), prices)
+	}
+
+	found := make(map[string]ModelPrice)
+	for _, p := range prices {
+		found[p.Model] = p
+	}
+
+	p, ok := found["claude-opus-4-8"]
+	if !ok {
+		t.Fatal("claude-opus-4-8 not found")
+	}
+	if math.Abs(p.ListInputCost-5.0) > 0.01 || math.Abs(p.ListOutputCost-25.0) > 0.01 {
+		t.Errorf("opus list: got %.2f/%.2f, want 5.00/25.00", p.ListInputCost, p.ListOutputCost)
+	}
+	if math.Abs(p.ListCacheReadCost-0.5) > 0.01 || math.Abs(p.ListCacheWriteCost-6.25) > 0.01 {
+		t.Errorf("opus list cache: got %.2f/%.2f, want 0.50/6.25", p.ListCacheReadCost, p.ListCacheWriteCost)
+	}
+	if p.InputCost != 0 || p.OutputCost != 0 {
+		t.Error("list entry must not carry actual (gateway) rates")
+	}
+
+	if _, ok := found["gpt-5.4"]; !ok {
+		t.Error("gpt-5.4 not found")
+	}
+	for _, excluded := range []string{"claude-sonnet-5", "gpt-5.2", "claude-fable-5", "gemini-2.0-flash"} {
+		if _, ok := found[excluded]; ok {
+			t.Errorf("%q should be excluded from list prices", excluded)
+		}
+	}
+}
+
+func TestLocalListPrices_MirrorsLocalModels(t *testing.T) {
+	l := LocalListPrices()
+	local := LocalPrices()
+	if len(l) != len(local) {
+		t.Fatalf("LocalListPrices has %d entries, LocalPrices has %d", len(l), len(local))
+	}
+	for i := range local {
+		if l[i].Model != local[i].Model {
+			t.Errorf("entry %d: model %q, want %q", i, l[i].Model, local[i].Model)
+		}
+		if l[i].InputCost != 0 || l[i].OutputCost != 0 {
+			t.Errorf("entry %d: list entry must not carry actual rates", i)
+		}
+		if l[i].ListInputCost == 0 || l[i].ListOutputCost == 0 {
+			t.Errorf("entry %d: list entry needs non-zero list rates", i)
+		}
 	}
 }

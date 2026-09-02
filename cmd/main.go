@@ -71,6 +71,35 @@ func main() {
 		slog.Info("local model pricing seeded", "models", len(storeLocal), "updated", updated)
 	}
 
+	// Vendor list prices (for the dashboard's cost-saved column) — a second
+	// rate set on the same rows, seeded independently. Best-effort: a failed
+	// fetch leaves previously seeded list prices in place (SeedListPricing is
+	// UPDATE-only and skips zero rates), so the column goes stale, not wrong.
+	if listPrices, listErr := pricing.LoadListPrices(ctx); listErr != nil {
+		slog.Warn("list pricing fetch failed — cost-saved column may be stale", "error", listErr)
+	} else {
+		listSeed := make([]storage.ModelPrice, 0, len(listPrices)+len(pricing.LocalListPrices()))
+		for _, p := range listPrices {
+			listSeed = append(listSeed, storage.ModelPrice{
+				Model: p.Model, Provider: p.Provider,
+				ListInputCost: p.ListInputCost, ListOutputCost: p.ListOutputCost,
+				ListCacheWriteCost: p.ListCacheWriteCost, ListCacheReadCost: p.ListCacheReadCost,
+			})
+		}
+		for _, p := range pricing.LocalListPrices() {
+			listSeed = append(listSeed, storage.ModelPrice{
+				Model: p.Model, Provider: p.Provider,
+				ListInputCost: p.ListInputCost, ListOutputCost: p.ListOutputCost,
+				ListCacheWriteCost: p.ListCacheWriteCost, ListCacheReadCost: p.ListCacheReadCost,
+			})
+		}
+		if updated, seedErr := store.SeedListPricing(ctx, listSeed); seedErr != nil {
+			slog.Warn("list pricing seed failed — cost-saved column may be stale", "error", seedErr)
+		} else {
+			slog.Info("list pricing seeded", "models", len(listSeed), "updated", updated)
+		}
+	}
+
 	eventsHandler := handler.NewEventsHandler(store)
 	entitlementsHandler := handler.NewEntitlementsHandler(store)
 	teamUsageHandler := handler.NewTeamUsageHandler(store)

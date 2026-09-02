@@ -127,6 +127,19 @@ const costUSDExpr = `GREATEST(e.prompt_tokens - COALESCE(e.cached_input_tokens, 
 			COALESCE(e.cache_creation_tokens, 0) * COALESCE(p.cache_write_cost_per_mtok, 18.75)/1000000.0 +
 			e.completion_tokens * COALESCE(p.output_cost_per_mtok, 75)/1000000.0`
 
+// listCostUSDExpr mirrors costUSDExpr but prices each term at the vendor
+// list rate (model_pricing.list_*), with a two-tier fallback per term:
+//   - list rate = 0 means "no list price seeded" for this model — fall back
+//     to the exact effective gateway rate (its seeded value, else the same
+//     hardcoded default), so saved_usd is exactly 0 for unseeded models
+//     instead of a fabricated difference.
+//
+// Same disjoint-field arithmetic and same aliases (e / p) as costUSDExpr.
+const listCostUSDExpr = `GREATEST(e.prompt_tokens - COALESCE(e.cached_input_tokens, 0) - COALESCE(e.cache_creation_tokens, 0), 0) * COALESCE(NULLIF(p.list_input_cost_per_mtok, 0), COALESCE(p.input_cost_per_mtok, 15))/1000000.0 +
+			COALESCE(e.cached_input_tokens, 0) * COALESCE(NULLIF(p.list_cache_read_cost_per_mtok, 0), COALESCE(p.cache_read_cost_per_mtok, 0.5))/1000000.0 +
+			COALESCE(e.cache_creation_tokens, 0) * COALESCE(NULLIF(p.list_cache_write_cost_per_mtok, 0), COALESCE(p.cache_write_cost_per_mtok, 18.75))/1000000.0 +
+			e.completion_tokens * COALESCE(NULLIF(p.list_output_cost_per_mtok, 0), COALESCE(p.output_cost_per_mtok, 75))/1000000.0`
+
 func (s *Store) GetTeamUsage(ctx context.Context, groupName string) ([]TeamUserUsage, error) {
 	query := fmt.Sprintf(`
 		SELECT e.username, e.model, e.provider,
@@ -251,6 +264,11 @@ type UserSummary struct {
 	CompletionTokens int64   `json:"completion_tokens"`
 	TotalTokens      int64   `json:"total_tokens"`
 	CostUSD          float64 `json:"cost_usd"`
+	// SavedUSD is what the same tokens would cost at the vendor list price
+	// minus what the gateway actually charged. 0 for models without a
+	// seeded list price (the list expression falls back to the effective
+	// gateway rate, making the difference exactly zero).
+	SavedUSD float64 `json:"saved_usd"`
 }
 
 type ModelSummary struct {
@@ -323,7 +341,7 @@ func (s *Store) GetDashboardGroups(ctx context.Context, since, until time.Time, 
 
 func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, group, user, model, sortCol, sortOrder string, limit int) ([]UserSummary, error) {
 	validSorts := map[string]string{
-		"total_tokens": "total_tokens", "cost_usd": "cost_usd",
+		"total_tokens": "total_tokens", "cost_usd": "cost_usd", "saved_usd": "saved_usd",
 		"requests": "requests", "username": "e.username",
 		"prompt_tokens": "prompt_tokens", "completion_tokens": "completion_tokens",
 	}
@@ -346,13 +364,14 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 			COALESCE(SUM(e.prompt_tokens),0) as prompt_tokens,
 			COALESCE(SUM(e.completion_tokens),0) as completion_tokens,
 			COALESCE(SUM(e.total_tokens),0) as total_tokens,
-			COALESCE(ROUND(SUM(%s)::numeric, 2), 0) as cost_usd
+			COALESCE(ROUND(SUM(%s)::numeric, 2), 0) as cost_usd,
+			COALESCE(ROUND((SUM(%s) - SUM(%s))::numeric, 2), 0) as saved_usd
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
 		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 		GROUP BY e.username, COALESCE(e.group_name, '')
 		ORDER BY %s %s
-		LIMIT $6`, costUSDExpr, sortExpr, direction)
+		LIMIT $6`, costUSDExpr, listCostUSDExpr, costUSDExpr, sortExpr, direction)
 
 	rows, err := s.db.QueryContext(ctx, query, since, until, group, user, model, limit)
 	if err != nil {
@@ -363,7 +382,7 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 	var result []UserSummary
 	for rows.Next() {
 		var u UserSummary
-		if err := rows.Scan(&u.Username, &u.GroupName, &u.Requests, &u.PromptTokens, &u.CompletionTokens, &u.TotalTokens, &u.CostUSD); err != nil {
+		if err := rows.Scan(&u.Username, &u.GroupName, &u.Requests, &u.PromptTokens, &u.CompletionTokens, &u.TotalTokens, &u.CostUSD, &u.SavedUSD); err != nil {
 			return nil, err
 		}
 		result = append(result, u)
@@ -550,8 +569,18 @@ var migrations = []string{
 		input_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0,
 		output_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0,
 		cache_write_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0,
-		cache_read_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0
+		cache_read_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0,
+		list_input_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0,
+		list_output_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0,
+		list_cache_write_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0,
+		list_cache_read_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0
 	)`,
+	// Idempotent for pre-existing databases (CREATE TABLE IF NOT EXISTS does
+	// not add columns to a table that already exists).
+	`ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS list_input_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0`,
+	`ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS list_output_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0`,
+	`ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS list_cache_write_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0`,
+	`ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS list_cache_read_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0`,
 }
 
 // SeedPricing upserts model pricing from an external source (e.g., LiteLLM).
@@ -586,15 +615,61 @@ func (s *Store) SeedPricing(ctx context.Context, prices []ModelPrice) (int, erro
 	return updated, nil
 }
 
+// SeedListPricing sets only the vendor list price (list_* columns) on
+// existing model_pricing rows. UPDATE-only by design: it never creates rows,
+// so a list-price entry for a model the main seed doesn't know about is a
+// no-op rather than a zero-rate row, and it can never clobber actual
+// (gateway) rates. Entries whose list rates are all zero are skipped — 0 is
+// the "no list price" sentinel the cost query relies on.
+func (s *Store) SeedListPricing(ctx context.Context, prices []ModelPrice) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	updated := 0
+	for _, p := range prices {
+		if p.ListInputCost == 0 && p.ListOutputCost == 0 {
+			continue
+		}
+		res, err := tx.ExecContext(ctx, `
+			UPDATE model_pricing SET
+				list_input_cost_per_mtok = $2,
+				list_output_cost_per_mtok = $3,
+				list_cache_write_cost_per_mtok = $4,
+				list_cache_read_cost_per_mtok = $5
+			WHERE model = $1`,
+			p.Model, p.ListInputCost, p.ListOutputCost, p.ListCacheWriteCost, p.ListCacheReadCost)
+		if err != nil {
+			return 0, fmt.Errorf("update list price %s: %w", p.Model, err)
+		}
+		n, _ := res.RowsAffected()
+		updated += int(n)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+	return updated, nil
+}
+
 // ModelPrice is imported from the pricing package. Re-declared here to avoid
 // a circular import — the storage layer doesn't depend on internal/pricing.
+// List* fields carry the vendor list price (per MTok). Zero means "no list
+// price seeded" — the cost query's NULLIF fallback treats 0 as absent and
+// falls back to the effective gateway rate, so saved_usd is exactly 0.
 type ModelPrice struct {
-	Model          string
-	Provider       string
-	InputCost      float64
-	OutputCost     float64
-	CacheWriteCost float64
-	CacheReadCost  float64
+	Model              string
+	Provider           string
+	InputCost          float64
+	OutputCost         float64
+	CacheWriteCost     float64
+	CacheReadCost      float64
+	ListInputCost      float64
+	ListOutputCost     float64
+	ListCacheWriteCost float64
+	ListCacheReadCost  float64
 }
 
 // GetCurrentPricing returns all model pricing from the database.
