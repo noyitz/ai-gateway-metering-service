@@ -505,6 +505,7 @@ td .tag{white-space:nowrap}
   </div>
   <div style="display:flex;align-items:center;gap:12px;margin-left:auto">
     <span id="user-badge" style="font-size:11px;color:#8090a8;display:flex;align-items:center;gap:6px"></span>
+    <a href="#" id="my-view-btn" title="Open your own personal dashboard (Yossi's user page) — you can get back to this admin view from there" style="background:transparent;color:#9db2c8;border:1px solid var(--bdr,#2e3848);padding:8px 16px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My view as user</a>
     <a href="/logout" style="background:transparent;color:var(--red,#e8554e);border:1px solid var(--bdr,#2e3848);padding:8px 16px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Logout</a>
   </div>
 </div>
@@ -1540,5 +1541,16 @@ document.addEventListener('keydown', function(e) {
 loadAll();
 refreshTimer = setInterval(loadAll, REFRESH_INTERVAL);
 </script>
-<script>fetch("/whoami").then(function(r){return r.json()}).then(function(d){var el=document.getElementById("user-badge");if(d.user&&el){var isAdmin=d.user==="admin";el.innerHTML=isAdmin?"<span style=\"color:#3dcc6e;font-weight:700\">⬤ admin</span> <span style=\"font-size:10px;color:#5a6a7a\">(cluster admin)</span>":"<span style=\"color:#4da0f8;font-weight:700\">⬤ "+d.user+"</span> <span style=\"font-size:10px;color:#5a6a7a\">(GitHub)</span>"}}).catch(function(){})</script></body>
+<script>
+/* Identity badge (post MaaS-key auth) + "My view as user" target. */
+fetch("/whoami").then(function(r){return r.json()}).then(function(d){
+  var el=document.getElementById("user-badge");
+  if(d.user&&el){
+    var name=d.display_name?d.display_name:d.user;
+    el.innerHTML="<span style=\"color:#3dcc6e;font-weight:700\">⬤ "+esc(name)+"</span> <span style=\"font-size:10px;color:#5a6a7a\">"+(d.isAdmin?"(admin)":"")+"</span>";
+  }
+  var mvb=document.getElementById("my-view-btn");
+  if(mvb&&d.user){mvb.href="/admin/impersonate?as="+encodeURIComponent(d.user);}
+}).catch(function(){})
+</script></body>
 </html>

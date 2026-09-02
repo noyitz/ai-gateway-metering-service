@@ -141,7 +141,9 @@ func (h *KeysHandler) forward(w http.ResponseWriter, method, path string, hdrs m
 func (h *KeysHandler) HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 	user := r.Header.Get(h.cfg.UserHeader)
 	real := r.Header.Get(realUserHeader)
-	impersonating := real != "" && real != user
+	// real is only set while an admin holds a "view as" claim (RequireAuth
+	// writes it), including the "My view as user" self case where real==user.
+	impersonating := real != ""
 
 	// Groups arrive as the JSON array string the login flow stored in the
 	// session; expose them as a real array (CSV fallback) so pages don't
