@@ -80,6 +80,8 @@ tr.clickable{cursor:pointer}
 
 @media(max-width:1100px){.charts-row{grid-template-columns:1fr 1fr}}
 @media(max-width:900px){.kpi-row{grid-template-columns:repeat(2,1fr)}.charts-row{grid-template-columns:1fr}}
+.user-name{font-weight:600;line-height:1.2}
+.user-mail{font-size:10px;color:var(--text2);margin-top:1px}
 @media(max-width:600px){.kpi-row{grid-template-columns:1fr}}
 </style>
 </head>
@@ -254,6 +256,13 @@ const COLORS=['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#39d2c0','#f778
 function fmtN(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return n.toString()}
 function fmtC(n){return '$'+n.toFixed(2)}
 function fmtGroup(g){if(!g)return'';try{var a=JSON.parse(g);return Array.isArray(a)?a.join(', '):g;}catch(e){return g.replace(/^\["|"\]$/g,'').replace(/","/g,', ');}}
+// Render a user cell: "First Last" with the email muted beneath it when a
+// display name is known, otherwise just the username.
+function userCell(username,displayName){
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  if(displayName)return `<div class="user-name">${esc(displayName)}</div><div class="user-mail">${esc(username)}</div>`;
+  return esc(username);
+}
 
 async function api(path){const r=await fetch(path);if(!r.ok)throw new Error(r.statusText);return r.json()}
 
@@ -332,7 +341,7 @@ function renderRecent(data){
     const st=statusCell(r.status_code);
     return `<tr>
       <td style="white-space:nowrap;color:var(--text2)">${timeAgo(r.timestamp)}</td>
-      <td><strong>${r.username}</strong></td>
+      <td>${userCell(r.username,r.display_name)}</td>
       <td>${fmtGroup(r.group_name)}</td>
       <td style="color:${clientColor}" title="${r.user_agent||''}">${client||'—'}</td>
       <td>${r.model}</td>
@@ -387,7 +396,7 @@ function renderUsers(data){
     const arrow=isExpanded?'&#9660;':'&#9654;';
     let row=`<tr class="${cls}" onclick="toggleExpand('${u.username}')">
       <td style="color:var(--text2);font-size:10px">${arrow}</td>
-      <td>${u.username}</td>
+      <td>${userCell(u.username,u.display_name)}</td>
       <td>${fmtGroup(u.group_name)}</td>
       <td class="num">${fmtN(u.requests)}</td>
       <td class="num">${fmtN(u.prompt_tokens)}</td>
@@ -608,12 +617,15 @@ function renderUserChecklist(){
   var q=(s?s.value:'').toLowerCase();
   var shown=userRosterNames().filter(function(n){return n.toLowerCase().indexOf(q)>=0;});
   if(!shown.length){list.innerHTML='<div style="padding:8px 10px;font-size:11px;color:var(--text2)">No users</div>';return;}
+  var nameByUser={};
+  allUsers.forEach(function(u){if(u.display_name)nameByUser[u.username]=u.display_name;});
   list.innerHTML=shown.map(function(n){
     var checked=userFilter.indexOf(n)>=0?' checked':'';
     var safe=n.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    var label=nameByUser[n]?nameByUser[n]+' <span style="color:var(--text2);font-size:10px">'+safe+'</span>':safe;
     return '<label style="display:flex;align-items:center;gap:8px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--text)" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'transparent\'">'+
       '<input type="checkbox" value="'+safe+'"'+checked+' onchange="onUserCheck(this)" style="cursor:pointer">'+
-      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+safe+'</span></label>';
+      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+label+'</span></label>';
   }).join('');
 }
 
@@ -699,13 +711,13 @@ function renderUserCostChart(){
   const data=cachedUsers.slice(0,10);
   const m=userPieMetric;
   const vals=data.map(d=>pieVal(d,m));
-  const labels=data.map((d,i)=>`${d.username} — ${pieFmt(vals[i],m)}`);
+  const labels=data.map((d,i)=>`${d.display_name||d.username} — ${pieFmt(vals[i],m)}`);
   const colors=data.map((_,i)=>COLORS[i%COLORS.length]);
   if(userCostChart)userCostChart.destroy();
   userCostChart=new Chart(document.getElementById('user-cost-chart'),{
     type:'doughnut',data:{labels,datasets:[{data:vals,backgroundColor:colors,borderWidth:0}]},
     options:{responsive:true,plugins:{legend:{position:'right',labels:{color:'#8b949e',font:{size:11},padding:8}},
-      tooltip:{callbacks:{label:function(ctx){const tot=vals.reduce((a,b)=>a+b,0);return data[ctx.dataIndex].username+': '+pieFmt(ctx.raw,m)+pieUnit(m)+' ('+((ctx.raw/tot)*100).toFixed(1)+'%)';}}}
+      tooltip:{callbacks:{label:function(ctx){const tot=vals.reduce((a,b)=>a+b,0);return (data[ctx.dataIndex].display_name||data[ctx.dataIndex].username)+': '+pieFmt(ctx.raw,m)+pieUnit(m)+' ('+((ctx.raw/tot)*100).toFixed(1)+'%)';}}}
     }}
   });
 }
@@ -787,7 +799,7 @@ setInterval(refresh,30000);
 
 fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
   if(d.user){
-    document.getElementById('userInfo').textContent=d.user;
+    document.getElementById('userInfo').textContent=d.display_name||d.user;
     // Only surface auth-only nav (My Account, Logout) when an
     // identity is present (SSO/oauth-proxy). On the unauthenticated
     // dogfood there is no X-Forwarded-User, so these stay hidden.
@@ -796,8 +808,8 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
     var banner=document.getElementById('impersonation-banner');
     if(d.impersonating){
       banner.style.display='flex';
-      document.getElementById('impersonated-user').textContent=d.user;
-      document.getElementById('real-user').textContent=d.real_user;
+      document.getElementById('impersonated-user').textContent=d.display_name?d.display_name+' ('+d.user+')':d.user;
+      document.getElementById('real-user').textContent=d.real_user_display?d.real_user_display+' ('+d.real_user+')':d.real_user;
     } else banner.style.display='none';
     var mvb=document.getElementById('my-view-btn');
     if(mvb)mvb.href='/admin/impersonate?as='+encodeURIComponent(d.user);
