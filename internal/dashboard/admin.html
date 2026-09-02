@@ -325,6 +325,9 @@ td .tag{white-space:nowrap}
 .field select:focus{border-color:var(--blu)}
 .field input[type="text"]::placeholder{color:var(--t2);opacity:.6}
 .field select option{background:var(--c2);color:var(--t)}
+.tbl-input{width:100%;background:var(--c2);border:1px solid var(--bdr);color:var(--t);padding:4px 8px;border-radius:4px;font-size:11px;font-family:inherit;outline:none;transition:border-color .2s}
+.tbl-input:focus{border-color:var(--blu)}
+.tbl-input::placeholder{color:var(--t2);opacity:.6}
 
 /* Key display box */
 .key-display{
@@ -550,6 +553,21 @@ td .tag{white-space:nowrap}
       <div class="loading"><div class="spinner"></div>Loading keys...</div>
     </div>
   </div>
+
+  <!-- Display Names (user_profiles) -->
+  <div class="card" style="margin-top:16px">
+    <div class="card-hdr">
+      <div>
+        <span class="card-title">Display Names</span>
+        <span class="card-count" id="profiles-count"></span>
+      </div>
+      <button class="btn btn-grn" onclick="saveProfiles()">Save</button>
+    </div>
+    <div class="ts" style="margin:0 16px 8px">Shown on the dashboards next to a user's traffic. Fill in a name and hit Save — users without a name fall back to their email. Clearing a name back to empty removes it.</div>
+    <div id="profiles-body">
+      <div class="loading"><div class="spinner"></div>Loading...</div>
+    </div>
+  </div>
 </div>
 
 <!-- Section 3: Policies & Subscriptions (collapsible) -->
@@ -709,6 +727,7 @@ function loadAll() {
     loadPendingUsers();
     loadGroups();
     loadKeys();
+    loadProfiles();
     loadPolicies();
     loadSubscriptions();
   });
@@ -1048,6 +1067,85 @@ function loadKeys() {
   }).catch(function(err) {
     body.innerHTML = '<div class="err-msg">Failed to load keys: ' + esc(err.message) + '</div>';
     document.getElementById('keys-count').textContent = '';
+  });
+}
+
+/* ================================================================
+   Section 2b: Display Names (user_profiles)
+   ================================================================ */
+function loadProfiles() {
+  var body = document.getElementById('profiles-body');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+
+  Promise.all([
+    fetchJSON('/api/v1/admin/users'),
+    fetchJSON('/api/v1/admin/keys')
+  ]).then(function(results) {
+    var profiles = Array.isArray(results[0]) ? results[0] : [];
+    var keys = Array.isArray(results[1]) ? results[1] : (results[1].data || results[1].keys || results[1].items || []);
+
+    var byName = {};
+    profiles.forEach(function(p) { if (p.username) byName[p.username] = p; });
+
+    var users = {};
+    keys.forEach(function(k) {
+      var u = k.username || k.user;
+      if (u) users[u] = true;
+    });
+    profiles.forEach(function(p) {
+      if (p.username) users[p.username] = true;
+    });
+
+    var named = Object.keys(byName).length;
+    document.getElementById('profiles-count').textContent = named ? '(' + named + ' named)' : '';
+
+    if (Object.keys(users).length === 0) {
+      body.innerHTML = '<div class="empty">No users yet — names will appear here once keys exist.</div>';
+      return;
+    }
+
+    var html = '<div class="tbl-wrap"><table><thead><tr>'
+      + '<th>Username</th><th>First Name</th><th>Last Name</th>'
+      + '</tr></thead><tbody>';
+
+    Object.keys(users).sort().forEach(function(u) {
+      var p = byName[u] || {};
+      html += '<tr>'
+        + '<td class="mono">' + esc(u) + '</td>'
+        + '<td><input class="tbl-input" data-pu="' + esc(u) + '" data-pf="1" placeholder="—" value="' + esc(p.first_name || '') + '"></td>'
+        + '<td><input class="tbl-input" data-pu="' + esc(u) + '" data-pf="0" placeholder="—" value="' + esc(p.last_name || '') + '"></td>'
+        + '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    body.innerHTML = html;
+  }).catch(function(err) {
+    body.innerHTML = '<div class="err-msg">Failed to load display names: ' + esc(err.message) + '</div>';
+  });
+}
+
+function saveProfiles() {
+  var map = {};
+  document.querySelectorAll('#profiles-body .tbl-input').forEach(function(inp) {
+    var u = inp.getAttribute('data-pu');
+    if (!map[u]) map[u] = {username: u, first_name: '', last_name: ''};
+    if (inp.getAttribute('data-pf') === '1') map[u].first_name = inp.value.trim();
+    else map[u].last_name = inp.value.trim();
+  });
+  var arr = Object.keys(map).map(function(k) { return map[k]; });
+
+  fetch('/api/v1/admin/users', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(arr)
+  }).then(function(r) {
+    if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+    return r.json();
+  }).then(function(d) {
+    showToast(d.updated + ' display name(s) saved', 'success');
+    loadProfiles();
+  }).catch(function(err) {
+    showToast('Failed to save display names: ' + err.message, 'error');
   });
 }
 
