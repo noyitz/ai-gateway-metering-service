@@ -17,7 +17,6 @@ import (
 
 	"github.com/noyitz/ai-gateway-metering-service/internal/config"
 	"github.com/noyitz/ai-gateway-metering-service/internal/dashboard"
-	"github.com/noyitz/ai-gateway-metering-service/internal/storage"
 )
 
 const (
@@ -43,10 +42,9 @@ type AuthHandler struct {
 	cfg        config.Config
 	secret     []byte
 	httpClient *http.Client
-	store      *storage.Store
 }
 
-func NewAuthHandler(cfg config.Config, store *storage.Store) *AuthHandler {
+func NewAuthHandler(cfg config.Config) *AuthHandler {
 	secret := []byte(os.Getenv("SESSION_SECRET"))
 	if len(secret) == 0 {
 		secret = make([]byte, 32)
@@ -59,7 +57,6 @@ func NewAuthHandler(cfg config.Config, store *storage.Store) *AuthHandler {
 		cfg:        cfg,
 		secret:     secret,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
-		store:      store,
 	}
 }
 
@@ -174,26 +171,13 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var result struct {
-		Valid     bool     `json:"valid"`
-		Username  string   `json:"username"`
-		Groups    []string `json:"groups"`
-		FirstName string   `json:"firstName"`
-		LastName  string   `json:"lastName"`
+		Valid    bool     `json:"valid"`
+		Username string   `json:"username"`
+		Groups   []string `json:"groups"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || !result.Valid || result.Username == "" {
 		http.Redirect(w, r, "/login?error=invalid", http.StatusFound)
 		return
-	}
-
-	// Auto-populate the display-name profile from the key (maas-api carries
-	// the owner's name on admin-minted keys). Best-effort and one-way: a key
-	// without names never overwrites a profile an admin set by hand.
-	if h.store != nil && (result.FirstName != "" || result.LastName != "") {
-		if _, err := h.store.UpsertUserProfiles(r.Context(), []storage.UserProfile{{
-			Username: result.Username, FirstName: result.FirstName, LastName: result.LastName,
-		}}); err != nil {
-			slog.Warn("failed to upsert user profile from login", "username", result.Username, "error", err)
-		}
 	}
 
 	slog.Info("user logged in", "username", result.Username)
