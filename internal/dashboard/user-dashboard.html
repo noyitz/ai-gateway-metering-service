@@ -233,9 +233,9 @@ tr:hover td{background:var(--c2)}
 
 <!-- Viewing-as banner (shown when an admin opened this page via "view as") -->
 <div id="impersonation-banner" style="display:none;align-items:center;gap:10px;background:rgba(210,153,34,.12);border:1px solid #d29922;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:12px">
-  <span style="font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:10px;color:#d29922">Viewing as</span>
+  <span id="impersonation-label" style="font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:10px;color:#d29922">Viewing as</span>
   <b id="impersonated-user"></b>
-  <span style="color:var(--t2)">(you are <span id="real-user"></span>)</span>
+  <span id="real-user-wrap" style="color:var(--t2)">(you are <span id="real-user"></span>)</span>
   <a href="/admin/impersonate" style="margin-left:auto;background:#d29922;color:#1a1a1a;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:700;text-decoration:none">Back to admin view</a>
 </div>
 
@@ -1060,13 +1060,20 @@ function init() {
       badge.innerHTML = '<span class="dot">' + esc(currentUser) + '</span> <span style="font-size:10px;color:#5a6a7a">(GitHub)</span>';
     }
 
-    // Viewing-as banner: an admin opened this page via "view as" in the admin view.
+    // Viewing-as banner: an admin opened this page via "view as" in the admin
+    // view. The "My view as user" case impersonates the admin's own identity,
+    // so show a "Personal view" label without the redundant "(you are …)".
     if (d.impersonating && d.real_user) {
       document.getElementById('impersonation-banner').style.display = 'flex';
+      var selfView = d.real_user === currentUser;
+      document.getElementById('impersonation-label').textContent = selfView ? 'Personal view' : 'Viewing as';
+      document.getElementById('real-user-wrap').style.display = selfView ? 'none' : '';
       document.getElementById('impersonated-user').textContent =
         d.display_name ? d.display_name + ' (' + currentUser + ')' : currentUser;
-      document.getElementById('real-user').textContent =
-        d.real_user_display ? d.real_user_display + ' (' + d.real_user + ')' : d.real_user;
+      if (!selfView) {
+        document.getElementById('real-user').textContent =
+          d.real_user_display ? d.real_user_display + ' (' + d.real_user + ')' : d.real_user;
+      }
     }
 
     if (currentGroups.length > 0) {
