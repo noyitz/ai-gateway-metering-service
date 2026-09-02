@@ -21,18 +21,18 @@ type cloudEvent struct {
 }
 
 type cloudEventData struct {
-	User             string `json:"user"`
-	Group            string `json:"group"`
-	Subscription     string `json:"subscription"`
-	Provider         string `json:"provider"`
-	Model            string `json:"model"`
-	PromptTokens       int `json:"prompt_tokens"`
-	CompletionTokens   int `json:"completion_tokens"`
-	TotalTokens        int `json:"total_tokens"`
-	CachedInputTokens  int `json:"cached_input_tokens"`
-	CacheCreationTokens int `json:"cache_creation_tokens"`
-	ReasoningTokens    int    `json:"reasoning_tokens"`
-	UserAgent          string `json:"user_agent"`
+	User                string `json:"user"`
+	Group               string `json:"group"`
+	Subscription        string `json:"subscription"`
+	Provider            string `json:"provider"`
+	Model               string `json:"model"`
+	PromptTokens        int    `json:"prompt_tokens"`
+	CompletionTokens    int    `json:"completion_tokens"`
+	TotalTokens         int    `json:"total_tokens"`
+	CachedInputTokens   int    `json:"cached_input_tokens"`
+	CacheCreationTokens int    `json:"cache_creation_tokens"`
+	ReasoningTokens     int    `json:"reasoning_tokens"`
+	UserAgent           string `json:"user_agent"`
 	// StatusCode is the upstream HTTP status. The gateway sets it only on
 	// error events (inference.request.error); success/usage events omit it,
 	// so a nil pointer means the request succeeded (HTTP 200).

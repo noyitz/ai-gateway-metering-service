@@ -11,6 +11,7 @@ import (
 
 	"github.com/noyitz/ai-gateway-metering-service/internal/config"
 	"github.com/noyitz/ai-gateway-metering-service/internal/k8s"
+	"github.com/noyitz/ai-gateway-metering-service/internal/storage"
 )
 
 // KeysHandler proxies API key management to an upstream key service on
@@ -25,13 +26,15 @@ import (
 type KeysHandler struct {
 	k8sClient *k8s.Client
 	cfg       config.Config
+	store     *storage.Store
 	client    *http.Client
 }
 
-func NewKeysHandler(k8sClient *k8s.Client, cfg config.Config) *KeysHandler {
+func NewKeysHandler(k8sClient *k8s.Client, cfg config.Config, store *storage.Store) *KeysHandler {
 	return &KeysHandler{
 		k8sClient: k8sClient,
 		cfg:       cfg,
+		store:     store,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 			Transport: &http.Transport{
@@ -147,9 +150,22 @@ func (h *KeysHandler) HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 		"keyServiceEnabled": h.cfg.KeyService.Enabled(),
 		"impersonating":     impersonating,
 		"real_user":         "",
+		// "First Last" for the identity the page is showing (the impersonated
+		// user while an admin is "viewing as", else the caller themselves).
+		"display_name": "",
+	}
+	if h.store != nil && user != "" {
+		if p, err := h.store.GetUserProfile(r.Context(), user); err == nil {
+			resp["display_name"] = p.DisplayName()
+		}
 	}
 	if impersonating {
 		resp["real_user"] = real
+		if h.store != nil && real != "" {
+			if p, err := h.store.GetUserProfile(r.Context(), real); err == nil {
+				resp["real_user_display"] = p.DisplayName()
+			}
+		}
 	}
 	json.NewEncoder(w).Encode(resp) //nolint:errcheck // response already committed
 }

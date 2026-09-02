@@ -190,8 +190,9 @@ async function init(){
     myGroup=w.groups||'';
     if(myGroup.startsWith('[')){try{myGroup=JSON.parse(myGroup)[0]||'';}catch(e){myGroup='';}}
     if(me){document.querySelectorAll('.auth-only').forEach(function(el){el.style.display='';});}
-    document.getElementById('userInfo').textContent=me;
-    document.getElementById('pageTitle').textContent='Welcome, '+me;
+    var myName=w.display_name||me;
+    document.getElementById('userInfo').textContent=myName;
+    document.getElementById('pageTitle').textContent='Welcome, '+myName;
     document.getElementById('groupInfo').textContent=myGroup?'Group: '+myGroup:'';
     var host=window.location.hostname;
     var clusterDomain=host.split('.apps.')[1]||host;
@@ -201,8 +202,8 @@ async function init(){
     var banner=document.getElementById('impersonation-banner');
     if(w.impersonating){
       banner.style.display='flex';
-      document.getElementById('impersonated-user').textContent=w.user;
-      document.getElementById('real-user').textContent=w.real_user;
+      document.getElementById('impersonated-user').textContent=w.display_name?w.display_name+' ('+w.user+')':w.user;
+      document.getElementById('real-user').textContent=w.real_user_display?w.real_user_display+' ('+w.real_user+')':w.real_user;
     } else banner.style.display='none';
   }catch(e){}
   refresh();
@@ -335,7 +336,11 @@ function renderTeam(teamData){
 
 function makeTeamRow(t,i){
   var cls=t.username===me?' class="me"':'';
-  return '<tr'+cls+'><td>'+(i+1)+'</td><td>'+t.username+'</td><td>'+fmtN(t.total_tokens)+'</td><td>'+fmtC(t.cost_usd||0)+'</td></tr>';
+  var esc=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')};
+  var who=t.display_name
+    ?'<div style="font-weight:600">'+esc(t.display_name)+'</div><div style="font-size:10px;color:var(--t2)">'+esc(t.username)+'</div>'
+    :esc(t.username);
+  return '<tr'+cls+'><td>'+(i+1)+'</td><td>'+who+'</td><td>'+fmtN(t.total_tokens)+'</td><td>'+fmtC(t.cost_usd||0)+'</td></tr>';
 }
 
 async function loadKeys(){

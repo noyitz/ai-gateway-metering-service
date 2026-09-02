@@ -121,7 +121,8 @@ func main() {
 	}
 	adminHandler := handler.NewAdminHandler(k8sClient, cfg)
 	authHandler := handler.NewAuthHandler(cfg)
-	keysHandler := handler.NewKeysHandler(k8sClient, cfg)
+	keysHandler := handler.NewKeysHandler(k8sClient, cfg, store)
+	profilesHandler := handler.NewProfilesHandler(store)
 	auth := authHandler.RequireAuth
 
 	mux := http.NewServeMux()
@@ -167,11 +168,14 @@ func main() {
 	mux.HandleFunc("/routing", auth(handler.RequireAdmin(cfg, adminHandler.ServeRouting)))
 	mux.HandleFunc("/admin2", auth(handler.RequireAdmin(cfg, adminHandler.ServeRouting)))
 	mux.HandleFunc("/compression", auth(handler.RequireAdmin(cfg, adminHandler.ServeCompression)))
-	mux.HandleFunc("/api/v1/admin/providers", auth(adminHandler.HandleProviders))
-	mux.HandleFunc("/api/v1/admin/models", auth(adminHandler.HandleModels))
-	mux.HandleFunc("/api/v1/admin/models/", auth(adminHandler.HandleUpdateWeights))
-	mux.HandleFunc("/api/v1/admin/config", auth(adminHandler.HandleConfig))
-	mux.HandleFunc("/api/v1/admin/models/provider/", auth(adminHandler.HandleUpdateProvider))
+	// Admin APIs are gated by RequireAdmin (auth() alone is not enough —
+	// otherwise any signed-in user could change weights/config).
+	mux.HandleFunc("/api/v1/admin/providers", auth(handler.RequireAdmin(cfg, adminHandler.HandleProviders)))
+	mux.HandleFunc("/api/v1/admin/models", auth(handler.RequireAdmin(cfg, adminHandler.HandleModels)))
+	mux.HandleFunc("/api/v1/admin/models/", auth(handler.RequireAdmin(cfg, adminHandler.HandleUpdateWeights)))
+	mux.HandleFunc("/api/v1/admin/config", auth(handler.RequireAdmin(cfg, adminHandler.HandleConfig)))
+	mux.HandleFunc("/api/v1/admin/models/provider/", auth(handler.RequireAdmin(cfg, adminHandler.HandleUpdateProvider)))
+	mux.HandleFunc("/api/v1/admin/users", auth(handler.RequireAdmin(cfg, profilesHandler.HandleProfiles)))
 	mux.HandleFunc("/api/v1/admin/pricing/refresh", auth(handler.NewPricingRefreshHandler(store).HandleRefresh))
 	// Admin "view as user" — the handler checks admin against the real
 	// session identity, not the swapped header, so it also clears itself.

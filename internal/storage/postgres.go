@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -140,6 +141,12 @@ const listCostUSDExpr = `GREATEST(e.prompt_tokens - COALESCE(e.cached_input_toke
 			COALESCE(e.cache_creation_tokens, 0) * COALESCE(NULLIF(p.list_cache_write_cost_per_mtok, 0), COALESCE(p.cache_write_cost_per_mtok, 18.75))/1000000.0 +
 			e.completion_tokens * COALESCE(NULLIF(p.list_output_cost_per_mtok, 0), COALESCE(p.output_cost_per_mtok, 75))/1000000.0`
 
+// displayNameExpr resolves a user's "First Last" from user_profiles, or
+// NULL when the profile is missing or has no names — callers fall back to
+// the username. Requires usage_events aliased as `e` and the
+// `LEFT JOIN user_profiles up ON up.username = e.username` join.
+const displayNameExpr = `NULLIF(TRIM(COALESCE(up.first_name, '') || ' ' || COALESCE(up.last_name, '')), '')`
+
 func (s *Store) GetTeamUsage(ctx context.Context, groupName string) ([]TeamUserUsage, error) {
 	query := fmt.Sprintf(`
 		SELECT e.username, e.model, e.provider,
@@ -257,7 +264,10 @@ type GroupSummary struct {
 }
 
 type UserSummary struct {
-	Username         string  `json:"username"`
+	Username string `json:"username"`
+	// DisplayName is "First Last" from user_profiles; empty when unknown,
+	// in which case the UI renders the username itself.
+	DisplayName      string  `json:"display_name,omitempty"`
 	GroupName        string  `json:"group_name"`
 	Requests         int     `json:"requests"`
 	PromptTokens     int64   `json:"prompt_tokens"`
@@ -342,7 +352,10 @@ func (s *Store) GetDashboardGroups(ctx context.Context, since, until time.Time, 
 func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, group, user, model, sortCol, sortOrder string, limit int) ([]UserSummary, error) {
 	validSorts := map[string]string{
 		"total_tokens": "total_tokens", "cost_usd": "cost_usd", "saved_usd": "saved_usd",
-		"requests": "requests", "username": "e.username",
+		"requests": "requests",
+		// The user column sorts by display name (falling back to username),
+		// matching what the table shows.
+		"username":      `COALESCE(` + displayNameExpr + `, e.username)`,
 		"prompt_tokens": "prompt_tokens", "completion_tokens": "completion_tokens",
 	}
 	sortExpr, ok := validSorts[sortCol]
@@ -359,6 +372,7 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 
 	query := fmt.Sprintf(`
 		SELECT e.username,
+			%s,
 			COALESCE(e.group_name, ''),
 			COUNT(*) as requests,
 			COALESCE(SUM(e.prompt_tokens),0) as prompt_tokens,
@@ -368,10 +382,11 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 			COALESCE(ROUND((SUM(%s) - SUM(%s))::numeric, 2), 0) as saved_usd
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
+		LEFT JOIN user_profiles up ON up.username = e.username
 		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
-		GROUP BY e.username, COALESCE(e.group_name, '')
+		GROUP BY e.username, %s, COALESCE(e.group_name, '')
 		ORDER BY %s %s
-		LIMIT $6`, costUSDExpr, listCostUSDExpr, costUSDExpr, sortExpr, direction)
+		LIMIT $6`, displayNameExpr, costUSDExpr, listCostUSDExpr, costUSDExpr, displayNameExpr, sortExpr, direction)
 
 	rows, err := s.db.QueryContext(ctx, query, since, until, group, user, model, limit)
 	if err != nil {
@@ -382,9 +397,11 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 	var result []UserSummary
 	for rows.Next() {
 		var u UserSummary
-		if err := rows.Scan(&u.Username, &u.GroupName, &u.Requests, &u.PromptTokens, &u.CompletionTokens, &u.TotalTokens, &u.CostUSD, &u.SavedUSD); err != nil {
+		var displayName sql.NullString
+		if err := rows.Scan(&u.Username, &displayName, &u.GroupName, &u.Requests, &u.PromptTokens, &u.CompletionTokens, &u.TotalTokens, &u.CostUSD, &u.SavedUSD); err != nil {
 			return nil, err
 		}
+		u.DisplayName = displayName.String
 		result = append(result, u)
 	}
 	if err := rows.Err(); err != nil {
@@ -470,18 +487,20 @@ func (s *Store) GetDashboardTimeline(ctx context.Context, since, until time.Time
 }
 
 type RecentEvent struct {
-	Timestamp           time.Time `json:"timestamp"`
-	Username            string    `json:"username"`
-	GroupName           string    `json:"group_name"`
-	Model               string    `json:"model"`
-	Provider            string    `json:"provider"`
-	PromptTokens        int       `json:"prompt_tokens"`
-	CompletionTokens    int       `json:"completion_tokens"`
-	TotalTokens         int       `json:"total_tokens"`
-	CachedInputTokens   int       `json:"cached_input_tokens"`
-	CacheCreationTokens int       `json:"cache_creation_tokens"`
-	CostUSD             float64   `json:"cost_usd"`
-	UserAgent           string    `json:"user_agent"`
+	Timestamp time.Time `json:"timestamp"`
+	Username  string    `json:"username"`
+	// DisplayName is "First Last" from user_profiles; empty when unknown.
+	DisplayName         string  `json:"display_name,omitempty"`
+	GroupName           string  `json:"group_name"`
+	Model               string  `json:"model"`
+	Provider            string  `json:"provider"`
+	PromptTokens        int     `json:"prompt_tokens"`
+	CompletionTokens    int     `json:"completion_tokens"`
+	TotalTokens         int     `json:"total_tokens"`
+	CachedInputTokens   int     `json:"cached_input_tokens"`
+	CacheCreationTokens int     `json:"cache_creation_tokens"`
+	CostUSD             float64 `json:"cost_usd"`
+	UserAgent           string  `json:"user_agent"`
 	// StatusCode is the upstream HTTP status; nil (JSON null) when unknown.
 	StatusCode *int `json:"status_code"`
 }
@@ -491,7 +510,7 @@ func (s *Store) GetRecentEvents(ctx context.Context, limit int, group, user, mod
 		limit = 20
 	}
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
-		SELECT e.timestamp, e.username, COALESCE(e.group_name,''), e.model, COALESCE(e.provider,''),
+		SELECT e.timestamp, e.username, %s, COALESCE(e.group_name,''), e.model, COALESCE(e.provider,''),
 			e.prompt_tokens, e.completion_tokens, e.total_tokens,
 			COALESCE(e.cached_input_tokens, 0), COALESCE(e.cache_creation_tokens, 0),
 			COALESCE(ROUND((%s)::numeric, 4), 0),
@@ -499,9 +518,10 @@ func (s *Store) GetRecentEvents(ctx context.Context, limit int, group, user, mod
 			e.status_code
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
+		LEFT JOIN user_profiles up ON up.username = e.username
 		WHERE ($2 = '' OR e.group_name = $2) AND ($3 = '' OR e.username = ANY(string_to_array($3, ','))) AND ($4 = '' OR e.model = $4)
 		ORDER BY e.timestamp DESC
-		LIMIT $1`, costUSDExpr), limit, group, user, model)
+		LIMIT $1`, displayNameExpr, costUSDExpr), limit, group, user, model)
 	if err != nil {
 		return nil, err
 	}
@@ -510,15 +530,96 @@ func (s *Store) GetRecentEvents(ctx context.Context, limit int, group, user, mod
 	var result []RecentEvent
 	for rows.Next() {
 		var r RecentEvent
-		if err := rows.Scan(&r.Timestamp, &r.Username, &r.GroupName, &r.Model, &r.Provider, &r.PromptTokens, &r.CompletionTokens, &r.TotalTokens, &r.CachedInputTokens, &r.CacheCreationTokens, &r.CostUSD, &r.UserAgent, &r.StatusCode); err != nil {
+		var displayName sql.NullString
+		if err := rows.Scan(&r.Timestamp, &r.Username, &displayName, &r.GroupName, &r.Model, &r.Provider, &r.PromptTokens, &r.CompletionTokens, &r.TotalTokens, &r.CachedInputTokens, &r.CacheCreationTokens, &r.CostUSD, &r.UserAgent, &r.StatusCode); err != nil {
 			return nil, err
 		}
+		r.DisplayName = displayName.String
 		result = append(result, r)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+// UserProfile is the human identity behind a usage_events username.
+type UserProfile struct {
+	Username  string `json:"username"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+}
+
+// DisplayName returns "First Last" (single part when only one is set), or
+// "" when the user has no names on file.
+func (p UserProfile) DisplayName() string {
+	name := strings.TrimSpace(p.FirstName + " " + p.LastName)
+	if name == "" {
+		return ""
+	}
+	return name
+}
+
+// GetUserProfile looks up one profile by username. sql.ErrNoRows becomes a
+// zero-valued profile with Username set, so callers can fall back to the
+// username without an extra branch.
+func (s *Store) GetUserProfile(ctx context.Context, username string) (UserProfile, error) {
+	var p UserProfile
+	err := s.db.QueryRowContext(ctx,
+		`SELECT username, first_name, last_name FROM user_profiles WHERE username = $1`, username,
+	).Scan(&p.Username, &p.FirstName, &p.LastName)
+	if err == sql.ErrNoRows {
+		p.Username = username
+		return p, nil
+	}
+	return p, err
+}
+
+// UpsertUserProfiles inserts or overwrites the given profiles and returns
+// how many were written.
+func (s *Store) UpsertUserProfiles(ctx context.Context, profiles []UserProfile) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // committed or already rolled back
+
+	for _, p := range profiles {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO user_profiles (username, first_name, last_name, updated_at)
+			VALUES ($1, $2, $3, NOW())
+			ON CONFLICT (username) DO UPDATE SET
+				first_name = EXCLUDED.first_name,
+				last_name = EXCLUDED.last_name,
+				updated_at = NOW()`,
+			p.Username, p.FirstName, p.LastName); err != nil {
+			return 0, fmt.Errorf("upsert profile %s: %w", p.Username, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	return len(profiles), nil
+}
+
+// ListUserProfiles returns every profile, username-ordered.
+func (s *Store) ListUserProfiles(ctx context.Context) ([]UserProfile, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT username, first_name, last_name FROM user_profiles ORDER BY username`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []UserProfile
+	for rows.Next() {
+		var p UserProfile
+		if err := rows.Scan(&p.Username, &p.FirstName, &p.LastName); err != nil {
+			return nil, err
+		}
+		result = append(result, p)
+	}
+	return result, rows.Err()
 }
 
 func (s *Store) migrate(ctx context.Context) error {
@@ -581,6 +682,15 @@ var migrations = []string{
 	`ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS list_output_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0`,
 	`ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS list_cache_write_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0`,
 	`ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS list_cache_read_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0`,
+	// Human display names for dashboard users. Keyed by the same username
+	// string usage_events carries (the MaaS login identity). Empty names
+	// mean "unknown" — the UI falls back to the username.
+	`CREATE TABLE IF NOT EXISTS user_profiles (
+		username TEXT PRIMARY KEY,
+		first_name TEXT NOT NULL DEFAULT '',
+		last_name TEXT NOT NULL DEFAULT '',
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	)`,
 }
 
 // SeedPricing upserts model pricing from an external source (e.g., LiteLLM).
