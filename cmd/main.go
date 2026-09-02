@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/noyitz/ai-gateway-metering-service/internal/config"
 	"github.com/noyitz/ai-gateway-metering-service/internal/handler"
 	"github.com/noyitz/ai-gateway-metering-service/internal/k8s"
+	"github.com/noyitz/ai-gateway-metering-service/internal/maasapi"
 	"github.com/noyitz/ai-gateway-metering-service/internal/pricing"
 	"github.com/noyitz/ai-gateway-metering-service/internal/storage"
 )
@@ -105,10 +107,10 @@ func main() {
 	teamUsageHandler := handler.NewTeamUsageHandler(store)
 	dashboardHandler := handler.NewDashboardHandler(store, cfg)
 
-	// Kubernetes adapter for the admin API — optional. It stays disabled
-	// until model/provider CRD coordinates are configured, and even when
-	// enabled it degrades gracefully to empty data if the cluster is
-	// unreachable, so the service runs anywhere the CloudEvents contract holds.
+	// Kubernetes adapter — optional. It stays disabled until model/provider
+	// CRD coordinates are configured, and even when enabled it degrades
+	// gracefully to empty data if the cluster is unreachable, so the service
+	// runs anywhere the CloudEvents contract holds.
 	var k8sClient *k8s.Client
 	if cfg.Kubernetes.Enabled() {
 		k8sClient, err = k8s.NewClient(cfg.Kubernetes)
@@ -119,7 +121,25 @@ func main() {
 	} else {
 		slog.Info("kubernetes adapter disabled — set MODEL_CRD_GROUP/PROVIDER_CRD_GROUP to enable")
 	}
-	adminHandler := handler.NewAdminHandler(k8sClient, cfg)
+
+	// maas-api client for key management (create/list/revoke). The base URL
+	// defaults to the same maas-api the login flow validates against, so a
+	// fresh cluster needs no extra configuration.
+	maasAPIURL := os.Getenv("MAAS_API_URL")
+	if maasAPIURL == "" {
+		validateURL := os.Getenv("MAAS_VALIDATE_URL")
+		if validateURL == "" {
+			validateURL = "http://maas-api:8080/internal/v1/api-keys/validate"
+		}
+		maasAPIURL = strings.TrimSuffix(validateURL, "/internal/v1/api-keys/validate")
+	}
+	maasTenant := os.Getenv("MAAS_TENANT")
+	if maasTenant == "" {
+		maasTenant = "models-as-a-service"
+	}
+	maasClient := maasapi.NewClient(maasAPIURL, maasTenant)
+
+	adminHandler := handler.NewAdminHandler(k8sClient, maasClient, cfg)
 	authHandler := handler.NewAuthHandler(cfg)
 	keysHandler := handler.NewKeysHandler(k8sClient, cfg, store)
 	profilesHandler := handler.NewProfilesHandler(store)
@@ -147,12 +167,14 @@ func main() {
 		http.NotFound(w, r)
 	}))
 
-	// User pages — session required
+	// User pages — session required. /whoami backs both the legacy pages and
+	// the redesigned user dashboard (name, groups, admin flag, impersonation).
 	mux.HandleFunc("/me", auth(adminHandler.ServeMyAccount))
 	mux.HandleFunc("/me/keys", auth(keysHandler.HandleKeys))
 	mux.HandleFunc("/me/keys/", auth(keysHandler.HandleKeys))
 	mux.HandleFunc("/me/whoami", auth(keysHandler.HandleWhoAmI))
 	mux.HandleFunc("/api/v1/whoami", auth(keysHandler.HandleWhoAmI))
+	mux.HandleFunc("/whoami", auth(keysHandler.HandleWhoAmI))
 
 	// Dashboard — session required, per-user scoping in handlers
 	mux.HandleFunc("/dashboard", auth(dashboardHandler.ServeDashboard))
@@ -177,6 +199,19 @@ func main() {
 	mux.HandleFunc("/api/v1/admin/models/provider/", auth(handler.RequireAdmin(cfg, adminHandler.HandleUpdateProvider)))
 	mux.HandleFunc("/api/v1/admin/users", auth(handler.RequireAdmin(cfg, profilesHandler.HandleProfiles)))
 	mux.HandleFunc("/api/v1/admin/pricing/refresh", auth(handler.NewPricingRefreshHandler(store).HandleRefresh))
+	// OpenShift users/groups/entitlements management (redesigned admin page).
+	// Display-name profiles stay on /api/v1/admin/users above.
+	mux.HandleFunc("/api/v1/admin/openshift-users", auth(handler.RequireAdmin(cfg, adminHandler.HandleUsers)))
+	mux.HandleFunc("/api/v1/admin/group-member", auth(handler.RequireAdmin(cfg, adminHandler.HandleGroupMember)))
+	mux.HandleFunc("/api/v1/admin/auth-policies", auth(handler.RequireAdmin(cfg, adminHandler.HandleAuthPolicies)))
+	mux.HandleFunc("/api/v1/admin/subscriptions", auth(handler.RequireAdmin(cfg, adminHandler.HandleSubscriptions)))
+	// Group + key APIs are reachable by any signed-in user: the redesigned
+	// user dashboard lists its own group membership and manages the caller's
+	// own keys. The handlers scope non-admins to their own identity, so a
+	// regular user can only ever see or create their own keys.
+	mux.HandleFunc("/api/v1/admin/groups", auth(adminHandler.HandleGroups))
+	mux.HandleFunc("/api/v1/admin/keys", auth(adminHandler.HandleKeys))
+	mux.HandleFunc("/api/v1/admin/keys/", auth(adminHandler.HandleKeys))
 	// Admin "view as user" — the handler checks admin against the real
 	// session identity, not the swapped header, so it also clears itself.
 	mux.HandleFunc("/admin/impersonate", auth(authHandler.HandleImpersonate))

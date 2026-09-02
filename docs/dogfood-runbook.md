@@ -587,9 +587,9 @@ kind: Secret
 metadata:
   name: metering-db
 stringData:
-  DATABASE_URL: "postgres://metering:metering-dev@metering-postgresql:5432/metering?sslmode=disable"
+  DATABASE_URL: "postgres://metering:CHANGE_ME@metering-postgresql:5432/metering?sslmode=disable"
   POSTGRESQL_USER: metering
-  POSTGRESQL_PASSWORD: metering-dev
+  POSTGRESQL_PASSWORD: CHANGE_ME
   POSTGRESQL_DATABASE: metering
 ---
 apiVersion: apps/v1

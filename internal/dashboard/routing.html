@@ -112,6 +112,7 @@ body{background:var(--bg);color:var(--t);font-family:'Inter',-apple-system,sans-
     <a href="/dashboard" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
     <a href="/routing" style="background:var(--blu);color:#fff;border:1px solid var(--blu);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
     <a href="/compression" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
+    <a href="/admin" class="admin-only" style="display:none;background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Admin</a>
   </div>
   <div style="display:flex;align-items:center;gap:12px">
     <span id="userInfo" style="font-size:11px;color:var(--t2)"></span>
@@ -352,6 +353,7 @@ init();
 // (SSO/oauth-proxy). Hidden on the unauthenticated dogfood.
 fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
   if(d&&d.user){document.querySelectorAll('.auth-only').forEach(function(el){el.style.display='';});}
+  if(d&&d.isAdmin){document.querySelectorAll('.admin-only').forEach(function(el){el.style.display='';});}
 }).catch(function(){});
 </script>
 </body>
