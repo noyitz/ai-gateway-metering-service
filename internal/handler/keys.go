@@ -138,6 +138,7 @@ func (h *KeysHandler) HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck // response already committed
 		"user":              r.Header.Get(h.cfg.UserHeader),
 		"groups":            r.Header.Get(h.cfg.GroupsHeader),
+		"isAdmin":           IsAdmin(h.cfg, r),
 		"keyServiceEnabled": h.cfg.KeyService.Enabled(),
 	})
 }
