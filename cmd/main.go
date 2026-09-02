@@ -103,7 +103,7 @@ func main() {
 	eventsHandler := handler.NewEventsHandler(store)
 	entitlementsHandler := handler.NewEntitlementsHandler(store)
 	teamUsageHandler := handler.NewTeamUsageHandler(store)
-	dashboardHandler := handler.NewDashboardHandler(store)
+	dashboardHandler := handler.NewDashboardHandler(store, cfg)
 
 	// Kubernetes adapter for the admin API — optional. It stays disabled
 	// until model/provider CRD coordinates are configured, and even when
@@ -120,47 +120,59 @@ func main() {
 		slog.Info("kubernetes adapter disabled — set MODEL_CRD_GROUP/PROVIDER_CRD_GROUP to enable")
 	}
 	adminHandler := handler.NewAdminHandler(k8sClient, cfg)
+	authHandler := handler.NewAuthHandler(cfg)
+	keysHandler := handler.NewKeysHandler(k8sClient, cfg)
+	auth := authHandler.RequireAuth
 
 	mux := http.NewServeMux()
+
+	// Machine-to-machine APIs — no session required
 	mux.HandleFunc("/api/v1/events", eventsHandler.HandleEvent)
 	mux.HandleFunc("/api/v1/customers/", entitlementsHandler.HandleEntitlement)
 	mux.HandleFunc("/api/v1/team-usage", teamUsageHandler.HandleTeamUsage)
-	keysHandler := handler.NewKeysHandler(k8sClient, cfg)
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+
+	// Auth endpoints — unauthenticated by definition
+	mux.HandleFunc("/login", authHandler.HandleLogin)
+	mux.HandleFunc("/logout", authHandler.HandleLogout)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	// Root redirect — session required
+	mux.HandleFunc("/", auth(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
-			if handler.IsAdmin(cfg, r) {
-				http.Redirect(w, r, "/dashboard", http.StatusFound)
-			} else {
-				http.Redirect(w, r, "/me", http.StatusFound)
-			}
+			http.Redirect(w, r, "/dashboard", http.StatusFound)
 			return
 		}
 		http.NotFound(w, r)
-	})
-	mux.HandleFunc("/me", adminHandler.ServeMyAccount)
-	mux.HandleFunc("/dashboard", handler.RequireAdmin(cfg, dashboardHandler.ServeDashboard))
-	mux.HandleFunc("/api/v1/dashboard/overview", dashboardHandler.HandleOverview)
-	mux.HandleFunc("/api/v1/dashboard/groups", dashboardHandler.HandleGroups)
-	mux.HandleFunc("/api/v1/dashboard/users", dashboardHandler.HandleUsers)
-	mux.HandleFunc("/api/v1/dashboard/models", dashboardHandler.HandleModels)
-	mux.HandleFunc("/api/v1/dashboard/timeline", dashboardHandler.HandleTimeline)
-	mux.HandleFunc("/api/v1/dashboard/recent", dashboardHandler.HandleRecent)
-	mux.HandleFunc("/admin", handler.RequireAdmin(cfg, adminHandler.ServeAdmin))
-	mux.HandleFunc("/routing", handler.RequireAdmin(cfg, adminHandler.ServeRouting))
-	mux.HandleFunc("/admin2", handler.RequireAdmin(cfg, adminHandler.ServeRouting))
-	mux.HandleFunc("/compression", handler.RequireAdmin(cfg, adminHandler.ServeCompression))
-	mux.HandleFunc("/api/v1/admin/providers", adminHandler.HandleProviders)
-	mux.HandleFunc("/api/v1/admin/models", adminHandler.HandleModels)
-	mux.HandleFunc("/api/v1/admin/models/", adminHandler.HandleUpdateWeights)
-	mux.HandleFunc("/api/v1/admin/config", adminHandler.HandleConfig)
-	mux.HandleFunc("/api/v1/admin/models/provider/", adminHandler.HandleUpdateProvider)
-	mux.HandleFunc("/me/keys", keysHandler.HandleKeys)
-	mux.HandleFunc("/me/keys/", keysHandler.HandleKeys)
-	mux.HandleFunc("/me/whoami", keysHandler.HandleWhoAmI)
-	mux.HandleFunc("/api/v1/whoami", keysHandler.HandleWhoAmI)
-	mux.HandleFunc("/api/v1/admin/pricing/refresh", handler.NewPricingRefreshHandler(store).HandleRefresh)
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	mux.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	}))
+
+	// User pages — session required
+	mux.HandleFunc("/me", auth(adminHandler.ServeMyAccount))
+	mux.HandleFunc("/me/keys", auth(keysHandler.HandleKeys))
+	mux.HandleFunc("/me/keys/", auth(keysHandler.HandleKeys))
+	mux.HandleFunc("/me/whoami", auth(keysHandler.HandleWhoAmI))
+	mux.HandleFunc("/api/v1/whoami", auth(keysHandler.HandleWhoAmI))
+
+	// Dashboard — session required, per-user scoping in handlers
+	mux.HandleFunc("/dashboard", auth(dashboardHandler.ServeDashboard))
+	mux.HandleFunc("/api/v1/dashboard/overview", auth(dashboardHandler.HandleOverview))
+	mux.HandleFunc("/api/v1/dashboard/groups", auth(dashboardHandler.HandleGroups))
+	mux.HandleFunc("/api/v1/dashboard/users", auth(dashboardHandler.HandleUsers))
+	mux.HandleFunc("/api/v1/dashboard/models", auth(dashboardHandler.HandleModels))
+	mux.HandleFunc("/api/v1/dashboard/timeline", auth(dashboardHandler.HandleTimeline))
+	mux.HandleFunc("/api/v1/dashboard/recent", auth(dashboardHandler.HandleRecent))
+
+	// Admin pages — session + admin required
+	mux.HandleFunc("/admin", auth(handler.RequireAdmin(cfg, adminHandler.ServeAdmin)))
+	mux.HandleFunc("/routing", auth(handler.RequireAdmin(cfg, adminHandler.ServeRouting)))
+	mux.HandleFunc("/admin2", auth(handler.RequireAdmin(cfg, adminHandler.ServeRouting)))
+	mux.HandleFunc("/compression", auth(handler.RequireAdmin(cfg, adminHandler.ServeCompression)))
+	mux.HandleFunc("/api/v1/admin/providers", auth(adminHandler.HandleProviders))
+	mux.HandleFunc("/api/v1/admin/models", auth(adminHandler.HandleModels))
+	mux.HandleFunc("/api/v1/admin/models/", auth(adminHandler.HandleUpdateWeights))
+	mux.HandleFunc("/api/v1/admin/config", auth(adminHandler.HandleConfig))
+	mux.HandleFunc("/api/v1/admin/models/provider/", auth(adminHandler.HandleUpdateProvider))
+	mux.HandleFunc("/api/v1/admin/pricing/refresh", auth(handler.NewPricingRefreshHandler(store).HandleRefresh))
 
 	server := &http.Server{Addr: ":" + cfg.Port, Handler: mux}
 
