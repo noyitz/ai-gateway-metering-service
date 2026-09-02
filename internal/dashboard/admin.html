@@ -1077,57 +1077,100 @@ function loadProfiles() {
   var body = document.getElementById('profiles-body');
   body.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
 
-  Promise.all([
-    fetchJSON('/api/v1/admin/users'),
-    fetchJSON('/api/v1/admin/keys')
-  ]).then(function(results) {
-    var profiles = Array.isArray(results[0]) ? results[0] : [];
-    var keys = Array.isArray(results[1]) ? results[1] : (results[1].data || results[1].keys || results[1].items || []);
-
+  // Profiles are the source of truth — a failure here means the card cannot
+  // work. The key list is best-effort: when the maas search is unavailable
+  // (e.g. clusters without the OpenShift groups API), names still load and
+  // users can be added manually with the form below the note.
+  fetchJSON('/api/v1/admin/users').then(function(profiles) {
     var byName = {};
-    profiles.forEach(function(p) { if (p.username) byName[p.username] = p; });
+    (Array.isArray(profiles) ? profiles : []).forEach(function(p) { if (p.username) byName[p.username] = p; });
 
-    var users = {};
-    keys.forEach(function(k) {
-      var u = k.username || k.user;
-      if (u) users[u] = true;
+    fetchJSON('/api/v1/admin/keys').then(function(res) {
+      var keys = Array.isArray(res) ? res : (res.data || res.keys || res.items || []);
+      renderProfiles(byName, keys, null);
+    }).catch(function() {
+      renderProfiles(byName, [], 'Key list unavailable — add users with the form.');
     });
-    profiles.forEach(function(p) {
-      if (p.username) users[p.username] = true;
-    });
-
-    var named = Object.keys(byName).length;
-    document.getElementById('profiles-count').textContent = named ? '(' + named + ' named)' : '';
-
-    if (Object.keys(users).length === 0) {
-      body.innerHTML = '<div class="empty">No users yet — names will appear here once keys exist.</div>';
-      return;
-    }
-
-    var html = '<div class="tbl-wrap"><table><thead><tr>'
-      + '<th>Username</th><th>First Name</th><th>Last Name</th>'
-      + '</tr></thead><tbody>';
-
-    Object.keys(users).sort().forEach(function(u) {
-      var p = byName[u] || {};
-      html += '<tr>'
-        + '<td class="mono">' + esc(u) + '</td>'
-        + '<td><input class="tbl-input" data-pu="' + esc(u) + '" data-pf="1" placeholder="—" value="' + esc(p.first_name || '') + '"></td>'
-        + '<td><input class="tbl-input" data-pu="' + esc(u) + '" data-pf="0" placeholder="—" value="' + esc(p.last_name || '') + '"></td>'
-        + '</tr>';
-    });
-
-    html += '</tbody></table></div>';
-    body.innerHTML = html;
   }).catch(function(err) {
     body.innerHTML = '<div class="err-msg">Failed to load display names: ' + esc(err.message) + '</div>';
   });
+}
+
+function renderProfiles(byName, keys, keysNote) {
+  var body = document.getElementById('profiles-body');
+
+  var users = {};
+  keys.forEach(function(k) {
+    var u = k.username || k.user;
+    if (u) users[u] = true;
+  });
+  Object.keys(byName).forEach(function(u) { users[u] = true; });
+
+  var named = Object.keys(byName).length;
+  document.getElementById('profiles-count').textContent = named ? '(' + named + ' named)' : '';
+
+  var html = '<div style="display:flex;gap:8px;margin:0 16px 10px;flex-wrap:wrap">'
+    + '<input class="tbl-input" id="new-user" placeholder="user@redhat.com" style="flex:1.2;min-width:150px">'
+    + '<input class="tbl-input" id="new-first" placeholder="First name" style="flex:1;min-width:110px">'
+    + '<input class="tbl-input" id="new-last" placeholder="Last name" style="flex:1;min-width:110px">'
+    + '<button class="btn" onclick="addProfileRow()">Add</button>'
+    + '</div>';
+
+  if (keysNote) {
+    html += '<div class="ts" style="margin:0 16px 10px">' + keysNote + '</div>';
+  }
+
+  html += '<div class="tbl-wrap"><table><thead><tr>'
+    + '<th>Username</th><th>First Name</th><th>Last Name</th>'
+    + '</tr></thead><tbody>';
+
+  Object.keys(users).sort().forEach(function(u) {
+    var p = byName[u] || {};
+    html += '<tr>'
+      + '<td class="mono">' + esc(u) + '</td>'
+      + '<td><input class="tbl-input" data-pu="' + esc(u) + '" data-pf="1" placeholder="—" value="' + esc(p.first_name || '') + '"></td>'
+      + '<td><input class="tbl-input" data-pu="' + esc(u) + '" data-pf="0" placeholder="—" value="' + esc(p.last_name || '') + '"></td>'
+      + '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  body.innerHTML = html;
+}
+
+function addProfileRow() {
+  var uEl = document.getElementById('new-user');
+  var fEl = document.getElementById('new-first');
+  var lEl = document.getElementById('new-last');
+  var u = uEl.value.trim();
+  var f = fEl.value.trim();
+  var l = lEl.value.trim();
+  if (!u) { showToast('Enter a username to add', 'error'); return; }
+
+  var tbody = document.querySelector('#profiles-body .tbl-wrap tbody');
+  var existing = null;
+  tbody.querySelectorAll('tr').forEach(function(tr) {
+    var inp = tr.querySelector('[data-pf="1"]');
+    if (inp && inp.getAttribute('data-pu') === u) existing = inp;
+  });
+  if (existing) {
+    existing.focus();
+  } else {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td class="mono">' + esc(u) + '</td>'
+      + '<td><input class="tbl-input" data-pu="' + esc(u) + '" data-pf="1" placeholder="—" value="' + esc(f) + '"></td>'
+      + '<td><input class="tbl-input" data-pu="' + esc(u) + '" data-pf="0" placeholder="—" value="' + esc(l) + '"></td>';
+    tbody.appendChild(tr);
+    showToast('Row added — hit Save to persist', 'success');
+  }
+  uEl.value = ''; fEl.value = ''; lEl.value = '';
+  uEl.focus();
 }
 
 function saveProfiles() {
   var map = {};
   document.querySelectorAll('#profiles-body .tbl-input').forEach(function(inp) {
     var u = inp.getAttribute('data-pu');
+    if (!u) return; // skip the add-user form inputs
     if (!map[u]) map[u] = {username: u, first_name: '', last_name: ''};
     if (inp.getAttribute('data-pf') === '1') map[u].first_name = inp.value.trim();
     else map[u].last_name = inp.value.trim();
