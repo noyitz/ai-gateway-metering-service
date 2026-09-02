@@ -92,9 +92,17 @@ tr.clickable{cursor:pointer}
     <a href="/compression" class="admin-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
   </div>
   <div style="display:flex;align-items:center;gap:12px">
+    <a href="#" id="my-view-btn" class="admin-only" data-show="inline" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600" title="See the dashboard as a regular user would">My view as user</a>
     <span id="userInfo" style="font-size:11px;color:var(--text2)"></span>
     <a href="/logout" class="auth-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600;letter-spacing:.3px">Logout</a>
   </div>
+</div>
+
+<div id="impersonation-banner" style="display:none;align-items:center;gap:10px;background:rgba(210,153,34,.12);border:1px solid #d29922;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:12px">
+  <span style="font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:10px;color:#d29922">Viewing as</span>
+  <b id="impersonated-user"></b>
+  <span style="color:var(--text2)">(you are <span id="real-user"></span>)</span>
+  <a href="/admin/impersonate" style="margin-left:auto;background:#d29922;color:#1a1a1a;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:700;text-decoration:none">Back to admin view</a>
 </div>
 
 <header>
@@ -234,6 +242,7 @@ tr.clickable{cursor:pointer}
 
 <script>
 let range='7d', groupFilter='', userFilter=[], modelFilter='', tlGroupBy='model';
+let isAdmin=false;
 let modelMetric='tokens', userPieMetric='cost';
 let savingsRef='claude-opus-4-8';
 let tokenChart=null, userCostChart=null, tlChart=null, savingsChart=null;
@@ -366,7 +375,7 @@ function renderUsers(data){
     let cls='';
     if(currentSort===c.key)cls=currentOrder==='asc'?'sorted-asc':'sorted-desc';
     return `<th class="${cls}" onclick="sortBy('${c.key}')">${c.label}</th>`;
-  }).join('');
+  }).join('')+(isAdmin?'<th style="width:80px;cursor:default"></th>':'');
 
   const tbody=document.getElementById('users-tbody');
   const len=data.length;
@@ -386,8 +395,9 @@ function renderUsers(data){
       <td class="num">${fmtN(u.total_tokens)}</td>
       <td class="num">${fmtC(u.cost_usd)}</td>
       <td class="num">${fmtC(u.saved_usd||0)}</td>
+      ${isAdmin?`<td><a href="/admin/impersonate?as=${encodeURIComponent(u.username)}" onclick="event.stopPropagation()" title="Open this user's personal view" style="color:var(--blue);font-size:11px;text-decoration:none;white-space:nowrap">view as &#8594;</a></td>`:''}
     </tr>`;
-    if(isExpanded)row+=`<tr id="expand-${u.username}"><td colspan="9" style="padding:0"><div class="expand-loading" id="expand-content-${u.username}">Loading...</div></td></tr>`;
+    if(isExpanded)row+=`<tr id="expand-${u.username}"><td colspan="${isAdmin?10:9}" style="padding:0"><div class="expand-loading" id="expand-content-${u.username}">Loading...</div></td></tr>`;
     return row;
   }).join('');
 
@@ -782,9 +792,21 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
     // identity is present (SSO/oauth-proxy). On the unauthenticated
     // dogfood there is no X-Forwarded-User, so these stay hidden.
     document.querySelectorAll('.auth-only').forEach(function(el){el.style.display='';});
+    // "Viewing as" state: show the banner with the way back to admin.
+    var banner=document.getElementById('impersonation-banner');
+    if(d.impersonating){
+      banner.style.display='flex';
+      document.getElementById('impersonated-user').textContent=d.user;
+      document.getElementById('real-user').textContent=d.real_user;
+    } else banner.style.display='none';
+    var mvb=document.getElementById('my-view-btn');
+    if(mvb)mvb.href='/admin/impersonate?as='+encodeURIComponent(d.user);
+    isAdmin=d.isAdmin;
     if(d.isAdmin){
       document.querySelectorAll('.admin-only').forEach(function(el){el.style.display=el.dataset.show||'';});
     }
+    // Re-render once the role is known so per-row "view as" links appear.
+    if(isAdmin)refresh();
     if(!d.isAdmin&&!userFilter.length){
       userFilter=[d.user];updateUserFilterLabel();renderUserChecklist();refresh();
     }

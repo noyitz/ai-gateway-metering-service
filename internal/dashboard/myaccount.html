@@ -85,6 +85,13 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
 </head>
 <body>
 
+<div id="impersonation-banner" style="display:none;align-items:center;gap:10px;background:rgba(210,153,34,.12);border:1px solid #d29922;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:12px">
+  <span style="font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:10px;color:#d29922">Viewing as</span>
+  <b id="impersonated-user"></b>
+  <span style="color:var(--t2)">(you are <span id="real-user"></span>)</span>
+  <a href="/admin/impersonate" style="margin-left:auto;background:#d29922;color:#1a1a1a;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:700;text-decoration:none">Back to admin view</a>
+</div>
+
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
   <div style="display:flex;gap:4px">
     <a href="/me" class="auth-only" style="display:none;background:var(--cyn);color:#fff;border:1px solid var(--cyn);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My Account</a>
@@ -189,9 +196,18 @@ async function init(){
     var host=window.location.hostname;
     var clusterDomain=host.split('.apps.')[1]||host;
     gatewayUrl='https://headroom-service-openshift-ingress.apps.'+clusterDomain;
+    // Impersonation state: an admin "viewing as" this user sees a banner
+    // with the way back to their own admin view.
+    var banner=document.getElementById('impersonation-banner');
+    if(w.impersonating){
+      banner.style.display='flex';
+      document.getElementById('impersonated-user').textContent=w.user;
+      document.getElementById('real-user').textContent=w.real_user;
+    } else banner.style.display='none';
   }catch(e){}
   refresh();
-  loadKeys();
+  // No loadKeys() — the API keys section is admin-managed (manage-keys.sh);
+  // /me/keys 501s when KEY_SERVICE_URL is unset, which is this deployment.
 }
 
 async function refresh(){

@@ -173,6 +173,9 @@ func main() {
 	mux.HandleFunc("/api/v1/admin/config", auth(adminHandler.HandleConfig))
 	mux.HandleFunc("/api/v1/admin/models/provider/", auth(adminHandler.HandleUpdateProvider))
 	mux.HandleFunc("/api/v1/admin/pricing/refresh", auth(handler.NewPricingRefreshHandler(store).HandleRefresh))
+	// Admin "view as user" — the handler checks admin against the real
+	// session identity, not the swapped header, so it also clears itself.
+	mux.HandleFunc("/admin/impersonate", auth(authHandler.HandleImpersonate))
 
 	server := &http.Server{Addr: ":" + cfg.Port, Handler: mux}
 
