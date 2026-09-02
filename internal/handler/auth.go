@@ -217,7 +217,9 @@ func (h *AuthHandler) HandleImpersonate(w http.ResponseWriter, r *http.Request) 
 
 	slog.Info("admin viewing as user", "admin", session.Username, "as", target)
 	h.setCookie(w, session.Username, session.Groups, target)
-	http.Redirect(w, r, "/me", http.StatusFound)
+	// /dashboard serves the personal user page while impersonating (the
+	// operator dashboard is only shown for a real, non-swapped admin view).
+	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
 
 func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {

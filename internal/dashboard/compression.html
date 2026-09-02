@@ -50,7 +50,8 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
 // (SSO/oauth-proxy). Hidden on the unauthenticated dogfood.
 fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
   if(d&&d.user){document.querySelectorAll('.auth-only').forEach(function(el){el.style.display='';});}
+  if(d&&d.isAdmin){document.querySelectorAll('.admin-only').forEach(function(el){el.style.display='';});}
 }).catch(function(){});
 </script>
-</body>
+<script>fetch("/whoami").then(function(r){return r.json()}).then(function(d){var el=document.getElementById("user-badge");if(d.user&&el){var isAdmin=d.user==="admin";el.innerHTML=isAdmin?"<span style=\"color:#3dcc6e;font-weight:700\">⬤ admin</span> <span style=\"font-size:10px;color:#5a6a7a\">(cluster admin)</span>":"<span style=\"color:#4da0f8;font-weight:700\">⬤ "+d.user+"</span> <span style=\"font-size:10px;color:#5a6a7a\">(GitHub)</span>"}}).catch(function(){})</script></body>
 </html>

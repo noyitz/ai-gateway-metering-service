@@ -23,10 +23,16 @@ func NewDashboardHandler(store *storage.Store, cfg config.Config) *DashboardHand
 }
 
 func (h *DashboardHandler) ServeDashboard(w http.ResponseWriter, r *http.Request) {
-	data, err := fs.ReadFile(dashboard.FS, "dashboard.html")
+	// Admins see the operator dashboard; everyone else sees their personal
+	// page. An admin impersonating a user gets the personal page too — the
+	// real identity is preserved in the real-user header by RequireAuth.
+	page := "user-dashboard.html"
+	if IsAdmin(h.cfg, r) && r.Header.Get(realUserHeader) == "" {
+		page = "dashboard.html"
+	}
+	data, err := fs.ReadFile(dashboard.FS, page)
 	if err != nil {
-		http.Error(w, "dashboard not found", http.StatusInternalServerError)
-		return
+		data, _ = fs.ReadFile(dashboard.FS, "dashboard.html")
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(data)

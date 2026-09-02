@@ -142,10 +142,29 @@ func (h *KeysHandler) HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 	user := r.Header.Get(h.cfg.UserHeader)
 	real := r.Header.Get(realUserHeader)
 	impersonating := real != "" && real != user
+
+	// Groups arrive as the JSON array string the login flow stored in the
+	// session; expose them as a real array (CSV fallback) so pages don't
+	// have to guess the encoding.
+	var groups []string
+	if raw := r.Header.Get(h.cfg.GroupsHeader); raw != "" {
+		var gs []string
+		if err := json.Unmarshal([]byte(raw), &gs); err != nil {
+			for _, g := range strings.Split(raw, ",") {
+				if g = strings.TrimSpace(g); g != "" {
+					gs = append(gs, g)
+				}
+			}
+		}
+	}
+	if groups == nil {
+		groups = []string{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	resp := map[string]any{
 		"user":              user,
-		"groups":            r.Header.Get(h.cfg.GroupsHeader),
+		"groups":            groups,
 		"isAdmin":           IsAdmin(h.cfg, r),
 		"keyServiceEnabled": h.cfg.KeyService.Enabled(),
 		"impersonating":     impersonating,
@@ -157,6 +176,18 @@ func (h *KeysHandler) HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 	if h.store != nil && user != "" {
 		if p, err := h.store.GetUserProfile(r.Context(), user); err == nil {
 			resp["display_name"] = p.DisplayName()
+		}
+	}
+	// githubId backs the redesigned user dashboard's avatar; only available
+	// when the kubernetes adapter can read OpenShift users.
+	if h.k8sClient != nil && user != "" {
+		if users, err := h.k8sClient.GetOpenShiftUsers(r.Context()); err == nil {
+			for _, u := range users {
+				if u.Name == user && u.GitHubID != "" {
+					resp["githubId"] = u.GitHubID
+					break
+				}
+			}
 		}
 	}
 	if impersonating {
