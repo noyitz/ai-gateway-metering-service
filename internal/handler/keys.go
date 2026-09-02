@@ -156,6 +156,7 @@ func (h *KeysHandler) HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		groups = gs
 	}
 	if groups == nil {
 		groups = []string{}
