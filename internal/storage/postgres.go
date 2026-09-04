@@ -274,10 +274,14 @@ type UserSummary struct {
 	CompletionTokens int64   `json:"completion_tokens"`
 	TotalTokens      int64   `json:"total_tokens"`
 	CostUSD          float64 `json:"cost_usd"`
-	// SavedUSD is what the same tokens would cost at the vendor list price
-	// minus what the gateway actually charged. 0 for models without a
-	// seeded list price (the list expression falls back to the effective
-	// gateway rate, making the difference exactly zero).
+	// SavedUSD is the per-user share of the "Saved · Free Models" KPI: what
+	// this user's free-model (metered $0, real tokens) traffic would have
+	// cost on the reference model (default claude-opus-4-8), priced
+	// cache-aware at the reference's seeded rates. Free traffic that carries
+	// no cache telemetry is split using the cache ratio observed on paid
+	// traffic in the same window (reference model first, all paid as
+	// fallback). Computed with the same arithmetic the dashboard KPI applies,
+	// so the user-table column and the KPI card always agree.
 	SavedUSD float64 `json:"saved_usd"`
 }
 
@@ -291,6 +295,14 @@ type ModelSummary struct {
 	CachedInputTokens   int64   `json:"cached_input_tokens"`
 	CacheCreationTokens int64   `json:"cache_creation_tokens"`
 	CostUSD             float64 `json:"cost_usd"`
+	// Seeded per-model rates ($/Mtok) from model_pricing. The dashboard's
+	// savings KPI uses these instead of its hardcoded JS map so the card and
+	// the server-computed per-user savings column share one price source.
+	// 0 when the model has no seeded pricing row (client falls back to its map).
+	InputPrice      float64 `json:"input_price_per_mtok"`
+	OutputPrice     float64 `json:"output_price_per_mtok"`
+	CacheReadPrice  float64 `json:"cache_read_price_per_mtok"`
+	CacheWritePrice float64 `json:"cache_write_price_per_mtok"`
 }
 
 type TimelineBucket struct {
@@ -349,7 +361,13 @@ func (s *Store) GetDashboardGroups(ctx context.Context, since, until time.Time, 
 	return result, nil
 }
 
-func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, group, user, model, sortCol, sortOrder string, limit int) ([]UserSummary, error) {
+// GetDashboardUsers returns per-user usage stats. refModel selects the
+// reference model for the SavedUSD counterfactual (empty = claude-opus-4-8);
+// keep it in sync with the dashboard's savings reference selector.
+func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, group, user, model, sortCol, sortOrder string, limit int, refModel string) ([]UserSummary, error) {
+	if refModel == "" {
+		refModel = "claude-opus-4-8"
+	}
 	validSorts := map[string]string{
 		"total_tokens": "total_tokens", "cost_usd": "cost_usd", "saved_usd": "saved_usd",
 		"requests": "requests",
@@ -370,7 +388,68 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 		limit = 100
 	}
 
+	// saved_usd reproduces the dashboard KPI arithmetic per user:
+	//   r_ref/r_all  observed cache ratio (cached/prompt) of PAID traffic in
+	//                the window — range-only (unfiltered), like the client's
+	//                unfiltered model catalog; reference model preferred, all
+	//                paid as fallback.
+	//   pr           reference model rates from model_pricing (aggregated so
+	//                the CTE always yields exactly one row).
+	//   fm           per-user-per-model totals over the active filters; a
+	//                model counts as free when its metered cost is 0 with
+	//                real tokens, same as the client.
+	//   sv           per-user counterfactual: free traffic priced at the
+	//                reference rates, cache-write tokens deducted from the
+	//                fresh-input term so each tier is priced once; free
+	//                traffic with no cache telemetry gets the observed ratio
+	//                applied (per model, rounded — matches the client).
 	query := fmt.Sprintf(`
+		WITH r_ref AS (
+			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
+			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND e.model = $7 AND (%s) > 0
+		),
+		r_all AS (
+			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
+			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND (%s) > 0
+		),
+		rat AS (
+			SELECT CASE WHEN (SELECT r FROM r_ref) > 0 THEN (SELECT r FROM r_ref)
+			            WHEN (SELECT r FROM r_all) > 0 THEN (SELECT r FROM r_all)
+			            ELSE 0 END as r
+		),
+		pr AS (
+			SELECT COALESCE(MAX(input_cost_per_mtok), 0) as i, COALESCE(MAX(output_cost_per_mtok), 0) as o,
+			       COALESCE(MAX(cache_read_cost_per_mtok), 0) as cr, COALESCE(MAX(cache_write_cost_per_mtok), 0) as cw
+			FROM model_pricing WHERE model = $7
+		),
+		fm AS (
+			SELECT e.username, e.model,
+				SUM(e.prompt_tokens) as prompt, SUM(e.completion_tokens) as completion,
+				SUM(COALESCE(e.cached_input_tokens, 0)) as cached, SUM(COALESCE(e.cache_creation_tokens, 0)) as cwrite,
+				SUM(e.total_tokens) as tot, SUM(%s) as cost
+			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
+			GROUP BY e.username, e.model
+		),
+		sv AS (
+			SELECT fm.username, SUM(
+				(GREATEST(fm.prompt
+					- CASE WHEN fm.cached = 0 AND fm.cwrite = 0 AND fm.prompt > 0 AND rat.r > 0
+					       THEN LEAST(ROUND(fm.prompt * rat.r), fm.prompt)
+					       ELSE fm.cached END
+					- fm.cwrite, 0) * pr.i
+				+ CASE WHEN fm.cached = 0 AND fm.cwrite = 0 AND fm.prompt > 0 AND rat.r > 0
+				       THEN LEAST(ROUND(fm.prompt * rat.r), fm.prompt)
+				       ELSE fm.cached END * pr.cr
+				+ fm.cwrite * pr.cw
+				+ fm.completion * pr.o) / 1000000.0
+			) as saved
+			FROM fm CROSS JOIN pr CROSS JOIN rat
+			WHERE fm.cost = 0 AND fm.tot > 0
+			GROUP BY fm.username
+		)
 		SELECT e.username,
 			%s,
 			COALESCE(e.group_name, ''),
@@ -379,16 +458,17 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 			COALESCE(SUM(e.completion_tokens),0) as completion_tokens,
 			COALESCE(SUM(e.total_tokens),0) as total_tokens,
 			COALESCE(ROUND(SUM(%s)::numeric, 2), 0) as cost_usd,
-			COALESCE(ROUND((SUM(%s) - SUM(%s))::numeric, 2), 0) as saved_usd
+			COALESCE(ROUND(MAX(sv.saved)::numeric, 2), 0) as saved_usd
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
 		LEFT JOIN user_profiles up ON up.username = e.username
+		LEFT JOIN sv ON sv.username = e.username
 		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 		GROUP BY e.username, %s, COALESCE(e.group_name, '')
 		ORDER BY %s %s
-		LIMIT $6`, displayNameExpr, costUSDExpr, listCostUSDExpr, costUSDExpr, displayNameExpr, sortExpr, direction)
+		LIMIT $6`, costUSDExpr, costUSDExpr, costUSDExpr, displayNameExpr, costUSDExpr, displayNameExpr, sortExpr, direction)
 
-	rows, err := s.db.QueryContext(ctx, query, since, until, group, user, model, limit)
+	rows, err := s.db.QueryContext(ctx, query, since, until, group, user, model, limit, refModel)
 	if err != nil {
 		return nil, err
 	}
@@ -419,7 +499,11 @@ func (s *Store) GetDashboardModels(ctx context.Context, since, until time.Time, 
 			COALESCE(SUM(e.completion_tokens),0),
 			COALESCE(SUM(e.cached_input_tokens),0),
 			COALESCE(SUM(e.cache_creation_tokens),0),
-			COALESCE(ROUND(SUM(%s)::numeric, 2), 0)
+			COALESCE(ROUND(SUM(%s)::numeric, 2), 0),
+			COALESCE(MAX(p.input_cost_per_mtok), 0),
+			COALESCE(MAX(p.output_cost_per_mtok), 0),
+			COALESCE(MAX(p.cache_read_cost_per_mtok), 0),
+			COALESCE(MAX(p.cache_write_cost_per_mtok), 0)
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
 		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
@@ -433,7 +517,8 @@ func (s *Store) GetDashboardModels(ctx context.Context, since, until time.Time, 
 	var result []ModelSummary
 	for rows.Next() {
 		var m ModelSummary
-		if err := rows.Scan(&m.Model, &m.Provider, &m.Requests, &m.TotalTokens, &m.PromptTokens, &m.CompletionTokens, &m.CachedInputTokens, &m.CacheCreationTokens, &m.CostUSD); err != nil {
+		if err := rows.Scan(&m.Model, &m.Provider, &m.Requests, &m.TotalTokens, &m.PromptTokens, &m.CompletionTokens, &m.CachedInputTokens, &m.CacheCreationTokens, &m.CostUSD,
+			&m.InputPrice, &m.OutputPrice, &m.CacheReadPrice, &m.CacheWritePrice); err != nil {
 			return nil, err
 		}
 		result = append(result, m)

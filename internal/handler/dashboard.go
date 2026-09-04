@@ -77,7 +77,10 @@ func (h *DashboardHandler) HandleUsers(w http.ResponseWriter, r *http.Request) {
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
 		limit = l
 	}
-	result, err := h.store.GetDashboardUsers(r.Context(), since, until, group, user, model, sortCol, sortOrder, limit)
+	// ref selects the reference model for the SavedUSD counterfactual; the
+	// dashboard passes its savings-ref selection so the user-table column
+	// and the Saved · Free Models KPI stay in lockstep.
+	result, err := h.store.GetDashboardUsers(r.Context(), since, until, group, user, model, sortCol, sortOrder, limit, r.URL.Query().Get("ref"))
 	if err != nil {
 		slog.Error("dashboard query failed", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
