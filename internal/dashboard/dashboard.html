@@ -172,7 +172,7 @@ tr.clickable{cursor:pointer}
   <div class="kpi"><span class="kpi-label">Total Requests</span><span id="kpi-requests" class="kpi-value blue">--</span></div>
   <div class="kpi"><span class="kpi-label">Total Tokens</span><span id="kpi-tokens" class="kpi-value green">--</span></div>
   <div class="kpi"><span class="kpi-label">Estimated Cost</span><span id="kpi-cost" class="kpi-value orange">--</span></div>
-  <div class="kpi saved"><span class="kpi-label">Saved · Free Models</span><span id="kpi-savings" class="kpi-value green">--</span><span id="kpi-savings-sub" class="kpi-sub">vs <select id="savings-ref-select" onchange="savingsRef=this.value;renderSavings();"></select></span></div>
+  <div class="kpi saved"><span class="kpi-label">Saved · Free Models</span><span id="kpi-savings" class="kpi-value green">--</span><span id="kpi-savings-sub" class="kpi-sub">vs <select id="savings-ref-select" onchange="savingsRef=this.value;renderSavings();"></select><span id="kpi-savings-note"></span></span></div>
   <div class="kpi"><span class="kpi-label">Active Users</span><span id="kpi-users" class="kpi-value purple">--</span></div>
 </div>
 
@@ -538,6 +538,29 @@ function populateSavingsRef(){
 function renderSavings(){
   populateSavingsRef();
   var ref=MODEL_PRICING_JS[savingsRef]||{i:5,o:25,cr:0.5,cw:0};
+  // Cache-aware pricing. prompt_tokens is the FULL input, decomposed into
+  // new + cached reads + cache writes (cached_input_tokens and
+  // cache_creation_tokens are subsets of it), so each tier must be priced
+  // once: new @ i, cached @ cr, cache-write @ cw.
+  // Free models served over the OpenAI dialect (vLLM chat/responses) carry no
+  // cache telemetry at all — their cached/cw columns read 0 and would be
+  // priced 100% at the full input rate. Real interactive agent traffic on the
+  // paid models is overwhelmingly cache reads, so when a free model reports no
+  // cache at all we estimate the split from the observed cache ratio of paid
+  // traffic (the selected reference model's own ratio first, all paid models
+  // as fallback) and label the assumption on the KPI.
+  function paidCacheRatio(modelName){
+    var cached=0,prompt=0;
+    (cachedModels||[]).forEach(function(m){
+      if((m.cost_usd||0)<=0)return;
+      if(modelName&&m.model!==modelName)return;
+      cached+=m.cached_input_tokens||0;
+      prompt+=m.prompt_tokens||0;
+    });
+    return prompt>0&&cached>0?cached/prompt:0;
+  }
+  var assumedRatio=paidCacheRatio(savingsRef)||paidCacheRatio(null);
+  var ratioApplied=false;
   var totalSaved=0, freeTokens=0, totalTokens=0;
   (cachedModels||[]).forEach(function(m){
     var tot=m.total_tokens||0;
@@ -545,15 +568,23 @@ function renderSavings(){
     var isFree=(m.cost_usd||0)===0 && tot>0;
     if(!isFree)return;
     freeTokens+=tot;
-    var newInput=Math.max((m.prompt_tokens||0)-(m.cached_input_tokens||0),0);
+    var prompt=m.prompt_tokens||0, completion=m.completion_tokens||0;
+    var cached=m.cached_input_tokens||0, cacheWrite=m.cache_creation_tokens||0;
+    if(cached===0&&cacheWrite===0&&prompt>0&&assumedRatio>0){
+      cached=Math.round(prompt*assumedRatio);
+      ratioApplied=true;
+    }
+    var newInput=Math.max(prompt-cached-cacheWrite,0);
     totalSaved+=newInput*ref.i/1e6
-      +(m.completion_tokens||0)*ref.o/1e6
-      +(m.cached_input_tokens||0)*ref.cr/1e6
-      +(m.cache_creation_tokens||0)*ref.cw/1e6;
+      +completion*ref.o/1e6
+      +cached*ref.cr/1e6
+      +cacheWrite*ref.cw/1e6;
   });
   var paidTokens=Math.max(totalTokens-freeTokens,0);
 
   var kpi=document.getElementById('kpi-savings');if(kpi)kpi.textContent=fmtC(totalSaved);
+  var note=document.getElementById('kpi-savings-note');
+  if(note)note.textContent=ratioApplied?' · '+Math.round(assumedRatio*100)+'% input est. cached':'';
 
   if(savingsChart)savingsChart.destroy();
   var canvas=document.getElementById('savings-chart');
