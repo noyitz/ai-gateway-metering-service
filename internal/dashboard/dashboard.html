@@ -174,7 +174,7 @@ tr.clickable{cursor:pointer}
   <div class="kpi"><span class="kpi-label">Total Requests</span><span id="kpi-requests" class="kpi-value blue">--</span></div>
   <div class="kpi"><span class="kpi-label">Total Tokens</span><span id="kpi-tokens" class="kpi-value green">--</span></div>
   <div class="kpi"><span class="kpi-label">Estimated Cost</span><span id="kpi-cost" class="kpi-value orange">--</span></div>
-  <div class="kpi saved"><span class="kpi-label">Saved · Free Models</span><span id="kpi-savings" class="kpi-value green">--</span><span id="kpi-savings-sub" class="kpi-sub">vs <select id="savings-ref-select" onchange="savingsRef=this.value;renderSavings();"></select><span id="kpi-savings-note"></span></span></div>
+  <div class="kpi saved"><span class="kpi-label">Saved · Free Models</span><span id="kpi-savings" class="kpi-value green">--</span><span id="kpi-savings-sub" class="kpi-sub">vs <select id="savings-ref-select" onchange="savingsRef=this.value;refresh();"></select><span id="kpi-savings-note"></span></span></div>
   <div class="kpi"><span class="kpi-label">Active Users</span><span id="kpi-users" class="kpi-value purple">--</span></div>
 </div>
 
@@ -287,7 +287,7 @@ async function refresh(){
   const [ov,gr,us,mo,tl,rc,rosterCat,modelCat]=await Promise.all([
     api('/api/v1/dashboard/overview?'+filters),
     api('/api/v1/dashboard/groups?'+filters),
-    api('/api/v1/dashboard/users?'+filters+'&sort='+currentSort+'&order='+currentOrder),
+    api('/api/v1/dashboard/users?'+filters+'&sort='+currentSort+'&order='+currentOrder+'&ref='+encodeURIComponent(savingsRef)),
     api('/api/v1/dashboard/models?'+filters),
     api('/api/v1/dashboard/timeline?'+filters+'&group_by='+tlGroupBy),
     api('/api/v1/dashboard/recent?limit=20'+gf+uf+mf),
@@ -385,7 +385,7 @@ const COLS=[
   {key:'completion_tokens',label:'Completion Tokens',cls:'num'},
   {key:'total_tokens',label:'Total Tokens',cls:'num'},
   {key:'cost_usd',label:'Cost ($)',cls:'num'},
-  {key:'saved_usd',label:'Cost Saved ($)',cls:'num'}
+  {key:'saved_usd',label:'Free-Model Saved ($)',cls:'num'}
 ];
 
 let expandedUser='';
@@ -546,7 +546,14 @@ function populateSavingsRef(){
 // as "free" when it served real tokens but metered at $0 (local / self-hosted).
 function renderSavings(){
   populateSavingsRef();
+  // Prefer the seeded model_pricing rates served on the models API (same
+  // source the server uses for the per-user savings column); fall back to
+  // the JS map for models absent from the catalog or without seeded rates.
   var ref=MODEL_PRICING_JS[savingsRef]||{i:5,o:25,cr:0.5,cw:0};
+  var refRow=((typeof catalogModels!=='undefined'&&catalogModels)||[]).find(function(m){return m.model===savingsRef;});
+  if(refRow&&(refRow.input_price_per_mtok||0)>0){
+    ref={i:refRow.input_price_per_mtok,o:refRow.output_price_per_mtok||0,cr:refRow.cache_read_price_per_mtok||0,cw:refRow.cache_write_price_per_mtok||0};
+  }
   // Cache-aware pricing. prompt_tokens is the FULL input, decomposed into
   // new + cached reads + cache writes (cached_input_tokens and
   // cache_creation_tokens are subsets of it), so each tier must be priced
@@ -575,6 +582,11 @@ function renderSavings(){
   }
   var assumedRatio=paidCacheRatio(savingsRef)||paidCacheRatio(null);
   var ratioApplied=false;
+  // Sum over the FILTERED set (the card must follow the user/group filter);
+  // only the assumed cache ratio comes from the unfiltered catalog above.
+  // The server computes the user-table column with the same arithmetic
+  // (same ratio basis, same reference rates), so filtered-KPI(user X) equals
+  // X's row in the column and the unfiltered card equals the column's sum.
   var totalSaved=0, freeTokens=0, totalTokens=0;
   (cachedModels||[]).forEach(function(m){
     var tot=m.total_tokens||0;
