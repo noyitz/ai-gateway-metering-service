@@ -252,6 +252,9 @@ let savingsRef='claude-opus-4-8';
 let tokenChart=null, userCostChart=null, tlChart=null, savingsChart=null;
 let currentSort='total_tokens', currentOrder='desc';
 let cachedGroups=[], cachedModels=[], cachedUsers=[];
+// Range-only (unfiltered) model stats, kept for the observed cache-ratio
+// basis in renderSavings so per-user/group filters don't zero it out.
+let catalogModels=[];
 
 const COLORS=['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#39d2c0','#f778ba','#79c0ff','#7ee787','#e3b341','#ff9a8c','#d2a8ff','#56d4dd','#ffa657','#a5d6ff'];
 
@@ -291,6 +294,10 @@ async function refresh(){
   ]);
   cachedGroups=gr;
   cachedModels=modelFilter?mo.filter(function(m){return m.model===modelFilter}):mo;
+  // Unfiltered (range-only) model stats: used as the basis for the observed
+  // cache ratio in renderSavings, so a user/group filter that contains no
+  // paid traffic doesn't silently drop the cache assumption.
+  catalogModels=modelCat;
   cachedUsers=us;
   renderKPI(ov);
   renderGroupFilterBtns(gr);
@@ -551,7 +558,12 @@ function renderSavings(){
   // as fallback) and label the assumption on the KPI.
   function paidCacheRatio(modelName){
     var cached=0,prompt=0;
-    (cachedModels||[]).forEach(function(m){
+    // Basis is the UNFILTERED model catalog: with a user/group filter that
+    // contains no paid traffic (e.g. a free-model-only user), the filtered
+    // set has no cache ratio to observe, and the estimate would silently
+    // collapse to 100% fresh-input pricing.
+    var basis=(typeof catalogModels!=='undefined'&&catalogModels&&catalogModels.length)?catalogModels:(cachedModels||[]);
+    basis.forEach(function(m){
       if((m.cost_usd||0)<=0)return;
       if(modelName&&m.model!==modelName)return;
       cached+=m.cached_input_tokens||0;
