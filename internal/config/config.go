@@ -112,7 +112,7 @@ type Kubernetes struct {
 
 // Enabled reports whether the Kubernetes adapter should be initialised.
 func (k Kubernetes) Enabled() bool {
-	return k.ModelGroup != "" || k.ProviderGroup != ""
+	return k.ModelGroup != "" || k.ProviderGroup != "" || k.PipelineConfigMap != ""
 }
 
 // Load resolves configuration from the environment.
