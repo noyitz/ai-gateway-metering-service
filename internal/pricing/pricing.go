@@ -98,6 +98,8 @@ func LocalPrices() []ModelPrice {
 	return []ModelPrice{
 		// Self-hosted Qwen on vLLM — the model id billed traffic records.
 		{Model: "Qwen3.8-27B-FP8", Provider: "vllm"},
+		// Qwen3.8-Flash-Next on external cluster, proxied via qwen-flash-proxy.
+		{Model: "Inferact/Qwen3.8-Flash-Next-NVFP4", Provider: "vllm"},
 		// Legacy alias: older events recorded model="qwen" before the id above
 		// was adopted. Kept at $0 so historical rows don't reprice to the paid
 		// default. Safe to drop once no events with model="qwen" remain.

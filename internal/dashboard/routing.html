@@ -130,13 +130,10 @@ body{background:var(--bg);color:var(--t);font-family:'Inter',-apple-system,sans-
   <div class="z1">
     <div class="sec-hdr">Inference Gateway</div>
     <div class="gw" id="gwBox">
-      <div class="gw-title">IPP Pipeline</div>
+      <div class="gw-title">Filter Pipeline</div>
       <div class="gw-profile" id="gwProfile">Loading...</div>
-      <div class="gw-label">Request</div>
       <div id="reqPlugins"></div>
-      <div class="plg-div"></div>
-      <div class="gw-label">Response</div>
-      <div id="resPlugins"></div>
+      <div id="resPlugins" style="display:none"></div>
     </div>
   </div>
 
@@ -204,14 +201,35 @@ function renderModels(){
 
 function renderPlugins(){
   if(!config||!config.profiles||config.profiles.length===0)return;
+  var gwBox=document.getElementById('gwBox');
+  // Multiple chains: render all as a tabbed/stacked view
+  if(config.profiles.length>1){
+    document.getElementById('gwProfile').innerHTML=config.profiles.length+' filter chains';
+    var html='';
+    config.profiles.forEach(function(p){
+      html+='<div class="gw-label" style="margin-top:10px">'+p.name+'</div>';
+      (p.requestPlugins||[]).forEach(function(n){
+        html+='<div class="plg"><div class="plg-dot"></div><div class="plg-name">'+n+'</div></div>';
+      });
+      (p.responsePlugins||[]).forEach(function(n){
+        html+='<div class="plg"><div class="plg-dot"></div><div class="plg-name">'+n+'</div></div>';
+      });
+    });
+    document.getElementById('reqPlugins').innerHTML=html;
+    return;
+  }
   var p=config.profiles[0];
-  document.getElementById('gwProfile').innerHTML='Profile: <strong>'+p.name+'</strong>';
+  document.getElementById('gwProfile').innerHTML='Chain: <strong>'+p.name+'</strong>';
   document.getElementById('reqPlugins').innerHTML=(p.requestPlugins||[]).map(function(n){
     return '<div class="plg"><div class="plg-dot"></div><div class="plg-name">'+n+'</div></div>';
   }).join('');
-  document.getElementById('resPlugins').innerHTML=(p.responsePlugins||[]).map(function(n){
-    return '<div class="plg"><div class="plg-dot"></div><div class="plg-name">'+n+'</div></div>';
-  }).join('');
+  var resEl=document.getElementById('resPlugins');
+  if(p.responsePlugins&&p.responsePlugins.length>0){
+    resEl.style.display='';
+    resEl.innerHTML=(p.responsePlugins||[]).map(function(n){
+      return '<div class="plg"><div class="plg-dot"></div><div class="plg-name">'+n+'</div></div>';
+    }).join('');
+  }
 }
 
 function getProviderRef(model,provName){

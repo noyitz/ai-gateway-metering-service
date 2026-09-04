@@ -187,9 +187,9 @@ func main() {
 
 	// Admin pages — session + admin required
 	mux.HandleFunc("/admin", auth(handler.RequireAdmin(cfg, adminHandler.ServeAdmin)))
-	mux.HandleFunc("/routing", auth(handler.RequireAdmin(cfg, adminHandler.ServeRouting)))
-	mux.HandleFunc("/admin2", auth(handler.RequireAdmin(cfg, adminHandler.ServeRouting)))
-	mux.HandleFunc("/compression", auth(handler.RequireAdmin(cfg, adminHandler.ServeCompression)))
+	mux.HandleFunc("/routing", auth(adminHandler.ServeRouting))
+	mux.HandleFunc("/admin2", auth(adminHandler.ServeRouting))
+	mux.HandleFunc("/compression", auth(adminHandler.ServeCompression))
 	// Admin APIs are gated by RequireAdmin (auth() alone is not enough —
 	// otherwise any signed-in user could change weights/config).
 	mux.HandleFunc("/api/v1/admin/providers", auth(handler.RequireAdmin(cfg, adminHandler.HandleProviders)))

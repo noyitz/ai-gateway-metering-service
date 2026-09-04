@@ -89,6 +89,9 @@ func (c *Client) providerGVR() schema.GroupVersionResource {
 }
 
 func (c *Client) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
+	if c.cfg.ProviderGroup == "" {
+		return c.listProvidersFromConfig(ctx)
+	}
 	list, err := c.client.Resource(c.providerGVR()).Namespace(c.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", c.cfg.ProviderResource, err)
@@ -117,6 +120,9 @@ func (c *Client) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
 }
 
 func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
+	if c.cfg.ModelGroup == "" {
+		return c.listModelsFromConfig(ctx)
+	}
 	list, err := c.client.Resource(c.modelGVR()).Namespace(c.namespace).List(ctx, metav1.ListOptions{})
 
 	// A configured fallback group covers catalogues mid-migration between
@@ -250,7 +256,9 @@ func (c *Client) GetPipelineConfig(ctx context.Context) (*PipelineConfig, error)
 		return nil, fmt.Errorf("key %q not found in ConfigMap %s/%s", key, namespace, name)
 	}
 
-	var raw struct {
+	// Try IPP format first (profiles[].plugins.request/response), then
+	// fall back to praxis format (filter_chains[].filters[]).
+	var ipp struct {
 		Profiles []struct {
 			Name    string `yaml:"name"`
 			Plugins struct {
@@ -263,20 +271,206 @@ func (c *Client) GetPipelineConfig(ctx context.Context) (*PipelineConfig, error)
 			} `yaml:"plugins"`
 		} `yaml:"profiles"`
 	}
-	if err := yaml.Unmarshal([]byte(configYAML), &raw); err != nil {
+	if err := yaml.Unmarshal([]byte(configYAML), &ipp); err != nil {
 		return nil, fmt.Errorf("parse pipeline config YAML: %w", err)
 	}
 
-	result := &PipelineConfig{ActiveProfile: "default"}
-	for _, p := range raw.Profiles {
-		pi := ProfileInfo{Name: p.Name}
-		for _, rp := range p.Plugins.Request {
-			pi.RequestPlugins = append(pi.RequestPlugins, rp.PluginRef)
+	if len(ipp.Profiles) > 0 {
+		result := &PipelineConfig{ActiveProfile: "default"}
+		for _, p := range ipp.Profiles {
+			pi := ProfileInfo{Name: p.Name}
+			for _, rp := range p.Plugins.Request {
+				pi.RequestPlugins = append(pi.RequestPlugins, rp.PluginRef)
+			}
+			for _, rp := range p.Plugins.Response {
+				pi.ResponsePlugins = append(pi.ResponsePlugins, rp.PluginRef)
+			}
+			result.Profiles = append(result.Profiles, pi)
 		}
-		for _, rp := range p.Plugins.Response {
-			pi.ResponsePlugins = append(pi.ResponsePlugins, rp.PluginRef)
+		return result, nil
+	}
+
+	// Praxis format: filter_chains[].filters[] — each chain is a profile,
+	// filters are listed as request plugins (praxis doesn't split req/res).
+	var praxis struct {
+		FilterChains []struct {
+			Name    string `yaml:"name"`
+			Filters []struct {
+				Filter string `yaml:"filter"`
+			} `yaml:"filters"`
+		} `yaml:"filter_chains"`
+	}
+	if err := yaml.Unmarshal([]byte(configYAML), &praxis); err != nil {
+		return nil, fmt.Errorf("parse praxis config YAML: %w", err)
+	}
+
+	result := &PipelineConfig{ActiveProfile: "default"}
+	for _, fc := range praxis.FilterChains {
+		pi := ProfileInfo{Name: fc.Name}
+		for _, f := range fc.Filters {
+			pi.RequestPlugins = append(pi.RequestPlugins, f.Filter)
 		}
 		result.Profiles = append(result.Profiles, pi)
+	}
+	return result, nil
+}
+
+// readConfigMapYAML reads the pipeline ConfigMap and returns the raw YAML.
+func (c *Client) readConfigMapYAML(ctx context.Context) (string, error) {
+	name := c.cfg.PipelineConfigMap
+	if name == "" {
+		return "", fmt.Errorf("no pipeline ConfigMap configured")
+	}
+	namespace := c.cfg.PipelineConfigMapNamespace
+	if namespace == "" {
+		namespace = c.namespace
+	}
+	cmGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}
+	cm, err := c.client.Resource(cmGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("get ConfigMap %s/%s: %w", namespace, name, err)
+	}
+	raw, found, _ := unstructured.NestedString(cm.Object, "data", c.cfg.PipelineConfigMapKey)
+	if !found {
+		return "", fmt.Errorf("key %q not found in ConfigMap %s/%s", c.cfg.PipelineConfigMapKey, namespace, name)
+	}
+	return raw, nil
+}
+
+type praxisFilterChain struct {
+	Name    string           `yaml:"name"`
+	Filters []map[string]any `yaml:"filters"`
+}
+
+type praxisTop struct {
+	FilterChains []praxisFilterChain `yaml:"filter_chains"`
+}
+
+type catalogModel struct {
+	ID          string `yaml:"id"`
+	DisplayName string `yaml:"display_name"`
+	OwnedBy    string `yaml:"owned_by"`
+}
+
+type routerRoute struct {
+	PathPrefix string            `yaml:"path_prefix"`
+	Headers    map[string]string `yaml:"headers"`
+	Cluster    string            `yaml:"cluster"`
+}
+
+type lbCluster struct {
+	Name      string   `yaml:"name"`
+	Endpoints []string `yaml:"endpoints"`
+	TLS       *struct {
+		SNI string `yaml:"sni"`
+	} `yaml:"tls"`
+}
+
+func remarshal(src any, dst any) error {
+	b, err := yaml.Marshal(src)
+	if err != nil {
+		return err
+	}
+	return yaml.Unmarshal(b, dst)
+}
+
+func (c *Client) listModelsFromConfig(ctx context.Context) ([]ModelInfo, error) {
+	raw, err := c.readConfigMapYAML(ctx)
+	if err != nil {
+		return nil, nil
+	}
+	var cfg praxisTop
+	if err := yaml.Unmarshal([]byte(raw), &cfg); err != nil {
+		return nil, nil
+	}
+
+	seen := map[string]bool{}
+	var result []ModelInfo
+	for _, chain := range cfg.FilterChains {
+		clusterMap := map[string]string{}
+		for _, f := range chain.Filters {
+			if f["filter"] != "router" {
+				continue
+			}
+			var routes []routerRoute
+			if err := remarshal(f["routes"], &routes); err == nil {
+				for _, r := range routes {
+					for _, v := range r.Headers {
+						clusterMap[v] = r.Cluster
+					}
+				}
+			}
+		}
+		for _, f := range chain.Filters {
+			if f["filter"] != "model_catalog" {
+				continue
+			}
+			var models []catalogModel
+			if err := remarshal(f["models"], &models); err != nil {
+				continue
+			}
+			for _, m := range models {
+				if seen[m.ID] {
+					continue
+				}
+				seen[m.ID] = true
+				info := ModelInfo{
+					Name:     m.ID,
+					Provider: m.OwnedBy,
+				}
+				if cluster, ok := clusterMap[m.ID]; ok {
+					info.ProviderRefs = []ProviderRef{{ProviderName: cluster, TargetModel: m.ID, Weight: 1}}
+				}
+				result = append(result, info)
+			}
+		}
+	}
+	return result, nil
+}
+
+func (c *Client) listProvidersFromConfig(ctx context.Context) ([]ProviderInfo, error) {
+	raw, err := c.readConfigMapYAML(ctx)
+	if err != nil {
+		return nil, nil
+	}
+	var cfg praxisTop
+	if err := yaml.Unmarshal([]byte(raw), &cfg); err != nil {
+		return nil, nil
+	}
+
+	seen := map[string]bool{}
+	var result []ProviderInfo
+	for _, chain := range cfg.FilterChains {
+		for _, f := range chain.Filters {
+			if f["filter"] != "load_balancer" {
+				continue
+			}
+			var clusters []lbCluster
+			if err := remarshal(f["clusters"], &clusters); err != nil {
+				continue
+			}
+			for _, cl := range clusters {
+				if seen[cl.Name] {
+					continue
+				}
+				seen[cl.Name] = true
+				endpoint := ""
+				if len(cl.Endpoints) > 0 {
+					endpoint = cl.Endpoints[0]
+				}
+				authType := "none"
+				if cl.TLS != nil && cl.TLS.SNI != "" {
+					authType = "tls"
+				}
+				result = append(result, ProviderInfo{
+					Name:     cl.Name,
+					Provider: cl.Name,
+					Endpoint: endpoint,
+					Phase:    "Ready",
+					AuthType: authType,
+				})
+			}
+		}
 	}
 	return result, nil
 }
