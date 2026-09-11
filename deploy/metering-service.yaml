@@ -30,7 +30,7 @@ spec:
             # total_tokens reaches this). Default in code is 100_000_000, which a
             # single long Claude Code / Opus agentic session exhausts in hours
             # (the whole context is re-sent as prompt tokens every turn). 10B
-            # keeps real dogfood traffic from getting locked out.
+            # keeps real traffic from getting locked out.
             - name: MONTHLY_TOKEN_QUOTA
               value: "10000000000"
           livenessProbe:
