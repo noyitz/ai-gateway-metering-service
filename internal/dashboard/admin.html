@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MaaS Admin — Dashboard</title>
+<title>MaaS Admin Console</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -25,7 +25,7 @@ body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMa
 .pg{max-width:1800px;margin:0 auto;padding:20px 40px}
 
 /* Header */
-.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px}
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
 .hdr-left{display:flex;align-items:center;gap:28px}
 .tabs{display:flex;background:var(--c1);border-radius:8px;padding:2px}
 .tabs a{color:var(--t2);padding:8px 24px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px;transition:all .2s}
@@ -33,12 +33,43 @@ body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMa
 .tabs a:hover:not(.on){background:var(--c2)}
 .page-title{font-size:18px;font-weight:700;color:var(--t)}
 
+/* Console tabs (within the admin page) */
+.vtabs{
+  display:flex;align-items:center;gap:4px;
+  border-bottom:1px solid var(--bdr);margin-bottom:24px;
+  position:sticky;top:0;z-index:100;background:var(--bg);
+  padding-top:6px;
+}
+.vtab{
+  background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--t2);padding:10px 20px;font-size:12px;font-weight:700;
+  letter-spacing:.3px;cursor:pointer;font-family:inherit;transition:color .15s;
+  display:inline-flex;align-items:center;gap:7px;
+}
+.vtab:hover{color:var(--t)}
+.vtab.on{color:var(--blu);border-bottom-color:var(--blu)}
+.tcount{
+  background:var(--c3);color:var(--t2);border-radius:99px;
+  font-size:9px;font-weight:700;padding:1px 7px;min-width:18px;text-align:center;
+}
+.tcount.alert{background:rgba(235,168,48,.18);color:var(--org)}
+.vtab-tools{margin-left:auto;display:flex;align-items:center;gap:10px;padding-bottom:6px}
+#last-updated{font-size:10px;color:var(--t2)}
+.tab-panel{display:none}
+.tab-panel.on{display:block}
+.panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;overflow:hidden}
+.panel-grid > div{min-width:0}
+.people-grid{display:grid;grid-template-columns:380px 1fr;gap:24px;align-items:start;overflow:hidden}
+.people-grid > div{min-width:0}
+@media(max-width:1200px){.panel-grid,.people-grid{grid-template-columns:1fr}}
+
 /* Cards */
 .card{
   background:var(--c1);
   border:1px solid var(--bdr);
   border-radius:10px;
   padding:20px;
+  margin-bottom:24px;
 }
 .card-hdr{
   display:flex;
@@ -50,9 +81,6 @@ body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMa
 }
 .card-title{font-size:15px;font-weight:700;color:var(--t)}
 .card-count{font-size:11px;color:var(--t2);margin-left:8px;font-weight:400}
-
-/* Section spacing */
-.section{margin-bottom:28px}
 
 /* Groups bar */
 .groups-row{
@@ -74,26 +102,6 @@ body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMa
   font-weight:700;
   color:var(--t);
   margin-bottom:8px;
-}
-.group-card-refs{
-  font-size:11px;
-  color:var(--t2);
-  line-height:1.6;
-}
-.group-ref-label{
-  font-size:9px;
-  text-transform:uppercase;
-  letter-spacing:.5px;
-  font-weight:700;
-  color:var(--t2);
-  margin-top:6px;
-  margin-bottom:2px;
-}
-.group-ref-label:first-child{margin-top:0}
-.group-ref-item{
-  font-size:11px;
-  color:var(--t);
-  padding:1px 0;
 }
 
 /* Buttons */
@@ -119,7 +127,7 @@ body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMa
 .btn-outline:hover:not(:disabled){border-color:var(--blu);color:var(--t);background:var(--c2)}
 
 /* Tables */
-.tbl-wrap{overflow-x:auto;max-height:500px;overflow-y:auto}
+.tbl-wrap{overflow-x:auto;max-height:560px;overflow-y:auto}
 .tbl-wrap::-webkit-scrollbar{width:5px;height:5px}
 .tbl-wrap::-webkit-scrollbar-track{background:var(--c1)}
 .tbl-wrap::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:3px}
@@ -214,51 +222,6 @@ td .tag{white-space:nowrap}
   font-size:12px;
   text-align:center;
 }
-
-/* Collapsible sections */
-.collapsible-hdr{
-  display:flex;
-  align-items:center;
-  cursor:pointer;
-  user-select:none;
-  padding:14px 20px;
-  background:var(--c1);
-  border:1px solid var(--bdr);
-  border-radius:10px;
-  transition:border-radius .2s;
-}
-.collapsible-hdr:hover{background:var(--c2)}
-.collapsible-hdr.open{border-radius:10px 10px 0 0}
-.collapsible-arrow{
-  font-size:12px;
-  color:var(--t2);
-  margin-right:10px;
-  transition:transform .2s;
-  display:inline-block;
-}
-.collapsible-hdr.open .collapsible-arrow{transform:rotate(90deg)}
-.collapsible-title{font-size:14px;font-weight:700;color:var(--t)}
-.collapsible-count{font-size:11px;color:var(--t2);margin-left:8px;font-weight:400}
-.collapsible-body{
-  display:none;
-  background:var(--c1);
-  border:1px solid var(--bdr);
-  border-top:none;
-  border-radius:0 0 10px 10px;
-  padding:16px 20px;
-}
-.collapsible-body.open{display:block}
-
-/* Bottom two-col layout */
-.bottom-grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:24px;
-  align-items:start;
-  overflow:hidden;
-}
-.bottom-grid > div{min-width:0}
-@media(max-width:1100px){.bottom-grid{grid-template-columns:1fr}}
 
 /* Modal overlay */
 .modal-overlay{
@@ -488,7 +451,7 @@ td .tag{white-space:nowrap}
 .mono{font-family:'SF Mono',SFMono-Regular,Consolas,monospace;font-size:11px}
 .clickable-row{cursor:pointer}
 
-/* Org sections (People / chart / identities / invites / import) */
+/* People / org (People & Org tab) */
 .chipbar{display:flex;gap:6px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
 .chip{
   background:var(--c2);border:1px solid var(--bdr);color:var(--t2);
@@ -503,6 +466,7 @@ td .tag{white-space:nowrap}
 .login-link:hover{text-decoration:underline}
 .viewas{color:var(--pur);text-decoration:none;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;white-space:nowrap}
 .viewas:hover{color:#c0aaff}
+.tree{max-height:560px;overflow:auto}
 .tree ul{list-style:none;margin:0;padding-left:18px;border-left:1px solid var(--c3)}
 .tree>ul{border-left:none;padding-left:0}
 .tree li{padding:2px 0}
@@ -515,31 +479,14 @@ td .tag{white-space:nowrap}
 .tree .node b{font-weight:600;color:var(--t)}
 .tree .node .nt{color:var(--t2);font-size:10px}
 .tree .node .nc{color:var(--pur);font-size:10px;font-weight:700}
-.import-result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:14px 0}
-.import-stat{background:var(--c2);border:1px solid var(--bdr);border-radius:8px;padding:10px 14px;text-align:center}
-.import-stat .n{font-size:20px;font-weight:700;color:var(--t)}
-.import-stat .l{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--t2);margin-top:2px}
-.import-textarea{
-  width:100%;min-height:120px;background:var(--c2);border:1px solid var(--bdr);
-  color:var(--t);padding:10px 14px;border-radius:6px;font-size:11px;
-  font-family:'SF Mono',SFMono-Regular,Consolas,monospace;outline:none;resize:vertical;
-}
-.import-textarea:focus{border-color:var(--blu)}
-.warn-box{
-  background:rgba(235,168,48,.06);border:1px solid rgba(235,168,48,.25);
-  border-radius:6px;padding:12px 16px;font-size:11px;color:var(--org);margin:10px 0;
-  line-height:1.7;
-}
-.warn-box b{color:var(--org)}
-.warn-box .mono{color:var(--t);background:var(--c2);padding:1px 6px;border-radius:3px;margin:0 2px;display:inline-block}
 .invite-url-box{
   background:var(--c2);border:1px solid var(--bdr);border-radius:6px;padding:10px 14px;
   font-family:'SF Mono',SFMono-Regular,Consolas,monospace;font-size:12px;color:var(--grn);
   word-break:break-all;user-select:all;margin:10px 0;
 }
-.person-picker{display:flex;gap:8px;align-items:center;margin-top:14px}
-.person-picker select{background:var(--c2);border:1px solid var(--bdr);color:var(--t);padding:7px 12px;border-radius:5px;font-size:12px;font-family:inherit;outline:none;min-width:220px}
-.person-picker select option{background:var(--c2);color:var(--t)}
+.picker-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.picker-row select{background:var(--c2);border:1px solid var(--bdr);color:var(--t);padding:7px 12px;border-radius:5px;font-size:12px;font-family:inherit;outline:none;min-width:200px}
+.picker-row select option{background:var(--c2);color:var(--t)}
 </style>
 </head>
 <body>
@@ -555,62 +502,57 @@ td .tag{white-space:nowrap}
       <a href="/manager" id="team-tab" style="display:none">My team</a>
       <a href="/admin" class="on">Admin</a>
     </div>
-    <div class="page-title">Admin Dashboard</div>
+    <div class="page-title">Admin Console</div>
   </div>
   <div style="display:flex;align-items:center;gap:12px;margin-left:auto">
     <span id="user-badge" style="font-size:11px;color:#8090a8;display:flex;align-items:center;gap:6px"></span>
-    <a href="#" id="my-view-btn" title="Open your own personal dashboard (Yossi's user page) — you can get back to this admin view from there" style="background:transparent;color:#9db2c8;border:1px solid var(--bdr,#2e3848);padding:8px 16px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My view as user</a>
+    <a href="#" id="my-view-btn" title="Open your own personal dashboard — you can get back to this admin view from there" style="background:transparent;color:#9db2c8;border:1px solid var(--bdr,#2e3848);padding:8px 16px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My view as user</a>
     <a href="/logout" style="background:transparent;color:var(--red,#e8554e);border:1px solid var(--bdr,#2e3848);padding:8px 16px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Logout</a>
   </div>
 </div>
 
-<!-- Section 0: Pending Users (ungrouped) -->
-<div class="section" id="section-pending">
+<!-- Console tabs -->
+<div class="vtabs">
+  <button class="vtab" id="vtab-users" onclick="showTab('users')">Users &amp; Groups<span class="tcount" id="badge-users" style="display:none"></span></button>
+  <button class="vtab" id="vtab-keys" onclick="showTab('keys')">Keys<span class="tcount" id="badge-keys" style="display:none"></span></button>
+  <button class="vtab" id="vtab-people" onclick="showTab('people')">People &amp; Org<span class="tcount" id="badge-people" style="display:none"></span></button>
+  <button class="vtab" id="vtab-platform" onclick="showTab('platform')">Platform<span class="tcount" id="badge-platform" style="display:none"></span></button>
+  <div class="vtab-tools">
+    <span id="last-updated"></span>
+    <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="refreshTab(activeTab,true)">Refresh</button>
+  </div>
+</div>
+
+<!-- ============ TAB: Users & Groups ============ -->
+<div class="tab-panel" id="tab-users">
+
   <div class="card" id="pending-card" style="border-color:var(--org)">
     <div class="card-hdr">
       <div>
         <span class="card-title" style="color:var(--org)">Pending Users</span>
         <span class="card-count" id="pending-count"></span>
       </div>
+      <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadPendingUsers()">Refresh</button>
     </div>
     <div id="pending-body">
       <div class="loading"><div class="spinner"></div>Checking for new users...</div>
     </div>
   </div>
-</div>
 
-<!-- Section 1: Groups -->
-<div class="section" id="section-groups">
   <div class="card">
     <div class="card-hdr">
       <div>
         <span class="card-title">Groups</span>
         <span class="card-count" id="groups-count"></span>
       </div>
+      <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadGroups()">Refresh</button>
     </div>
     <div id="groups-body">
       <div class="loading"><div class="spinner"></div>Loading groups...</div>
     </div>
   </div>
-</div>
 
-<!-- Section 2: Users & API Keys -->
-<div class="section" id="section-keys">
   <div class="card">
-    <div class="card-hdr">
-      <div>
-        <span class="card-title">Users &amp; API Keys</span>
-        <span class="card-count" id="keys-count"></span>
-      </div>
-      <button class="btn btn-grn" onclick="openCreateKeyModal()">Create Key</button>
-    </div>
-    <div id="keys-body">
-      <div class="loading"><div class="spinner"></div>Loading keys...</div>
-    </div>
-  </div>
-
-  <!-- Display Names (user_profiles) -->
-  <div class="card" style="margin-top:16px">
     <div class="card-hdr">
       <div>
         <span class="card-title">Display Names</span>
@@ -623,107 +565,34 @@ td .tag{white-space:nowrap}
       <div class="loading"><div class="spinner"></div>Loading...</div>
     </div>
   </div>
+
 </div>
 
-<!-- Section 3: Policies & Subscriptions (collapsible) -->
-<div class="section" id="section-bottom">
-  <div class="bottom-grid">
+<!-- ============ TAB: Keys ============ -->
+<div class="tab-panel" id="tab-keys">
 
-    <!-- Auth Policies -->
-    <div>
-      <div class="collapsible-hdr" id="policies-hdr" onclick="toggleCollapsible('policies')">
-        <span class="collapsible-arrow">&#9654;</span>
-        <span class="collapsible-title">Auth Policies</span>
-        <span class="collapsible-count" id="policies-count"></span>
+  <div class="card">
+    <div class="card-hdr">
+      <div>
+        <span class="card-title">API Keys</span>
+        <span class="card-count" id="keys-count"></span>
       </div>
-      <div class="collapsible-body" id="policies-body">
-        <div class="loading"><div class="spinner"></div>Loading policies...</div>
+      <button class="btn btn-grn" onclick="openCreateKeyModal()">Create Key</button>
+    </div>
+    <div id="keys-body">
+      <div class="loading"><div class="spinner"></div>Loading keys...</div>
+    </div>
+  </div>
+
+  <div class="card" id="invites-card">
+    <div class="card-hdr">
+      <div>
+        <span class="card-title">Key Invitations</span>
+        <span class="card-count" id="invites-count"></span>
       </div>
+      <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="populateInvitePickers();loadInvites()">Refresh</button>
     </div>
-
-    <!-- Subscriptions -->
-    <div>
-      <div class="collapsible-hdr" id="subs-hdr" onclick="toggleCollapsible('subs')">
-        <span class="collapsible-arrow">&#9654;</span>
-        <span class="collapsible-title">Subscriptions</span>
-        <span class="collapsible-count" id="subs-count"></span>
-      </div>
-      <div class="collapsible-body" id="subs-body">
-        <div class="loading"><div class="spinner"></div>Loading subscriptions...</div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- Section 4: People directory + org chart + identities + invites + import.
-     Append-only: nothing above this line changed, so a rollback to the old
-     page loses only these sections. -->
-<div class="section" id="section-people">
-  <div class="collapsible-hdr" id="people-hdr" onclick="toggleCollapsible('people')">
-    <span class="collapsible-arrow">&#9654;</span>
-    <span class="collapsible-title">People</span>
-    <span class="collapsible-count" id="people-count"></span>
-  </div>
-  <div class="collapsible-body" id="people-body">
-    <div class="chipbar">
-      <button class="chip on" data-pf="needs_attention" onclick="setPeopleFilter(this)">Needs attention</button>
-      <button class="chip" data-pf="" onclick="setPeopleFilter(this)">All</button>
-      <button class="chip" data-pf="managers" onclick="setPeopleFilter(this)">Managers</button>
-      <span class="ts" id="people-subtree-note" style="display:none"></span>
-      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <input type="text" class="tbl-input" id="people-search" placeholder="Filter by name…" style="max-width:200px" oninput="renderPeople()">
-        <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadPeople()">Refresh</button>
-      </div>
-    </div>
-    <div class="ts" style="margin-bottom:10px">Org facts only — spend is never stored here, it is derived from usage. Edits mark the field manual so the next roster import won't overwrite them.</div>
-    <div id="people-list">
-      <div class="loading"><div class="spinner"></div>Loading people...</div>
-    </div>
-  </div>
-</div>
-
-<div class="section" id="section-orgchart">
-  <div class="collapsible-hdr" id="orgchart-hdr" onclick="toggleCollapsible('orgchart')">
-    <span class="collapsible-arrow">&#9654;</span>
-    <span class="collapsible-title">Org chart</span>
-    <span class="collapsible-count" id="orgchart-count"></span>
-  </div>
-  <div class="collapsible-body" id="orgchart-body">
-    <div class="person-picker" style="margin-top:0;margin-bottom:14px">
-      <span class="ts">Root:</span>
-      <select id="orgchart-root" onchange="loadOrgChart()"></select>
-      <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="clearPeopleSubtree()">Show whole directory</button>
-      <span class="ts">Click a person to scope the People table to their team.</span>
-    </div>
-    <div class="tree" id="orgchart-tree">
-      <div class="loading"><div class="spinner"></div>Loading chart...</div>
-    </div>
-  </div>
-</div>
-
-<div class="section" id="section-identities">
-  <div class="collapsible-hdr" id="identities-hdr" onclick="toggleCollapsible('identities')">
-    <span class="collapsible-arrow">&#9654;</span>
-    <span class="collapsible-title">Login ↔ person</span>
-    <span class="collapsible-count" id="identities-count"></span>
-  </div>
-  <div class="collapsible-body" id="identities-body">
-    <div class="ts" style="margin-bottom:10px">Which gateway login belongs to which person. Re-linking moves the login — history in usage_events is untouched.</div>
-    <div id="identities-list">
-      <div class="loading"><div class="spinner"></div>Loading identities...</div>
-    </div>
-  </div>
-</div>
-
-<div class="section" id="section-invites">
-  <div class="collapsible-hdr" id="invites-hdr" onclick="toggleCollapsible('invites')">
-    <span class="collapsible-arrow">&#9654;</span>
-    <span class="collapsible-title">Key invitations</span>
-    <span class="collapsible-count" id="invites-count"></span>
-  </div>
-  <div class="collapsible-body" id="invites-body">
-    <div class="ts" style="margin-bottom:10px">An invite is a one-time link: the person opens it, sets nothing, and the gateway key is minted on their first visit. The key itself is shown once to the claimant and never stored here.</div>
+    <div class="ts" style="margin-bottom:10px">An invite is a one-time link: the person opens it and the gateway key is minted on their first visit. The key itself is shown once to the claimant and never stored here.</div>
     <div id="invite-created" style="display:none">
       <div class="key-display">
         <div class="key-display-label">Invite link — shown once, share it now</div>
@@ -731,32 +600,113 @@ td .tag{white-space:nowrap}
       </div>
       <button class="btn-copy" onclick="copyInviteURL()">Copy link</button>
     </div>
-    <div class="person-picker">
+    <div class="picker-row">
       <select id="inv-person"></select>
       <select id="inv-group"></select>
-      <input type="text" class="tbl-input" id="inv-name" placeholder="key name (optional)" style="max-width:180px">
+      <input type="text" class="tbl-input" id="inv-name" placeholder="key name (optional)" style="max-width:180px;width:auto">
       <button class="btn btn-grn" onclick="createInvite()">Create invite</button>
     </div>
     <div id="invites-list" style="margin-top:14px">
       <div class="loading"><div class="spinner"></div>Loading invites...</div>
     </div>
   </div>
+
 </div>
 
-<div class="section" id="section-import">
-  <div class="collapsible-hdr" id="import-hdr" onclick="toggleCollapsible('import')">
-    <span class="collapsible-arrow">&#9654;</span>
-    <span class="collapsible-title">Roster import</span>
-  </div>
-  <div class="collapsible-body" id="import-body">
-    <div class="ts" style="margin-bottom:10px">Paste the JSON produced by the roster generator (pricetag-people-import.json shape) or pick the file. Always dry-run first — nothing is written until you apply.</div>
-    <div class="person-picker" style="margin-top:0">
-      <input type="file" id="import-file" accept=".json,application/json" onchange="loadImportFile(this)">
-      <button class="btn btn-blu" onclick="runImport(true)">Dry run</button>
-      <button class="btn btn-grn" id="import-apply-btn" onclick="runImport(false)" disabled title="Run a dry run first">Apply for real</button>
+<!-- ============ TAB: People & Org ============ -->
+<div class="tab-panel" id="tab-people">
+  <div class="people-grid">
+    <div>
+      <div class="card">
+        <div class="card-hdr">
+          <div>
+            <span class="card-title">Org chart</span>
+            <span class="card-count" id="orgchart-count"></span>
+          </div>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadOrgChart()">Refresh</button>
+        </div>
+        <div class="picker-row" style="margin-bottom:14px">
+          <span class="ts">Root:</span>
+          <select id="orgchart-root" onchange="loadOrgChart()"></select>
+        </div>
+        <div class="tree" id="orgchart-tree">
+          <div class="loading"><div class="spinner"></div>Loading chart...</div>
+        </div>
+        <div class="ts" style="margin-top:12px">Click a person to scope the directory to their team.</div>
+      </div>
     </div>
-    <textarea class="import-textarea" id="import-payload" placeholder='{"filename":"roster.xlsx","people":[…]}'></textarea>
-    <div id="import-result"></div>
+    <div>
+      <div class="card">
+        <div class="card-hdr">
+          <div>
+            <span class="card-title">People</span>
+            <span class="card-count" id="people-count"></span>
+          </div>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadPeople()">Refresh</button>
+        </div>
+        <div class="chipbar">
+          <button class="chip on" data-pf="needs_attention" onclick="setPeopleFilter(this)">Needs attention</button>
+          <button class="chip" data-pf="" onclick="setPeopleFilter(this)">All</button>
+          <button class="chip" data-pf="managers" onclick="setPeopleFilter(this)">Managers</button>
+          <span class="ts" id="people-subtree-note" style="display:none"></span>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+            <input type="text" class="tbl-input" id="people-search" placeholder="Filter by name…" style="max-width:200px" oninput="renderPeople()">
+          </div>
+        </div>
+        <div class="ts" style="margin-bottom:10px">Org facts only — spend is never stored here, it is derived from usage. Edits mark the field manual so the next roster import won't overwrite them. Roster updates themselves are imported from the command line.</div>
+        <div id="people-list">
+          <div class="loading"><div class="spinner"></div>Loading people...</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <div>
+            <span class="card-title">Login ↔ person</span>
+            <span class="card-count" id="identities-count"></span>
+          </div>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadIdentities()">Refresh</button>
+        </div>
+        <div class="ts" style="margin-bottom:10px">Which gateway login belongs to which person. Re-linking moves the login — history in usage_events is untouched.</div>
+        <div id="identities-list">
+          <div class="loading"><div class="spinner"></div>Loading identities...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB: Platform ============ -->
+<div class="tab-panel" id="tab-platform">
+  <div class="panel-grid">
+    <div>
+      <div class="card">
+        <div class="card-hdr">
+          <div>
+            <span class="card-title">Auth Policies</span>
+            <span class="card-count" id="policies-count"></span>
+          </div>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadPolicies()">Refresh</button>
+        </div>
+        <div id="policies-body">
+          <div class="loading"><div class="spinner"></div>Loading policies...</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="card-hdr">
+          <div>
+            <span class="card-title">Subscriptions</span>
+            <span class="card-count" id="subs-count"></span>
+          </div>
+          <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadSubscriptions()">Refresh</button>
+        </div>
+        <div id="subs-body">
+          <div class="loading"><div class="spinner"></div>Loading subscriptions...</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -829,6 +779,13 @@ var REFRESH_INTERVAL = 30000;
 var modelNameMap = {};
 var knownGroups = [];
 var confirmCallback = null;
+var cachedPolicies = [];
+var cachedSubscriptions = [];
+var profilesDirty = false;          // unsaved edits in the display-names table
+var activeTab = 'users';
+var tabLoadedOnce = {};
+var activeKeyCount = 0;             // Keys-tab badge = active keys + pending invites, combined
+var pendingInviteCount = 0;
 
 /* ================================================================
    HTML escaping
@@ -841,11 +798,22 @@ function esc(s) {
 }
 
 /* ================================================================
-   Fetch helper
+   Fetch helpers
    ================================================================ */
 function fetchJSON(url) {
   return fetch(url).then(function(r) {
     if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+    return r.json();
+  });
+}
+
+function updateJSON(url, method, body) {
+  return fetch(url, {
+    method: method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  }).then(function(r) {
+    if (!r.ok) return r.text().then(function(t) { throw new Error(t.trim() || (r.status + ' ' + r.statusText)); });
     return r.json();
   });
 }
@@ -858,42 +826,97 @@ function resolveModelName(crdName) {
 }
 
 /* ================================================================
-   Collapsible toggle
+   Tabs — one panel visible, lazy load on first open, deep-linkable
    ================================================================ */
-function toggleCollapsible(id) {
-  var hdr = document.getElementById(id + '-hdr');
-  var body = document.getElementById(id + '-body');
-  var isOpen = hdr.classList.contains('open');
-  if (isOpen) {
-    hdr.classList.remove('open');
-    body.classList.remove('open');
+var TABS = ['users', 'keys', 'people', 'platform'];
+
+function showTab(name, pushHash) {
+  if (TABS.indexOf(name) < 0) name = 'users';
+  activeTab = name;
+  for (var i = 0; i < TABS.length; i++) {
+    var t = TABS[i];
+    document.getElementById('tab-' + t).classList.toggle('on', t === name);
+    document.getElementById('vtab-' + t).classList.toggle('on', t === name);
+  }
+  try { localStorage.setItem('admin-tab', name); } catch (e) {}
+  if (pushHash !== false) {
+    try { history.replaceState(null, '', '#' + name); } catch (e) {}
+  }
+  if (!tabLoadedOnce[name]) { tabLoadedOnce[name] = true; refreshTab(name, false); }
+}
+
+function refreshTab(name, manual) {
+  if (name === 'users') {
+    loadPendingUsers();
+    loadGroups();
+    if (manual || !profilesDirty) loadProfiles();
+  } else if (name === 'keys') {
+    loadKeys();
+    populateInvitePickers();
+    loadInvites();
+  } else if (name === 'platform') {
+    loadPolicies();
+    loadSubscriptions();
+  } else if (name === 'people') {
+    if (manual) { loadPeople(); loadIdentities(); }
+    else loadPeople(); // org chart + identities follow once the cache lands
+  }
+  if (manual) touchUpdated();
+}
+
+function touchUpdated() {
+  var el = document.getElementById('last-updated');
+  el.textContent = 'updated ' + new Date().toLocaleTimeString('en-US', { hour12: false });
+}
+
+function setTabBadge(tab, n, alert) {
+  var b = document.getElementById('badge-' + tab);
+  if (!b) return;
+  if (n > 0) {
+    b.textContent = n;
+    b.style.display = '';
+    b.classList.toggle('alert', !!alert);
   } else {
-    hdr.classList.add('open');
-    body.classList.add('open');
+    b.style.display = 'none';
   }
 }
 
 /* ================================================================
-   Data loading orchestrator
+   Init — friendly model map, then the saved/deep-linked tab
    ================================================================ */
-function loadAll() {
-  fetchJSON('/api/v1/admin/models').then(function(models) {
-    (Array.isArray(models) ? models : []).forEach(function(m) {
-      var friendly = (m.providerRefs && m.providerRefs[0] && m.providerRefs[0].targetModel) || m.name;
-      modelNameMap[m.name] = friendly;
-    });
-  }).catch(function() {}).then(function() {
-    loadPendingUsers();
-    loadGroups();
-    loadKeys();
-    loadProfiles();
-    loadPolicies();
-    loadSubscriptions();
+fetchJSON('/api/v1/admin/models').then(function(models) {
+  (Array.isArray(models) ? models : []).forEach(function(m) {
+    var friendly = (m.providerRefs && m.providerRefs[0] && m.providerRefs[0].targetModel) || m.name;
+    modelNameMap[m.name] = friendly;
   });
-}
+}).catch(function() {});
+
+(function initTab() {
+  var h = (location.hash || '').replace('#', '');
+  var start = TABS.indexOf(h) >= 0 ? h : null;
+  if (!start) { try { start = localStorage.getItem('admin-tab'); } catch (e) {} }
+  showTab(start && TABS.indexOf(start) >= 0 ? start : 'users');
+  touchUpdated();
+})();
+
+/* Auto-refresh the visible tab only, and never while a field has focus
+   or there are unsaved edits — an admin console that overwrites typing
+   mid-keystroke is worse than one that shows a stale row for 30s. */
+refreshTimer = setInterval(function() {
+  if (document.querySelector('.modal-overlay.open, .confirm-overlay.open')) return;
+  var ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
+  if (activeTab === 'people') return; // inline edits everywhere; manual Refresh there
+  refreshTab(activeTab, false);
+}, REFRESH_INTERVAL);
+
+window.addEventListener('hashchange', function() {
+  var h = (location.hash || '').replace('#', '');
+  if (TABS.indexOf(h) >= 0 && h !== activeTab) showTab(h, false);
+});
 
 /* ================================================================
-   Section 0: Pending Users (ungrouped)
+   Users tab: Pending Users (ungrouped)
    ================================================================ */
 function loadPendingUsers() {
   Promise.all([
@@ -920,6 +943,8 @@ function loadPendingUsers() {
         pending.push({ name: name, githubId: githubId });
       }
     });
+
+    setTabBadge('users', pending.length, true);
 
     var card = document.getElementById('pending-card');
     var body = document.getElementById('pending-body');
@@ -1007,11 +1032,8 @@ function approvePendingUser(username, selectId, btn) {
 }
 
 /* ================================================================
-   Section 1: Groups
+   Users tab: Groups
    ================================================================ */
-var cachedPolicies = [];
-var cachedSubscriptions = [];
-
 function buildGroups() {
   var groupMap = {};
 
@@ -1141,6 +1163,7 @@ function addToGroup(groupName, cardId) {
     if (!r.ok) throw new Error('Failed');
     if (input) input.value = '';
     loadGroups();
+    loadPendingUsers();
   }).catch(function(err) { alert('Failed to add user: ' + err.message); });
 }
 
@@ -1171,66 +1194,7 @@ function populateGroupDropdown() {
 }
 
 /* ================================================================
-   Section 2: Users & API Keys
-   ================================================================ */
-function loadKeys() {
-  var body = document.getElementById('keys-body');
-  body.innerHTML = '<div class="loading"><div class="spinner"></div>Loading keys...</div>';
-
-  fetchJSON('/api/v1/admin/keys').then(function(data) {
-    var keys = Array.isArray(data) ? data : (data.data || data.keys || data.items || []);
-    document.getElementById('keys-count').textContent = '(' + keys.length + ')';
-
-    if (keys.length === 0) {
-      body.innerHTML = '<div class="empty">No API keys found. Click "Create Key" to get started.</div>';
-      return;
-    }
-
-    var html = '<div class="tbl-wrap"><table><thead><tr>'
-      + '<th>Username</th><th>Group</th><th>Key Name</th><th>Status</th>'
-      + '<th>Created</th><th>Last Used</th><th>Subscription</th><th>Action</th>'
-      + '</tr></thead><tbody>';
-
-    keys.forEach(function(k) {
-      var status = (k.status || 'active').toLowerCase();
-      var badgeClass = status === 'active' ? 'badge-grn'
-        : status === 'revoked' ? 'badge-red'
-        : 'badge-gray';
-
-      var created = formatTS(k.creationDate || k.created || k.createdAt || k.created_at);
-      var lastUsed = k.lastUsedAt || k.lastUsed || k.last_used || k.last_used_at;
-      lastUsed = lastUsed ? formatTS(lastUsed) : '<span class="ts">never</span>';
-      var sub = k.subscription || k.subscriptionName || k.subscription_name || '--';
-      var group = k.subscription || k.tenant || k.group || '--';
-
-      html += '<tr>'
-        + '<td>' + esc(k.username || k.user || '--') + '</td>'
-        + '<td>' + esc(group) + '</td>'
-        + '<td class="mono">' + esc(k.name || k.keyName || k.key_name || '--') + '</td>'
-        + '<td><span class="badge ' + badgeClass + '">' + esc(status) + '</span></td>'
-        + '<td class="ts">' + created + '</td>'
-        + '<td>' + lastUsed + '</td>'
-        + '<td>' + esc(sub) + '</td>'
-        + '<td>';
-
-      if (status === 'active') {
-        var keyId = esc(k.id || k.keyId || k.key_id || '');
-        html += '<button class="btn btn-red" onclick="revokeKey(\'' + keyId + '\')">Revoke</button>';
-      }
-
-      html += '</td></tr>';
-    });
-
-    html += '</tbody></table></div>';
-    body.innerHTML = html;
-  }).catch(function(err) {
-    body.innerHTML = '<div class="err-msg">Failed to load keys: ' + esc(err.message) + '</div>';
-    document.getElementById('keys-count').textContent = '';
-  });
-}
-
-/* ================================================================
-   Section 2b: Display Names (user_profiles)
+   Users tab: Display Names (user_profiles)
    ================================================================ */
 function loadProfiles() {
   var body = document.getElementById('profiles-body');
@@ -1294,6 +1258,10 @@ function renderProfiles(byName, keys, keysNote) {
 
   html += '</tbody></table></div>';
   body.innerHTML = html;
+  profilesDirty = false;
+  body.querySelectorAll('.tbl-input[data-pu]').forEach(function(inp) {
+    inp.addEventListener('input', function() { profilesDirty = true; });
+  });
 }
 
 function addProfileRow() {
@@ -1320,6 +1288,8 @@ function addProfileRow() {
       + '<td><input class="tbl-input" data-pu="' + esc(u) + '" data-pf="0" placeholder="—" value="' + esc(l) + '"></td>';
     tbody.appendChild(tr);
     showToast('Row added — hit Save to persist', 'success');
+    tr.querySelector('[data-pf="1"]').addEventListener('input', function() { profilesDirty = true; });
+    tr.querySelector('[data-pf="0"]').addEventListener('input', function() { profilesDirty = true; });
   }
   uEl.value = ''; fEl.value = ''; lEl.value = '';
   uEl.focus();
@@ -1352,7 +1322,386 @@ function saveProfiles() {
 }
 
 /* ================================================================
-   Section 3a: Auth Policies
+   Keys tab: API keys
+   ================================================================ */
+function loadKeys() {
+  var body = document.getElementById('keys-body');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div>Loading keys...</div>';
+
+  fetchJSON('/api/v1/admin/keys').then(function(data) {
+    var keys = Array.isArray(data) ? data : (data.data || data.keys || data.items || []);
+    document.getElementById('keys-count').textContent = '(' + keys.length + ')';
+    setTabBadge('keys', keys.filter(function(k) {
+      return (k.status || 'active').toLowerCase() === 'active';
+    }).length, false);
+
+    if (keys.length === 0) {
+      body.innerHTML = '<div class="empty">No API keys found. Click "Create Key" to get started.</div>';
+      return;
+    }
+
+    var html = '<div class="tbl-wrap"><table><thead><tr>'
+      + '<th>Username</th><th>Group</th><th>Key Name</th><th>Status</th>'
+      + '<th>Created</th><th>Last Used</th><th>Subscription</th><th>Action</th>'
+      + '</tr></thead><tbody>';
+
+    keys.forEach(function(k) {
+      var status = (k.status || 'active').toLowerCase();
+      var badgeClass = status === 'active' ? 'badge-grn'
+        : status === 'revoked' ? 'badge-red'
+        : 'badge-gray';
+
+      var created = formatTS(k.creationDate || k.created || k.createdAt || k.created_at);
+      var lastUsed = k.lastUsedAt || k.lastUsed || k.last_used || k.last_used_at;
+      lastUsed = lastUsed ? formatTS(lastUsed) : '<span class="ts">never</span>';
+      var sub = k.subscription || k.subscriptionName || k.subscription_name || '--';
+      var group = k.subscription || k.tenant || k.group || '--';
+
+      html += '<tr>'
+        + '<td>' + esc(k.username || k.user || '--') + '</td>'
+        + '<td>' + esc(group) + '</td>'
+        + '<td class="mono">' + esc(k.name || k.keyName || k.key_name || '--') + '</td>'
+        + '<td><span class="badge ' + badgeClass + '">' + esc(status) + '</span></td>'
+        + '<td class="ts">' + created + '</td>'
+        + '<td>' + lastUsed + '</td>'
+        + '<td>' + esc(sub) + '</td>'
+        + '<td>';
+
+      if (status === 'active') {
+        var keyId = esc(k.id || k.keyId || k.key_id || '');
+        html += '<button class="btn btn-red" onclick="revokeKey(\'' + keyId + '\')">Revoke</button>';
+      }
+
+      html += '</td></tr>';
+    });
+
+    html += '</tbody></table></div>';
+    body.innerHTML = html;
+  }).catch(function(err) {
+    body.innerHTML = '<div class="err-msg">Failed to load keys: ' + esc(err.message) + '</div>';
+    document.getElementById('keys-count').textContent = '';
+  });
+}
+
+/* ================================================================
+   Keys tab: Invitations
+   ================================================================ */
+function populateInvitePickers() {
+  var psel = document.getElementById('inv-person');
+  if (!psel || !peopleAll.length) return;
+  var cur = psel.value;
+  psel.innerHTML = peopleAll.map(function(p) {
+    return '<option value="' + esc(p.slug) + '">' + esc(p.full_name) + (p.username ? ' · has key' : '') + '</option>';
+  }).join('');
+  if (cur) psel.value = cur;
+  var gsel = document.getElementById('inv-group');
+  gsel.innerHTML = knownGroups.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('') ||
+    '<option value="default">default</option>';
+}
+
+/* Deep-link from a people row: jump to the Keys tab with the person picked. */
+function openInviteFor(slug) {
+  showTab('keys');
+  loadPeople(function() {
+    populateInvitePickers();
+    document.getElementById('inv-person').value = slug;
+  });
+  loadInvites();
+  var card = document.getElementById('invites-card');
+  card.scrollIntoView({ behavior: 'smooth' });
+}
+
+function loadInvites() {
+  fetchJSON('/api/v1/admin/keys/invites').then(function(list) {
+    list = Array.isArray(list) ? list : [];
+    document.getElementById('invites-count').textContent = list.length ? '(' + list.length + ')' : '';
+    var pending = list.filter(function(iv) { return iv.status === 'pending'; }).length;
+    setTabBadge('keys', pending, true);
+    var badge = { pending: 'badge-blu', claimed: 'badge-grn', expired: 'badge-gray', revoked: 'badge-red' };
+    var html = '<div class="tbl-wrap"><table><thead><tr><th>Person</th><th>Group</th><th>Key</th><th>Status</th><th>Created</th><th>Expires</th><th>Claimed</th><th></th></tr></thead><tbody>';
+    list.forEach(function(iv) {
+      html += '<tr><td>' + esc(iv.person_name) + '</td><td class="mono">' + esc(iv.group_name) + '</td>'
+        + '<td class="mono">' + esc(iv.key_name || '') + (iv.key_id ? ' <span class="ts">(' + esc(iv.key_id.slice(0, 8)) + '…)</span>' : '') + '</td>'
+        + '<td><span class="badge ' + (badge[iv.status] || 'badge-gray') + '">' + esc(iv.status) + '</span></td>'
+        + '<td class="ts">' + formatTS(iv.created_at) + '</td>'
+        + '<td class="ts">' + formatTS(iv.expires_at) + '</td>'
+        + '<td class="ts">' + (iv.claimed_at ? formatTS(iv.claimed_at) : '—') + '</td>'
+        + '<td>' + (iv.status === 'pending' ? '<button class="btn btn-red" onclick="revokeInvite(' + iv.id + ')">Revoke</button>' : '') + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    document.getElementById('invites-list').innerHTML = list.length ? html : '<div class="empty">No invites yet — pick a person above and create one.</div>';
+  }).catch(function(e) {
+    document.getElementById('invites-list').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
+  });
+}
+
+function createInvite() {
+  var body = {
+    person_slug: document.getElementById('inv-person').value,
+    group: document.getElementById('inv-group').value || 'default',
+    key_name: document.getElementById('inv-name').value
+  };
+  if (!body.person_slug) { showToast('Pick a person first', 'error'); return; }
+  updateJSON('/api/v1/admin/keys/invites', 'POST', body).then(function(r) {
+    var box = document.getElementById('invite-created');
+    document.getElementById('invite-url').textContent = location.origin + r.invite_url;
+    box.style.display = '';
+    loadInvites();
+  }).catch(function(e) { showToast(e.message, 'error'); });
+}
+
+function copyInviteURL() {
+  var el = document.getElementById('invite-url');
+  fallbackCopy(el.textContent);
+}
+
+function revokeInvite(id) {
+  showConfirm('Revoke this invite? If it was already claimed, the issued key is untouched — revoke that in the API Keys table above.', function() {
+    updateJSON('/api/v1/admin/keys/invites?id=' + id, 'DELETE')
+      .then(function() { showToast('Revoked', 'success'); loadInvites(); })
+      .catch(function(e) { showToast(e.message, 'error'); });
+  });
+}
+
+/* ================================================================
+   Keys tab: Revoke Key (with confirm dialog)
+   ================================================================ */
+function revokeKey(keyId) {
+  if (!keyId) return;
+  showConfirm('Revoke this API key? This action cannot be undone.', function() {
+    fetch('/api/v1/admin/keys/' + encodeURIComponent(keyId), { method: 'DELETE' })
+      .then(function(r) {
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        showToast('Key revoked', 'success');
+        loadKeys();
+      })
+      .catch(function(err) {
+        showToast('Failed to revoke: ' + err.message, 'error');
+      });
+  });
+}
+
+/* ================================================================
+   People & Org tab — directory cache feeds the table, the tree, the
+   identity selects and the invite picker. Nothing here auto-refreshes;
+   inline edits would be clobbered mid-typing. Use Refresh.
+   ================================================================ */
+var peopleAll = [];        // full directory cache — the one source for filters, selects, tree scoping
+var peopleFilter = 'needs_attention';
+var peopleSubtree = null;  // slug when the table is scoped from the org chart
+
+function needsAttention(p) {
+  return !p.email || !p.username || p.needs_review || p.active === false;
+}
+function setPeopleFilter(btn) {
+  var chips = document.querySelectorAll('#tab-people .chip');
+  for (var i = 0; i < chips.length; i++) chips[i].classList.remove('on');
+  btn.classList.add('on');
+  peopleFilter = btn.getAttribute('data-pf');
+  renderPeople();
+}
+function loadPeople(cb) {
+  fetchJSON('/api/v1/admin/people?filter=').then(function(people) {
+    peopleAll = Array.isArray(people) ? people : [];
+    renderPeople();
+    if (cb) cb();
+    else if (document.getElementById('tab-people').classList.contains('on')) {
+      loadOrgChart();
+      loadIdentities();
+    }
+  }).catch(function(e) {
+    document.getElementById('people-list').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
+    if (cb) cb();
+  });
+}
+function subtreeSet(rootSlug) {
+  var byMgr = {};
+  peopleAll.forEach(function(p) {
+    if (p.manager_slug) { (byMgr[p.manager_slug] = byMgr[p.manager_slug] || []).push(p.slug); }
+  });
+  var set = {}, queue = [rootSlug];
+  set[rootSlug] = true;
+  while (queue.length) {
+    var kids = byMgr[queue.pop()] || [];
+    kids.forEach(function(k) { if (!set[k]) { set[k] = true; queue.push(k); } });
+  }
+  return set;
+}
+function renderPeople() {
+  var q = (document.getElementById('people-search').value || '').toLowerCase();
+  var sub = peopleSubtree ? subtreeSet(peopleSubtree) : null;
+  var rows = peopleAll.filter(function(p) {
+    if (peopleFilter === 'needs_attention' && !needsAttention(p)) return false;
+    if (peopleFilter === 'managers' && !(p.reports > 0)) return false;
+    if (sub && !sub[p.slug]) return false;
+    if (q && (p.full_name || '').toLowerCase().indexOf(q) < 0 && (p.username || '').toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  setTabBadge('people', peopleAll.filter(needsAttention).length, true);
+  var note = document.getElementById('people-subtree-note');
+  if (sub) {
+    var root = peopleAll.filter(function(p) { return p.slug === peopleSubtree; })[0];
+    note.style.display = '';
+    note.innerHTML = 'Scoped to <b>' + esc(root ? root.full_name : peopleSubtree) + '</b>’s team — <a href="#" onclick="clearPeopleSubtree();return false" style="color:var(--blu)">clear</a>';
+  } else {
+    note.style.display = 'none';
+  }
+  document.getElementById('people-count').textContent = peopleAll.length ? '(' + rows.length + ' shown / ' + peopleAll.length + ')' : '';
+
+  var mgrOpts = peopleAll.map(function(p) { return { v: p.slug, t: p.full_name }; });
+  var html = '<div class="tbl-wrap"><table><thead><tr>' +
+    '<th>Person</th><th>Manager</th><th>Email</th><th>Login</th><th>Direct</th><th></th>' +
+    '</tr></thead><tbody>';
+  rows.forEach(function(p) {
+    var badges = '';
+    if (p.needs_review) badges += '<span class="badge badge-org">review</span> ';
+    if (p.active === false) badges += '<span class="badge badge-gray">inactive</span> ';
+    if (p.is_service) badges += '<span class="badge badge-cyn">service</span> ';
+    if (p.reports > 0) badges += '<span class="badge badge-pur">mgr · ' + p.reports + '</span> ';
+    var opts = '<option value="">— none —</option>' + mgrOpts.map(function(o) {
+      return '<option value="' + esc(o.v) + '"' + (o.v === p.manager_slug ? ' selected' : '') +
+        (o.v === p.slug ? ' disabled' : '') + '>' + esc(o.t) + '</option>';
+    }).join('');
+    var login = p.username
+      ? '<a class="login-link" href="/dashboard?user=' + encodeURIComponent(p.username) + '">' + esc(p.username) + '</a>'
+      : '<span class="badge badge-red">unlinked</span>';
+    var viewas = p.username
+      ? '<a class="viewas" href="/admin/impersonate?as=' + encodeURIComponent(p.username) + '" title="View the dashboard as this person">View</a>' +
+        '<a class="viewas" href="/admin/impersonate?as=' + encodeURIComponent(p.username) + '&to=/manager" title="View the team page as this person">Team</a>'
+      : '<span class="ts">no login</span>';
+    html += '<tr>' +
+      '<td><div class="org-name">' + esc(p.full_name) + ' ' + badges + '</div>' +
+      (p.title ? '<div class="org-title">' + esc(p.title) + '</div>' : '') + '</td>' +
+      '<td><select class="tbl-input" style="min-width:150px" onchange="setPersonField(\'' + esc(p.slug) + '\',\'manager_slug\',this.value)">' + opts + '</select></td>' +
+      '<td><input class="tbl-input" style="min-width:170px" value="' + esc(p.email || '') + '" placeholder="fill in…" onchange="setPersonField(\'' + esc(p.slug) + '\',\'email\',this.value)"></td>' +
+      '<td>' + login + '</td>' +
+      '<td>' + (p.reports || '') + '</td>' +
+      '<td style="white-space:nowrap">' + viewas + ' <button class="btn btn-outline" style="padding:3px 10px;font-size:9px" onclick="openInviteFor(\'' + esc(p.slug) + '\')">Invite</button></td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  if (!rows.length) html = '<div class="empty">' + (peopleAll.length ? 'Nothing matches this filter — a good sign.' : 'Directory is empty — the roster is imported from the command line (pricetag-import-roster.py → POST /api/v1/admin/org/import).') + '</div>';
+  document.getElementById('people-list').innerHTML = html;
+}
+function setPersonField(slug, field, value) {
+  var body = { fields: {} };
+  body.fields[field] = value;
+  updateJSON('/api/v1/admin/people/' + encodeURIComponent(slug), 'PATCH', body).then(function() {
+    showToast(field === 'manager_slug' ? 'Reporting line updated' : 'Saved', 'success');
+    loadPeople();
+    loadOrgChart(); // the chart sits right next to the table — keep it in sync
+  }).catch(function(e) {
+    showToast(e.message, 'error');
+    loadPeople(); // restore the select/input to server truth (cycle refusals included)
+  });
+}
+function clearPeopleSubtree() {
+  peopleSubtree = null;
+  renderPeople();
+  highlightTreeNode();
+}
+
+/* --- Org chart (left pane of the People & Org tab) --- */
+function fillRootOptions() {
+  var roots = peopleAll.filter(function(p) { return !p.manager_slug; });
+  var sel = document.getElementById('orgchart-root');
+  var cur = sel.value;
+  sel.innerHTML = roots.map(function(p) { return '<option value="' + esc(p.slug) + '">' + esc(p.full_name) + '</option>'; }).join('') ||
+    '<option value="">(no roots — is everyone reporting to someone?)</option>';
+  if (cur) sel.value = cur;
+}
+function loadOrgChart() {
+  var go = function() {
+    fillRootOptions();
+    var roots = peopleAll.filter(function(p) { return !p.manager_slug; });
+    var sel = document.getElementById('orgchart-root');
+    var root = sel.value || (roots.length ? roots[0].slug : '');
+    if (!root) {
+      document.getElementById('orgchart-tree').innerHTML = '<div class="empty">No root people — import the roster first.</div>';
+      return;
+    }
+    renderTreeFor(root);
+  };
+  if (peopleAll.length) {
+    go();
+  } else {
+    fetchJSON('/api/v1/admin/people?filter=').then(function(pp) {
+      peopleAll = Array.isArray(pp) ? pp : [];
+      populateInvitePickers();
+      go();
+    }).catch(function(e) {
+      document.getElementById('orgchart-tree').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
+    });
+  }
+}
+function renderTreeFor(root) {
+  if (!root) return;
+  var sel = document.getElementById('orgchart-root');
+  for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === root) sel.value = root;
+  fetchJSON('/api/v1/org/tree?root=' + encodeURIComponent(root)).then(function(tree) {
+    document.getElementById('orgchart-count').textContent = tree.subtree_size ? '(' + tree.subtree_size + ' people)' : '';
+    var walk = function(n) {
+      return '<li><span class="node" data-slug="' + esc(n.slug) + '" onclick="scopePeopleTo(\'' + esc(n.slug) + '\')">' +
+        '<b>' + esc(n.full_name) + '</b>' +
+        (n.title ? '<span class="nt">' + esc(n.title) + '</span>' : '') +
+        (n.is_manager ? '<span class="nc">' + n.subtree_size + '</span>' : '') +
+        (n.username ? '<span class="nt mono">' + esc(n.username) + '</span>' : '<span class="badge badge-red">no login</span>') +
+        '</span>' + (n.children && n.children.length ? '<ul>' + n.children.map(walk).join('') + '</ul>' : '') + '</li>';
+    };
+    document.getElementById('orgchart-tree').innerHTML = '<ul>' + walk(tree) + '</ul>';
+    highlightTreeNode();
+  }).catch(function(e) {
+    document.getElementById('orgchart-tree').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
+  });
+}
+function highlightTreeNode() {
+  var nodes = document.querySelectorAll('#orgchart-tree .node');
+  for (var i = 0; i < nodes.length; i++) {
+    nodes[i].classList.toggle('on', peopleSubtree && nodes[i].getAttribute('data-slug') === peopleSubtree);
+  }
+}
+function scopePeopleTo(slug) {
+  peopleSubtree = (peopleSubtree === slug) ? null : slug; // click again to un-scope
+  renderPeople();
+  highlightTreeNode();
+}
+
+/* --- Identities --- */
+function loadIdentities() {
+  fetchJSON('/api/v1/admin/identities').then(function(rows) {
+    rows = Array.isArray(rows) ? rows : [];
+    document.getElementById('identities-count').textContent = rows.length ? '(' + rows.length + ')' : '';
+    var html = '<div class="tbl-wrap"><table><thead><tr><th>Login</th><th>Person</th><th>Usage</th><th></th></tr></thead><tbody>';
+    rows.forEach(function(ir) {
+      var opts = peopleAll.map(function(p) {
+        return '<option value="' + esc(p.slug) + '"' + (p.slug === ir.slug ? ' selected' : '') + '>' + esc(p.full_name) + '</option>';
+      }).join('');
+      html += '<tr><td class="mono">' + esc(ir.username) + '</td>' +
+        '<td><select class="tbl-input" style="min-width:180px" onchange="relinkIdentity(\'' + esc(ir.username) + '\',this.value)">' + opts + '</select></td>' +
+        '<td>' + (ir.has_usage ? '<span class="badge badge-grn">has usage</span>' : '<span class="badge badge-gray">no usage yet</span>') + '</td>' +
+        '<td><button class="btn btn-red" onclick="unlinkIdentity(\'' + esc(ir.username) + '\')">Unlink</button></td></tr>';
+    });
+    html += '</tbody></table></div>';
+    document.getElementById('identities-list').innerHTML = rows.length ? html : '<div class="empty">No logins linked yet — links appear after the roster import or manual invites.</div>';
+  }).catch(function(e) {
+    document.getElementById('identities-list').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
+  });
+}
+function relinkIdentity(username, slug) {
+  updateJSON('/api/v1/admin/identities', 'PUT', { username: username, person_slug: slug })
+    .then(function() { showToast(username + ' → ' + slug, 'success'); loadIdentities(); loadPeople(); })
+    .catch(function(e) { showToast(e.message, 'error'); loadIdentities(); });
+}
+function unlinkIdentity(username) {
+  showConfirm('Unlink login "' + username + '" from its person? Their usage history stays in place; the person just becomes unlinked.', function() {
+    updateJSON('/api/v1/admin/identities?username=' + encodeURIComponent(username), 'DELETE')
+      .then(function() { showToast('Unlinked', 'success'); loadIdentities(); loadPeople(); })
+      .catch(function(e) { showToast(e.message, 'error'); });
+  });
+}
+
+/* ================================================================
+   Platform tab: Auth Policies
    ================================================================ */
 function loadPolicies() {
   var body = document.getElementById('policies-body');
@@ -1362,8 +1711,9 @@ function loadPolicies() {
     var policies = Array.isArray(data) ? data : (data.policies || data.items || []);
     cachedPolicies = policies;
     document.getElementById('policies-count').textContent = '(' + policies.length + ')';
+    setTabBadge('platform', policies.length, false);
 
-    loadGroups();
+    if (activeTab === 'users') loadGroups();
 
     if (policies.length === 0) {
       body.innerHTML = '<div class="empty">No auth policies configured.</div>';
@@ -1401,7 +1751,7 @@ function loadPolicies() {
 }
 
 /* ================================================================
-   Section 3b: Subscriptions
+   Platform tab: Subscriptions
    ================================================================ */
 function loadSubscriptions() {
   var body = document.getElementById('subs-body');
@@ -1412,7 +1762,7 @@ function loadSubscriptions() {
     cachedSubscriptions = subs;
     document.getElementById('subs-count').textContent = '(' + subs.length + ')';
 
-    loadGroups();
+    if (activeTab === 'users') loadGroups();
 
     if (subs.length === 0) {
       body.innerHTML = '<div class="empty">No subscriptions configured.</div>';
@@ -1486,44 +1836,6 @@ function toggleSubDetail(id) {
   var el = document.getElementById(id);
   if (!el) return;
   el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
-}
-
-/* ================================================================
-   Revoke Key (with confirm dialog)
-   ================================================================ */
-function revokeKey(keyId) {
-  if (!keyId) return;
-  showConfirm('Revoke this API key? This action cannot be undone.', function() {
-    fetch('/api/v1/admin/keys/' + encodeURIComponent(keyId), { method: 'DELETE' })
-      .then(function(r) {
-        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
-        showToast('Key revoked', 'success');
-        loadKeys();
-      })
-      .catch(function(err) {
-        showToast('Failed to revoke: ' + err.message, 'error');
-      });
-  });
-}
-
-/* ================================================================
-   Confirm dialog
-   ================================================================ */
-function showConfirm(msg, cb) {
-  document.getElementById('confirmMsg').textContent = msg;
-  confirmCallback = cb;
-  document.getElementById('confirmDialog').classList.add('open');
-}
-
-function closeConfirm() {
-  document.getElementById('confirmDialog').classList.remove('open');
-  confirmCallback = null;
-}
-
-function execConfirm() {
-  var cb = confirmCallback;
-  closeConfirm();
-  if (typeof cb === 'function') cb();
 }
 
 /* ================================================================
@@ -1693,362 +2005,22 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-/* ================================================================
-   Org sections — People / Org chart / Identities / Invites / Import
-   Append-only block: the loaders here are NOT part of loadAll()'s
-   30s refresh loop on purpose (inline edits would be clobbered
-   mid-typing); sections load lazily on first open and via Refresh.
-   ================================================================ */
-function updateJSON(url, method, body) {
-  return fetch(url, {
-    method: method,
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined
-  }).then(function(r) {
-    if (!r.ok) return r.text().then(function(t) { throw new Error(t.trim() || (r.status + ' ' + r.statusText)); });
-    return r.json();
-  });
+function showConfirm(msg, cb) {
+  document.getElementById('confirmMsg').textContent = msg;
+  confirmCallback = cb;
+  document.getElementById('confirmDialog').classList.add('open');
 }
 
-var peopleAll = [];        // full directory cache — the one source for filters, selects, tree scoping
-var peopleFilter = 'needs_attention';
-var peopleSubtree = null;  // slug when the table is scoped from the org chart
-var orgOpenedOnce = {};
-
-/* Lazy-load hook on the generic collapsible toggle. */
-var orgBaseToggle = toggleCollapsible;
-toggleCollapsible = function(id) {
-  orgBaseToggle(id);
-  var body = document.getElementById(id + '-body');
-  var nowOpen = body && body.classList.contains('open');
-  if (!nowOpen) return;
-  if (id === 'people' && !orgOpenedOnce.people) { orgOpenedOnce.people = true; loadPeople(); }
-  if (id === 'orgchart') loadOrgChart();
-  if (id === 'identities') loadIdentities();
-  if (id === 'invites') { populateInvitePickers(); loadInvites(); }
-};
-
-/* --- People --- */
-function needsAttention(p) {
-  return !p.email || !p.username || p.needs_review || p.active === false;
-}
-function setPeopleFilter(btn) {
-  var chips = document.querySelectorAll('#people-body .chip');
-  for (var i = 0; i < chips.length; i++) chips[i].classList.remove('on');
-  btn.classList.add('on');
-  peopleFilter = btn.getAttribute('data-pf');
-  renderPeople();
-}
-function loadPeople() {
-  fetchJSON('/api/v1/admin/people?filter=').then(function(people) {
-    peopleAll = Array.isArray(people) ? people : [];
-    orgOpenedOnce.people = true;
-    renderPeople();
-    populateInvitePickers();
-    var sel = document.getElementById('orgchart-root');
-    if (sel && !sel.options.length) fillRootOptions();
-  }).catch(function(e) {
-    document.getElementById('people-list').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
-  });
-}
-function subtreeSet(rootSlug) {
-  var byMgr = {};
-  peopleAll.forEach(function(p) {
-    if (p.manager_slug) { (byMgr[p.manager_slug] = byMgr[p.manager_slug] || []).push(p.slug); }
-  });
-  var set = {}, queue = [rootSlug];
-  set[rootSlug] = true;
-  while (queue.length) {
-    var kids = byMgr[queue.pop()] || [];
-    kids.forEach(function(k) { if (!set[k]) { set[k] = true; queue.push(k); } });
-  }
-  return set;
-}
-function renderPeople() {
-  var q = (document.getElementById('people-search').value || '').toLowerCase();
-  var sub = peopleSubtree ? subtreeSet(peopleSubtree) : null;
-  var rows = peopleAll.filter(function(p) {
-    if (peopleFilter === 'needs_attention' && !needsAttention(p)) return false;
-    if (peopleFilter === 'managers' && !(p.reports > 0)) return false;
-    if (sub && !sub[p.slug]) return false;
-    if (q && (p.full_name || '').toLowerCase().indexOf(q) < 0 && (p.username || '').toLowerCase().indexOf(q) < 0) return false;
-    return true;
-  });
-  var note = document.getElementById('people-subtree-note');
-  if (sub) {
-    var root = peopleAll.filter(function(p) { return p.slug === peopleSubtree; })[0];
-    note.style.display = '';
-    note.innerHTML = 'Scoped to <b>' + esc(root ? root.full_name : peopleSubtree) + '</b>’s team — <a href="#" onclick="clearPeopleSubtree();return false" style="color:var(--blu)">clear</a>';
-  } else {
-    note.style.display = 'none';
-  }
-  document.getElementById('people-count').textContent = peopleAll.length ? '(' + rows.length + ' shown / ' + peopleAll.length + ')' : '';
-
-  var mgrOpts = peopleAll.map(function(p) { return { v: p.slug, t: p.full_name }; });
-  var html = '<div class="tbl-wrap"><table><thead><tr>' +
-    '<th>Person</th><th>Manager</th><th>Email</th><th>Login</th><th>Direct</th><th></th>' +
-    '</tr></thead><tbody>';
-  rows.forEach(function(p) {
-    var badges = '';
-    if (p.needs_review) badges += '<span class="badge badge-org">review</span> ';
-    if (p.active === false) badges += '<span class="badge badge-gray">inactive</span> ';
-    if (p.is_service) badges += '<span class="badge badge-cyn">service</span> ';
-    if (p.reports > 0) badges += '<span class="badge badge-pur">mgr · ' + p.reports + '</span> ';
-    var opts = '<option value="">— none —</option>' + mgrOpts.map(function(o) {
-      return '<option value="' + esc(o.v) + '"' + (o.v === p.manager_slug ? ' selected' : '') +
-        (o.v === p.slug ? ' disabled' : '') + '>' + esc(o.t) + '</option>';
-    }).join('');
-    var login = p.username
-      ? '<a class="login-link" href="/dashboard?user=' + encodeURIComponent(p.username) + '">' + esc(p.username) + '</a>'
-      : '<span class="badge badge-red">unlinked</span>';
-    var viewas = p.username
-      ? '<a class="viewas" href="/admin/impersonate?as=' + encodeURIComponent(p.username) + '" title="View the dashboard as this person">View</a>' +
-        '<a class="viewas" href="/admin/impersonate?as=' + encodeURIComponent(p.username) + '&to=/manager" title="View the team page as this person">Team</a>'
-      : '<span class="ts">no login</span>';
-    html += '<tr>' +
-      '<td><div class="org-name">' + esc(p.full_name) + ' ' + badges + '</div>' +
-      (p.title ? '<div class="org-title">' + esc(p.title) + '</div>' : '') + '</td>' +
-      '<td><select class="tbl-input" style="min-width:150px" onchange="setPersonField(\'' + esc(p.slug) + '\',\'manager_slug\',this.value)">' + opts + '</select></td>' +
-      '<td><input class="tbl-input" style="min-width:170px" value="' + esc(p.email || '') + '" placeholder="fill in…" onchange="setPersonField(\'' + esc(p.slug) + '\',\'email\',this.value)"></td>' +
-      '<td>' + login + '</td>' +
-      '<td>' + (p.reports || '') + '</td>' +
-      '<td style="white-space:nowrap">' + viewas + ' <button class="btn btn-outline" style="padding:3px 10px;font-size:9px" onclick="openInviteFor(\'' + esc(p.slug) + '\')">Invite</button></td>' +
-      '</tr>';
-  });
-  html += '</tbody></table></div>';
-  if (!rows.length) html = '<div class="empty">' + (peopleAll.length ? 'Nothing matches this filter — a good sign.' : 'Directory is empty — run a roster import below.') + '</div>';
-  document.getElementById('people-list').innerHTML = html;
-}
-function setPersonField(slug, field, value) {
-  var body = { fields: {} };
-  body.fields[field] = value;
-  updateJSON('/api/v1/admin/people/' + encodeURIComponent(slug), 'PATCH', body).then(function() {
-    showToast(field === 'manager_slug' ? 'Reporting line updated' : 'Saved', 'success');
-    loadPeople();
-    var hdr = document.getElementById('orgchart-hdr');
-    if (hdr.classList.contains('open')) loadOrgChart();
-  }).catch(function(e) {
-    showToast(e.message, 'error');
-    loadPeople(); // restore the select/input to server truth (cycle refusals included)
-  });
-}
-function clearPeopleSubtree() { peopleSubtree = null; renderPeople(); }
-
-/* --- Org chart --- */
-function fillRootOptions() {
-  var roots = peopleAll.filter(function(p) { return !p.manager_slug; });
-  var sel = document.getElementById('orgchart-root');
-  sel.innerHTML = roots.map(function(p) { return '<option value="' + esc(p.slug) + '">' + esc(p.full_name) + '</option>'; }).join('') ||
-    '<option value="">(no roots — is everyone reporting to someone?)</option>';
-}
-function loadOrgChart() {
-  var go = function() {
-    fillRootOptions();
-    var roots = peopleAll.filter(function(p) { return !p.manager_slug; });
-    var sel = document.getElementById('orgchart-root');
-    var root = sel.value || (roots.length ? roots[0].slug : '');
-    if (!root) {
-      document.getElementById('orgchart-tree').innerHTML = '<div class="empty">No root people — import the roster first.</div>';
-      return;
-    }
-    renderTreeFor(root);
-  };
-  if (peopleAll.length) {
-    go();
-  } else {
-    fetchJSON('/api/v1/admin/people?filter=').then(function(pp) {
-      peopleAll = Array.isArray(pp) ? pp : [];
-      populateInvitePickers();
-      go();
-    }).catch(function(e) {
-      document.getElementById('orgchart-tree').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
-    });
-  }
-}
-function renderTreeFor(root) {
-  if (!root) return;
-  var sel = document.getElementById('orgchart-root');
-  for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === root) sel.value = root;
-  fetchJSON('/api/v1/org/tree?root=' + encodeURIComponent(root)).then(function(tree) {
-    document.getElementById('orgchart-count').textContent = tree.subtree_size ? '(' + tree.subtree_size + ' people)' : '';
-    var walk = function(n) {
-      return '<li><span class="node" data-slug="' + esc(n.slug) + '" onclick="scopePeopleTo(\'' + esc(n.slug) + '\')">' +
-        '<b>' + esc(n.full_name) + '</b>' +
-        (n.title ? '<span class="nt">' + esc(n.title) + '</span>' : '') +
-        (n.is_manager ? '<span class="nc">' + n.subtree_size + '</span>' : '') +
-        (n.username ? '<span class="nt mono">' + esc(n.username) + '</span>' : '<span class="badge badge-red">no login</span>') +
-        '</span>' + (n.children && n.children.length ? '<ul>' + n.children.map(walk).join('') + '</ul>' : '') + '</li>';
-    };
-    document.getElementById('orgchart-tree').innerHTML = '<ul>' + walk(tree) + '</ul>';
-  }).catch(function(e) {
-    document.getElementById('orgchart-tree').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
-  });
-}
-function scopePeopleTo(slug) {
-  peopleSubtree = slug;
-  var body = document.getElementById('people-body');
-  if (!body.classList.contains('open')) orgBaseToggle('people');
-  if (orgOpenedOnce.people) renderPeople();
-  else { orgOpenedOnce.people = true; loadPeople(); } // renderPeople runs when the cache lands
-  document.getElementById('section-people').scrollIntoView({ behavior: 'smooth' });
+function closeConfirm() {
+  document.getElementById('confirmDialog').classList.remove('open');
+  confirmCallback = null;
 }
 
-/* --- Identities --- */
-function loadIdentities() {
-  fetchJSON('/api/v1/admin/identities').then(function(rows) {
-    rows = Array.isArray(rows) ? rows : [];
-    document.getElementById('identities-count').textContent = rows.length ? '(' + rows.length + ')' : '';
-    var html = '<div class="tbl-wrap"><table><thead><tr><th>Login</th><th>Person</th><th>Usage</th><th></th></tr></thead><tbody>';
-    rows.forEach(function(ir) {
-      var opts = peopleAll.map(function(p) {
-        return '<option value="' + esc(p.slug) + '"' + (p.slug === ir.slug ? ' selected' : '') + '>' + esc(p.full_name) + '</option>';
-      }).join('');
-      html += '<tr><td class="mono">' + esc(ir.username) + '</td>' +
-        '<td><select class="tbl-input" style="min-width:180px" onchange="relinkIdentity(\'' + esc(ir.username) + '\',this.value)">' + opts + '</select></td>' +
-        '<td>' + (ir.has_usage ? '<span class="badge badge-grn">has usage</span>' : '<span class="badge badge-gray">no usage yet</span>') + '</td>' +
-        '<td><button class="btn btn-red" onclick="unlinkIdentity(\'' + esc(ir.username) + '\')">Unlink</button></td></tr>';
-    });
-    html += '</tbody></table></div>';
-    document.getElementById('identities-list').innerHTML = rows.length ? html : '<div class="empty">No logins linked yet — links appear after the roster import or manual invites.</div>';
-  }).catch(function(e) {
-    document.getElementById('identities-list').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
-  });
+function execConfirm() {
+  var cb = confirmCallback;
+  closeConfirm();
+  if (typeof cb === 'function') cb();
 }
-function relinkIdentity(username, slug) {
-  updateJSON('/api/v1/admin/identities', 'PUT', { username: username, person_slug: slug })
-    .then(function() { showToast(username + ' → ' + slug, 'success'); loadIdentities(); loadPeople(); })
-    .catch(function(e) { showToast(e.message, 'error'); loadIdentities(); });
-}
-function unlinkIdentity(username) {
-  showConfirm('Unlink login "' + username + '" from its person? Their usage history stays in place; the person just becomes unlinked.', function() {
-    updateJSON('/api/v1/admin/identities?username=' + encodeURIComponent(username), 'DELETE')
-      .then(function() { showToast('Unlinked', 'success'); loadIdentities(); loadPeople(); })
-      .catch(function(e) { showToast(e.message, 'error'); });
-  });
-}
-
-/* --- Invites --- */
-function populateInvitePickers() {
-  var psel = document.getElementById('inv-person');
-  if (!psel || !peopleAll.length) return;
-  var cur = psel.value;
-  psel.innerHTML = peopleAll.map(function(p) {
-    return '<option value="' + esc(p.slug) + '">' + esc(p.full_name) + (p.username ? ' · has key' : '') + '</option>';
-  }).join('');
-  if (cur) psel.value = cur;
-  var gsel = document.getElementById('inv-group');
-  gsel.innerHTML = knownGroups.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('') ||
-    '<option value="default">default</option>';
-}
-function openInviteFor(slug) {
-  populateInvitePickers();
-  document.getElementById('inv-person').value = slug;
-  var body = document.getElementById('invites-body');
-  if (!body.classList.contains('open')) orgBaseToggle('invites');
-  loadInvites();
-  document.getElementById('section-invites').scrollIntoView({ behavior: 'smooth' });
-}
-function loadInvites() {
-  fetchJSON('/api/v1/admin/keys/invites').then(function(list) {
-    list = Array.isArray(list) ? list : [];
-    document.getElementById('invites-count').textContent = list.length ? '(' + list.length + ')' : '';
-    var badge = { pending: 'badge-blu', claimed: 'badge-grn', expired: 'badge-gray', revoked: 'badge-red' };
-    var html = '<div class="tbl-wrap"><table><thead><tr><th>Person</th><th>Group</th><th>Key</th><th>Status</th><th>Created</th><th>Expires</th><th>Claimed</th><th></th></tr></thead><tbody>';
-    list.forEach(function(iv) {
-      html += '<tr><td>' + esc(iv.person_name) + '</td><td class="mono">' + esc(iv.group_name) + '</td>' +
-        '<td class="mono">' + esc(iv.key_name || '') + (iv.key_id ? ' <span class="ts">(' + esc(iv.key_id.slice(0, 8)) + '…)</span>' : '') + '</td>' +
-        '<td><span class="badge ' + (badge[iv.status] || 'badge-gray') + '">' + esc(iv.status) + '</span></td>' +
-        '<td class="ts">' + formatTS(iv.created_at) + '</td>' +
-        '<td class="ts">' + formatTS(iv.expires_at) + '</td>' +
-        '<td class="ts">' + (iv.claimed_at ? formatTS(iv.claimed_at) : '—') + '</td>' +
-        '<td>' + (iv.status === 'pending' ? '<button class="btn btn-red" onclick="revokeInvite(' + iv.id + ')">Revoke</button>' : '') + '</td></tr>';
-    });
-    html += '</tbody></table></div>';
-    document.getElementById('invites-list').innerHTML = list.length ? html : '<div class="empty">No invites yet — pick a person above and create one.</div>';
-  }).catch(function(e) {
-    document.getElementById('invites-list').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
-  });
-}
-function createInvite() {
-  var body = {
-    person_slug: document.getElementById('inv-person').value,
-    group: document.getElementById('inv-group').value || 'default',
-    key_name: document.getElementById('inv-name').value
-  };
-  if (!body.person_slug) { showToast('Pick a person first', 'error'); return; }
-  updateJSON('/api/v1/admin/keys/invites', 'POST', body).then(function(r) {
-    var box = document.getElementById('invite-created');
-    document.getElementById('invite-url').textContent = location.origin + r.invite_url;
-    box.style.display = '';
-    document.getElementById('invite-url').setAttribute('data-rel', r.invite_url);
-    loadInvites();
-  }).catch(function(e) { showToast(e.message, 'error'); });
-}
-function copyInviteURL() {
-  var el = document.getElementById('invite-url');
-  fallbackCopy(el.textContent);
-}
-function revokeInvite(id) {
-  showConfirm('Revoke this invite? If it was already claimed, the issued key is untouched — revoke that in the keys table above.', function() {
-    updateJSON('/api/v1/admin/keys/invites?id=' + id, 'DELETE')
-      .then(function() { showToast('Revoked', 'success'); loadInvites(); })
-      .catch(function(e) { showToast(e.message, 'error'); });
-  });
-}
-
-/* --- Import --- */
-function loadImportFile(input) {
-  var f = input.files && input.files[0];
-  if (!f) return;
-  var rd = new FileReader();
-  rd.onload = function() {
-    document.getElementById('import-payload').value = rd.result;
-    document.getElementById('import-apply-btn').disabled = true;
-    document.getElementById('import-result').innerHTML = '<div class="ts">File loaded — run the dry run first.</div>';
-  };
-  rd.readAsText(f);
-}
-function runImport(dryRun) {
-  var raw = document.getElementById('import-payload').value.trim();
-  if (!raw) { showToast('Paste the import JSON or pick the file first', 'error'); return; }
-  var payload;
-  try { payload = JSON.parse(raw); } catch (e) { showToast('Not valid JSON: ' + e.message, 'error'); return; }
-  payload.dry_run = dryRun;
-  var out = document.getElementById('import-result');
-  out.innerHTML = '<div class="loading"><div class="spinner"></div>' + (dryRun ? 'Computing diff...' : 'Applying...') + '</div>';
-  updateJSON('/api/v1/admin/org/import', 'POST', payload).then(function(res) {
-    var stats = [
-      ['People', res.people], ['Managers', res.managers], ['Contractors', res.contractors],
-      ['Linked', res.linked], ['Auto-linked', res.auto_linked], ['Needs review', res.needs_review],
-      ['Orphans', res.orphans], ['Missing email', res.missing_email]
-    ];
-    var html = '<div class="import-result-grid">' + stats.map(function(s) {
-      return '<div class="import-stat"><div class="n">' + s[1] + '</div><div class="l">' + s[0] + '</div></div>';
-    }).join('') + '</div>';
-    if (res.unlinked_usage_usernames && res.unlinked_usage_usernames.length) {
-      html += '<div class="warn-box"><b>Active logins outside the roster</b> — these keep their dashboards and keys, but should be linked to a person:<br>' +
-        res.unlinked_usage_usernames.map(function(u) { return '<span class="mono">' + esc(u) + '</span>'; }).join(' ') + '</div>';
-    }
-    if (dryRun) {
-      html += '<div class="ts">Dry run — nothing written. <b style="color:var(--grn)">Apply for real</b> is now enabled.</div>';
-      document.getElementById('import-apply-btn').disabled = false;
-    } else {
-      html += '<div class="ts" style="color:var(--grn);margin-top:8px">Applied — batch #' + res.batch_id + '. Usage events were not touched.</div>';
-      orgOpenedOnce.people = false; // force the people table to reload on next open
-      loadPeople();
-    }
-    out.innerHTML = html;
-  }).catch(function(e) {
-    out.innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
-    document.getElementById('import-apply-btn').disabled = true;
-  });
-}
-
-/* ================================================================
-   Init
-   ================================================================ */
-loadAll();
-refreshTimer = setInterval(loadAll, REFRESH_INTERVAL);
 </script>
 <script>
 /* Identity badge (post MaaS-key auth) + "My view as user" target. */

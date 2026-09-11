@@ -397,3 +397,43 @@ func TestOrgRoots(t *testing.T) {
 		t.Fatalf("roots = %v, want [boss]", roots)
 	}
 }
+
+// OrgTree regression: the recursive seed binds the root slug as a query
+// parameter — an unpassed argument 500s the endpoint (seen live). Covers
+// nesting, subtree sizes and the multi-root shape a real roster produces.
+func TestOrgTree(t *testing.T) {
+	s, ctx := openTestStore(t)
+	seedFixture(t, s, ctx)
+	// A second root, like a live roster that carries non-reporting rows.
+	if _, err := s.ImportPeople(ctx, []ImportPerson{{Slug: "svc", FullName: "Svc Bot"}}, "svc.xlsx", "tester", false); err != nil {
+		t.Fatalf("seed second root: %v", err)
+	}
+
+	tree, err := s.OrgTree(ctx, "boss")
+	if err != nil {
+		t.Fatalf("tree: %v", err)
+	}
+	if tree.Slug != "boss" || tree.SubtreeSize != 4 {
+		t.Fatalf("root wrong: %s size %d", tree.Slug, tree.SubtreeSize)
+	}
+	if len(tree.Children) != 1 || tree.Children[0].Slug != "mgr" {
+		t.Fatalf("children wrong: %+v", tree.Children)
+	}
+	mgr := tree.Children[0]
+	if len(mgr.Children) != 2 {
+		t.Fatalf("mgr should have two ICs: %+v", mgr.Children)
+	}
+	by := map[string]*OrgTreeNode{}
+	for _, c := range mgr.Children {
+		by[c.Slug] = c
+	}
+	if ic1, ok := by["ic1"]; !ok || ic1.Username != "alice_db" {
+		t.Fatalf("ic1 should carry its login: %+v", by)
+	}
+
+	// A leaf renders as a one-node tree, not an error.
+	leaf, err := s.OrgTree(ctx, "ic2")
+	if err != nil || leaf.Slug != "ic2" || len(leaf.Children) != 0 {
+		t.Fatalf("leaf tree wrong: %+v %v", leaf, err)
+	}
+}
