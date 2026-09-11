@@ -104,7 +104,6 @@ func main() {
 
 	eventsHandler := handler.NewEventsHandler(store)
 	entitlementsHandler := handler.NewEntitlementsHandler(store)
-	teamUsageHandler := handler.NewTeamUsageHandler(store)
 	dashboardHandler := handler.NewDashboardHandler(store, cfg)
 
 	// Kubernetes adapter — optional. It stays disabled until model/provider
@@ -143,6 +142,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(cfg)
 	keysHandler := handler.NewKeysHandler(k8sClient, cfg, store)
 	profilesHandler := handler.NewProfilesHandler(store)
+	orgHandler := handler.NewOrgHandler(store, cfg, maasClient)
 	auth := authHandler.RequireAuth
 
 	mux := http.NewServeMux()
@@ -150,7 +150,10 @@ func main() {
 	// Machine-to-machine APIs — no session required
 	mux.HandleFunc("/api/v1/events", eventsHandler.HandleEvent)
 	mux.HandleFunc("/api/v1/customers/", entitlementsHandler.HandleEntitlement)
-	mux.HandleFunc("/api/v1/team-usage", teamUsageHandler.HandleTeamUsage)
+	// /api/v1/team-usage was REMOVED on purpose: it sat outside auth, took
+	// the group from the query string, and defaulted to a hard-coded team.
+	// Its replacement is /api/v1/org/usage below, which is authenticated
+	// and scope-enforced. Do not re-add a sibling.
 
 	// Auth endpoints — unauthenticated by definition
 	mux.HandleFunc("/login", authHandler.HandleLogin)
@@ -215,6 +218,29 @@ func main() {
 	// Admin "view as user" — the handler checks admin against the real
 	// session identity, not the swapped header, so it also clears itself.
 	mux.HandleFunc("/admin/impersonate", auth(authHandler.HandleImpersonate))
+
+	// Manager view — session required; the page adapts to the caller's
+	// scope (plain user sees self, manager sees subtree, admin sees all).
+	mux.HandleFunc("/manager", auth(orgHandler.ServeManager))
+
+	// Org APIs reachable by any signed-in user; every handler enforces the
+	// caller's scope internally (a manager asking for a tree or usage
+	// outside their subtree gets a 403).
+	mux.HandleFunc("/api/v1/org/scope", auth(orgHandler.HandleScope))
+	mux.HandleFunc("/api/v1/org/tree", auth(orgHandler.HandleOrgTree))
+	mux.HandleFunc("/api/v1/org/usage", auth(orgHandler.HandleOrgUsage))
+
+	// Directory administration — admin only.
+	mux.HandleFunc("/api/v1/admin/people", auth(handler.RequireAdmin(cfg, orgHandler.HandlePeople)))
+	mux.HandleFunc("/api/v1/admin/people/", auth(handler.RequireAdmin(cfg, orgHandler.HandlePerson)))
+	mux.HandleFunc("/api/v1/admin/identities", auth(handler.RequireAdmin(cfg, orgHandler.HandleIdentities)))
+	mux.HandleFunc("/api/v1/admin/org/import", auth(handler.RequireAdmin(cfg, orgHandler.HandleImport)))
+	mux.HandleFunc("/api/v1/admin/keys/invites", auth(handler.RequireAdmin(cfg, orgHandler.HandleInvites)))
+
+	// Key invite claim — unauthenticated by design: the single-use, expiring
+	// token in the URL is the credential (only its SHA-256 is stored, and
+	// the key is minted at claim time in the claimant's browser).
+	mux.HandleFunc("/invite/", orgHandler.HandleClaim)
 
 	server := &http.Server{Addr: ":" + cfg.Port, Handler: mux}
 

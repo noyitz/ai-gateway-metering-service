@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team view · PriceTag</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+/* Tokens copied from admin.html so the manager page is the same product. */
+:root{
+  --bg:#0b0e11; --c1:#141820; --c2:#1a2030; --c3:#232d40; --bdr:#2e3848;
+  --t:#e2e6ec; --t2:#8090a8; --blu:#4da0f8; --grn:#3dcc6e; --org:#eba830;
+  --red:#e8554e; --pur:#a88cf8; --cyn:#38d4c2;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--t);font:13px/1.5 Inter,system-ui,sans-serif}
+header{display:flex;align-items:center;gap:18px;padding:14px 24px;border-bottom:1px solid var(--bdr);background:var(--c1)}
+.logo{font-weight:700;font-size:14px;letter-spacing:.2px}
+.logo em{color:var(--blu);font-style:normal}
+nav{display:flex;gap:4px}
+nav a{color:var(--t2);text-decoration:none;padding:6px 12px;border-radius:8px;font-weight:600}
+nav a:hover{color:var(--t);background:var(--c3)}
+nav a.on{color:var(--t);background:var(--c3)}
+nav a.hidden{display:none}
+.who{margin-left:auto;display:flex;gap:10px;align-items:center;color:var(--t2)}
+.who a{color:var(--t2);text-decoration:none}
+#banner{display:none;gap:10px;align-items:center;justify-content:center;padding:8px;background:#2a2433;border-bottom:1px solid var(--bdr);color:var(--pur);font-weight:600;font-size:12px}
+#banner button{background:var(--c3);color:var(--t);border:1px solid var(--bdr);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer}
+main{max-width:1200px;margin:0 auto;padding:24px}
+.head-row{display:flex;align-items:baseline;gap:14px;margin-bottom:4px}
+h1{font-size:17px;margin:0;text-wrap:balance}
+.sub{color:var(--t2);margin:0 0 20px}
+.ranges{margin-left:auto;display:flex;gap:4px}
+.ranges button{background:var(--c1);color:var(--t2);border:1px solid var(--bdr);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.ranges button.on{background:var(--c3);color:var(--t)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:var(--c1);border:1px solid var(--bdr);border-radius:12px;padding:16px 18px}
+.kpi .l{color:var(--t2);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+.kpi .v{font-size:24px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .s{color:var(--t2);font-size:11px;margin-top:2px}
+.panel{background:var(--c1);border:1px solid var(--bdr);border-radius:12px;padding:18px;margin-bottom:20px}
+.panel h2{font-size:13px;margin:0 0 12px;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.cols{display:grid;grid-template-columns:1fr 320px;gap:20px}
+@media (max-width:900px){.cols{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{color:var(--t2);font-size:11px;text-transform:uppercase;letter-spacing:.4px;text-align:left;padding:8px 10px;border-bottom:1px solid var(--bdr);cursor:pointer;user-select:none}
+td{padding:8px 10px;border-bottom:1px solid var(--c2)}
+tr:hover td{background:var(--c2)}
+td.num,th.num{text-align:right}
+.mgr{color:var(--pur);font-weight:600}
+.dim{color:var(--t2)}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:10px;font-weight:700;text-transform:uppercase}
+.pill.zero{background:#241a1b;color:var(--red)}
+.pill.on{background:#16281c;color:var(--grn)}
+.tree ul{list-style:none;margin:0;padding-left:16px;border-left:1px solid var(--c3)}
+.tree li{padding:3px 0}
+.tree .node{cursor:pointer;padding:2px 8px;border-radius:6px;display:inline-flex;gap:8px;align-items:center}
+.tree .node:hover{background:var(--c2)}
+.tree .node.on{background:var(--c3)}
+.tree .cnt{color:var(--t2);font-size:11px}
+.self-note{background:var(--c2);border:1px dashed var(--bdr);border-radius:10px;padding:14px 16px;color:var(--t2);margin-bottom:20px}
+.self-note b{color:var(--t)}
+.err{color:var(--red);padding:20px}
+</style>
+</head>
+<body>
+<div id="banner">
+  <span id="bannerText"></span>
+  <button onclick="location.href='/admin/impersonate'">Exit view-as</button>
+</div>
+<header>
+  <div class="logo">Price<em>Tag</em></div>
+  <nav>
+    <a href="/dashboard" id="navDash">Dashboard</a>
+    <a href="/manager" class="on">My team</a>
+    <a href="/admin" id="navAdmin" class="hidden">Admin</a>
+  </nav>
+  <div class="who"><span id="whoName"></span><a href="/logout">Sign out</a></div>
+</header>
+<main>
+  <div class="head-row">
+    <h1 id="scopeTitle">Team view</h1>
+    <div class="ranges" id="ranges">
+      <button data-r="24h">24h</button>
+      <button data-r="7d" class="on">7d</button>
+      <button data-r="30d">30d</button>
+    </div>
+  </div>
+  <p class="sub" id="scopeSub">Loading…</p>
+  <div id="selfNote"></div>
+  <div class="kpis">
+    <div class="kpi"><div class="l">Spend</div><div class="v" id="kSpend">–</div><div class="s" id="kSpendS"></div></div>
+    <div class="kpi"><div class="l">Tokens</div><div class="v" id="kTokens">–</div><div class="s">prompt + completion</div></div>
+    <div class="kpi"><div class="l">Requests</div><div class="v" id="kReqs">–</div></div>
+    <div class="kpi"><div class="l">Members</div><div class="v" id="kPeople">–</div><div class="s" id="kPeopleS"></div></div>
+  </div>
+  <div class="panel"><h2>Daily spend by member</h2><canvas id="tl" height="70"></canvas></div>
+  <div class="cols">
+    <div class="panel">
+      <h2>Team members</h2>
+      <div style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th data-s="FullName">Person</th>
+          <th class="num" data-s="CostUSD">Spend</th>
+          <th class="num" data-s="TotalTokens">Tokens</th>
+          <th class="num" data-s="Requests">Requests</th>
+          <th data-s="LastUsed">Last used</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Org</h2>
+      <div class="tree" id="tree"></div>
+    </div>
+  </div>
+</main>
+<script>
+const fmt$=v=>'$'+Number(v||0).toLocaleString(undefined,{maximumFractionDigits:2});
+const fmtTok=v=>{v=Number(v||0);if(v>=1e9)return (v/1e9).toFixed(2)+'B';if(v>=1e6)return (v/1e6).toFixed(2)+'M';if(v>=1e3)return (v/1e3).toFixed(1)+'K';return ''+v};
+let range='7d', rows=[], tlChart=null, sortKey='CostUSD', sortDir=-1, me={};
+
+document.getElementById('ranges').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  range=b.dataset.r;
+  document.querySelectorAll('#ranges button').forEach(x=>x.classList.toggle('on',x===b));
+  load();
+});
+document.querySelector('thead').addEventListener('click',e=>{
+  const th=e.target.closest('th'); if(!th||!th.dataset.s)return;
+  if(sortKey===th.dataset.s)sortDir=-sortDir; else {sortKey=th.dataset.s;sortDir=-1;}
+  renderRows();
+});
+
+function renderRows(){
+  const tb=document.getElementById('rows');
+  rows.sort((a,b)=>{
+    const x=a[sortKey]??-1,y=b[sortKey]??-1;
+    return (typeof x==='string'? x.localeCompare(y) : x-y)*sortDir;
+  });
+  tb.innerHTML=rows.map(r=>`<tr>
+    <td>${esc(r.full_name)}${r.is_manager?' <span class="mgr">· mgr</span>':''}${r.no_identity?' <span class="pill zero">no key yet</span>':''}</td>
+    <td class="num">${r.username?fmt$(r.cost_usd):'<span class="dim">–</span>'}</td>
+    <td class="num">${r.username?fmtTok(r.total_tokens):''}</td>
+    <td class="num">${r.requests||''}</td>
+    <td class="dim">${r.last_used?r.last_used.slice(0,10):'never'}</td>
+  </tr>`).join('')||'<tr><td colspan="5" class="dim">No usage yet — expected during week one.</td></tr>';
+}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+async function load(){
+  try{
+    rows=await (await fetch('/api/v1/org/usage?range='+range)).json();
+    if(!Array.isArray(rows))throw new Error(rows.error||'usage failed');
+    renderRows();
+    const spend=rows.reduce((s,r)=>s+r.cost_usd,0);
+    const tok=rows.reduce((s,r)=>s+r.total_tokens,0);
+    const req=rows.reduce((s,r)=>s+r.requests,0);
+    const active=rows.filter(r=>r.requests>0).length;
+    document.getElementById('kSpend').textContent=fmt$(spend);
+    document.getElementById('kTokens').textContent=fmtTok(tok);
+    document.getElementById('kReqs').textContent=req.toLocaleString();
+    document.getElementById('kPeople').textContent=rows.length;
+    document.getElementById('kPeopleS').textContent=active+' with usage this window';
+    loadTimeline();
+  }catch(e){document.getElementById('rows').innerHTML='<tr><td colspan="5" class="err">'+esc(e.message)+'</td></tr>';}
+}
+
+async function loadTimeline(){
+  // scoped via the shared endpoint: non-admin callers get their own user
+  // filter applied server-side, so the chart can never leak outside scope.
+  const buckets=await (await fetch('/api/v1/dashboard/timeline?range='+range+'&group_by=user')).json();
+  const byDay={}, names=new Set();
+  for(const b of buckets){const d=b.bucket.slice(0,10);byDay[d]=byDay[d]||{};byDay[d][b.series]=b.total_tokens;names.add(b.series);}
+  const days=Object.keys(byDay).sort();
+  const palette=['#4da0f8','#3dcc6e','#eba830','#a88cf8','#38d4c2','#e8554e','#8090a8'];
+  const ds=[...names].slice(0,7).map((n,i)=>({label:n,data:days.map(d=>byDay[d][n]||0),
+    borderColor:palette[i%7],backgroundColor:palette[i%7]+'22',tension:.3,fill:false,pointRadius:2,borderWidth:2}));
+  if(tlChart)tlChart.destroy();
+  tlChart=new Chart(document.getElementById('tl'),{type:'line',
+    data:{labels:days,datasets:ds},
+    options:{plugins:{legend:{labels:{color:'#e2e6ec',boxWidth:10}}},
+      scales:{x:{ticks:{color:'#8090a8'},grid:{color:'#1a2030'}},
+              y:{ticks:{color:'#8090a8',callback:v=>fmtTok(v)},grid:{color:'#1a2030'}}}}});
+}
+
+function renderTree(node,root){
+  const el=document.getElementById('tree');
+  const walk=n=>`<li><span class="node" data-slug="${esc(n.slug)}"><b>${esc(n.full_name)}</b>${n.is_manager?`<span class="cnt">${n.subtree_size}</span>`:''}</span>${n.children&&n.children.length?`<ul>${n.children.map(walk).join('')}</ul>`:''}</li>`;
+  el.innerHTML=`<ul>${walk(node)}</ul>`;
+}
+
+async function boot(){
+  try{ me=await (await fetch('/api/v1/whoami')).json(); }catch(e){}
+  if(me.isAdmin)document.getElementById('navAdmin').classList.remove('hidden');
+  document.getElementById('whoName').textContent=me.display_name||me.user||'';
+  if(me.impersonating){
+    document.getElementById('banner').style.display='flex';
+    document.getElementById('bannerText').textContent=
+      'Viewing as '+(me.display_name||me.user)+'. Real session: '+(me.real_user_display||me.real_user);
+  }
+  const sc=await (await fetch('/api/v1/org/scope')).json();
+  if(sc.scope==='self'){
+    document.getElementById('scopeTitle').textContent='My usage';
+    document.getElementById('scopeSub').textContent='You are not listed as a manager in the directory — showing your own usage.';
+    document.getElementById('selfNote').innerHTML=
+      '<div class="self-note">You are seeing only your own numbers. If you manage people and expected the team view, ask an admin to add your reporting lines to the <b>People</b> directory — the manager view turns on automatically the moment people report to you.</div>';
+    document.querySelector('.cols').style.display='none';
+    document.querySelectorAll('.kpis .kpi')[3].style.display='none';
+  } else if(sc.scope==='manager'){
+    document.getElementById('scopeSub').textContent=sc.scopeSize+' people in your tree · their spend and yours, this window';
+  } else if(sc.scope==='admin'){
+    document.getElementById('scopeSub').textContent='Admin — whole organisation. Pick a subtree in the org panel.';
+    if(sc.roots&&sc.roots.length)loadTree(sc.roots[0]);
+  }
+  if(sc.scope!=='self')load();
+  else loadSelf();
+}
+
+async function loadSelf(){
+  const users=await (await fetch('/api/v1/dashboard/users?range='+range)).json();
+  rows=users.map(u=>({full_name:u.display_name||u.username,cost_usd:u.cost_usd,total_tokens:u.total_tokens,requests:u.requests,last_used:null,is_manager:false}));
+  renderRows();
+  document.getElementById('kSpend').textContent=fmt$(rows[0]?.cost_usd);
+  document.getElementById('kTokens').textContent=fmtTok(rows[0]?.total_tokens);
+  document.getElementById('kReqs').textContent=(rows[0]?.requests||0).toLocaleString();
+  loadTimeline();
+}
+
+async function loadTree(slug){
+  try{
+    const t=await (await fetch('/api/v1/org/tree?root='+encodeURIComponent(slug))).json();
+    if(t.slug)renderTree(t);
+  }catch(e){}
+}
+document.getElementById('tree').addEventListener('click',e=>{
+  const n=e.target.closest('.node'); if(!n)return;
+  const slug=n.dataset.slug;
+  document.getElementById('scopeTitle').textContent=n.querySelector('b').textContent+'’s team';
+  const q='/api/v1/org/usage?root='+encodeURIComponent(slug)+'&range='+range;
+  fetch(q).then(r=>r.json()).then(j=>{if(Array.isArray(j)){rows=j;renderRows();
+    document.getElementById('kSpend').textContent=fmt$(rows.reduce((s,r)=>s+r.cost_usd,0));
+    document.getElementById('kTokens').textContent=fmtTok(rows.reduce((s,r)=>s+r.total_tokens,0));
+    document.getElementById('kReqs').textContent=rows.reduce((s,r)=>s+r.requests,0).toLocaleString();}});
+});
+
+boot();
+</script>
+</body>
+</html>

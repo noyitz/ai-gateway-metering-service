@@ -180,6 +180,11 @@ func (h *KeysHandler) HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 		if p, err := h.store.GetUserProfile(r.Context(), user); err == nil {
 			resp["display_name"] = p.DisplayName()
 		}
+		// Org scope fields (additive): the tabs use isManager to show the
+		// /manager entry, and the manager page uses scopeSize for its KPI.
+		isManager, scopeSize := WhoAmIScope(r, h.store, h.cfg)
+		resp["isManager"] = isManager
+		resp["scopeSize"] = scopeSize
 	}
 	// githubId backs the redesigned user dashboard's avatar; only available
 	// when the kubernetes adapter can read OpenShift users.

@@ -49,6 +49,15 @@ type Config struct {
 	// resolved from a header or from the Kubernetes adapter.
 	DefaultGroup string
 
+	// OrgInviteTTLHours bounds a key invite link: a single-use token that
+	// nobody opened is worthless once it expires.
+	OrgInviteTTLHours int
+
+	// KeyRotationOverlapDays is how long the old key stays valid after a
+	// rotation, so nobody's editor dies mid-task. 0 means revoke-on-rotate
+	// (use for a suspected leak).
+	KeyRotationOverlapDays int
+
 	KeyService KeyService
 	Kubernetes Kubernetes
 }
@@ -118,15 +127,21 @@ func (k Kubernetes) Enabled() bool {
 // Load resolves configuration from the environment.
 func Load() Config {
 	return Config{
-		DatabaseURL:               os.Getenv("DATABASE_URL"),
-		Port:                      envDefault("PORT", "8080"),
-		MonthlyTokenQuota:         envFloat("MONTHLY_TOKEN_QUOTA", DefaultMonthlyTokenQuota),
-		EventSource:               envDefault("EVENT_SOURCE", "ai-gateway"),
-		UserHeader:                envDefault("AUTH_USER_HEADER", "X-Forwarded-User"),
-		GroupsHeader:              envDefault("AUTH_GROUPS_HEADER", "X-Forwarded-Groups"),
-		AdminUsers:                envList("ADMIN_USERS"),
-		AllowUnauthenticatedAdmin: envBool("ALLOW_UNAUTHENTICATED_ADMIN", true),
+		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		Port:              envDefault("PORT", "8080"),
+		MonthlyTokenQuota: envFloat("MONTHLY_TOKEN_QUOTA", DefaultMonthlyTokenQuota),
+		EventSource:       envDefault("EVENT_SOURCE", "ai-gateway"),
+		UserHeader:        envDefault("AUTH_USER_HEADER", "X-Forwarded-User"),
+		GroupsHeader:      envDefault("AUTH_GROUPS_HEADER", "X-Forwarded-Groups"),
+		AdminUsers:        envList("ADMIN_USERS"),
+		// Default false: since the org/manager feature this service decides
+		// who may see whose spend, so an anonymous caller is nobody. Set
+		// ALLOW_UNAUTHENTICATED_ADMIN=true deliberately for local
+		// development only.
+		AllowUnauthenticatedAdmin: envBool("ALLOW_UNAUTHENTICATED_ADMIN", false),
 		DefaultGroup:              envDefault("DEFAULT_GROUP", "default"),
+		OrgInviteTTLHours:         envInt("ORG_INVITE_TTL_HOURS", 72),
+		KeyRotationOverlapDays:    envInt("KEY_ROTATION_OVERLAP_DAYS", 7),
 		KeyService: KeyService{
 			URL:                strings.TrimSuffix(os.Getenv("KEY_SERVICE_URL"), "/"),
 			UserHeader:         envDefault("KEY_SERVICE_USER_HEADER", "X-Auth-Username"),
@@ -174,6 +189,13 @@ func envList(key string) []string {
 		}
 	}
 	return result
+}
+
+func envInt(key string, fallback int) int {
+	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v >= 0 {
+		return v
+	}
+	return fallback
 }
 
 func envBool(key string, fallback bool) bool {
