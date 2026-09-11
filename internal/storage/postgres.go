@@ -714,6 +714,9 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("migration failed: %w", err)
 		}
 	}
+	if err := s.migrateOrg(ctx); err != nil {
+		return err
+	}
 	slog.Info("database migrations complete")
 	return nil
 }

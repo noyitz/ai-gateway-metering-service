@@ -219,7 +219,14 @@ func (h *AuthHandler) HandleImpersonate(w http.ResponseWriter, r *http.Request) 
 	h.setCookie(w, session.Username, session.Groups, target)
 	// /dashboard serves the personal user page while impersonating (the
 	// operator dashboard is only shown for a real, non-swapped admin view).
-	http.Redirect(w, r, "/dashboard", http.StatusFound)
+	// ?to= lets the admin land on /manager instead, to see exactly what a
+	// manager on their team sees. Strict allowlist — never an open redirect.
+	dest := "/dashboard"
+	switch r.URL.Query().Get("to") {
+	case "/manager", "manager":
+		dest = "/manager"
+	}
+	http.Redirect(w, r, dest, http.StatusFound)
 }
 
 func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {

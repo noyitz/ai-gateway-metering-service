@@ -35,8 +35,9 @@ func (h *DashboardHandler) ServeDashboard(w http.ResponseWriter, r *http.Request
 func (h *DashboardHandler) HandleOverview(w http.ResponseWriter, r *http.Request) {
 	since, until := parseTimeWindow(r)
 	group, user, model := parseFilters(r)
-	if !IsAdmin(h.cfg, r) {
-		user = r.Header.Get(h.cfg.UserHeader)
+	var ok bool
+	if user, ok = ApplyScope(w, r, h.store, h.cfg, user); !ok {
+		return
 	}
 	result, err := h.store.GetDashboardOverview(r.Context(), since, until, group, user, model)
 	if err != nil {
@@ -50,8 +51,9 @@ func (h *DashboardHandler) HandleOverview(w http.ResponseWriter, r *http.Request
 func (h *DashboardHandler) HandleGroups(w http.ResponseWriter, r *http.Request) {
 	since, until := parseTimeWindow(r)
 	group, user, model := parseFilters(r)
-	if !IsAdmin(h.cfg, r) {
-		user = r.Header.Get(h.cfg.UserHeader)
+	var ok bool
+	if user, ok = ApplyScope(w, r, h.store, h.cfg, user); !ok {
+		return
 	}
 	result, err := h.store.GetDashboardGroups(r.Context(), since, until, group, user, model)
 	if err != nil {
@@ -68,8 +70,9 @@ func (h *DashboardHandler) HandleGroups(w http.ResponseWriter, r *http.Request) 
 func (h *DashboardHandler) HandleUsers(w http.ResponseWriter, r *http.Request) {
 	since, until := parseTimeWindow(r)
 	group, user, model := parseFilters(r)
-	if !IsAdmin(h.cfg, r) {
-		user = r.Header.Get(h.cfg.UserHeader)
+	var ok bool
+	if user, ok = ApplyScope(w, r, h.store, h.cfg, user); !ok {
+		return
 	}
 	sortCol := r.URL.Query().Get("sort")
 	sortOrder := r.URL.Query().Get("order")
@@ -95,8 +98,9 @@ func (h *DashboardHandler) HandleUsers(w http.ResponseWriter, r *http.Request) {
 func (h *DashboardHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 	since, until := parseTimeWindow(r)
 	group, user, model := parseFilters(r)
-	if !IsAdmin(h.cfg, r) {
-		user = r.Header.Get(h.cfg.UserHeader)
+	var ok bool
+	if user, ok = ApplyScope(w, r, h.store, h.cfg, user); !ok {
+		return
 	}
 	result, err := h.store.GetDashboardModels(r.Context(), since, until, group, user, model)
 	if err != nil {
@@ -113,8 +117,9 @@ func (h *DashboardHandler) HandleModels(w http.ResponseWriter, r *http.Request) 
 func (h *DashboardHandler) HandleTimeline(w http.ResponseWriter, r *http.Request) {
 	since, until := parseTimeWindow(r)
 	group, user, model := parseFilters(r)
-	if !IsAdmin(h.cfg, r) {
-		user = r.Header.Get(h.cfg.UserHeader)
+	var ok bool
+	if user, ok = ApplyScope(w, r, h.store, h.cfg, user); !ok {
+		return
 	}
 	groupBy := r.URL.Query().Get("group_by")
 	if groupBy != "user" {
@@ -138,8 +143,9 @@ func (h *DashboardHandler) HandleRecent(w http.ResponseWriter, r *http.Request) 
 		limit = l
 	}
 	group, user, model := parseFilters(r)
-	if !IsAdmin(h.cfg, r) {
-		user = r.Header.Get(h.cfg.UserHeader)
+	var ok bool
+	if user, ok = ApplyScope(w, r, h.store, h.cfg, user); !ok {
+		return
 	}
 	result, err := h.store.GetRecentEvents(r.Context(), limit, group, user, model)
 	if err != nil {
