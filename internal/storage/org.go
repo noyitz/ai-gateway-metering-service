@@ -820,7 +820,7 @@ func (s *Store) OrgTree(ctx context.Context, rootSlug string) (*OrgTreeNode, err
 			SELECT p.slug, st.depth + 1 FROM people p JOIN subtree st ON p.manager_slug = st.slug
 			WHERE st.depth < 50
 		)
-		SELECT s.slug, s.depth FROM subtree s ORDER BY s.depth, s.slug`)
+		SELECT s.slug, s.depth FROM subtree s ORDER BY s.depth, s.slug`, rootSlug)
 	if err != nil {
 		return nil, err
 	}
