@@ -77,9 +77,9 @@ This format is compatible with [OpenMeter](https://openmeter.io) and can be adap
 | Cache write | Tokens written to cache | — | `cache_creation_input_tokens` |
 | Reasoning | Chain-of-thought tokens | `completion_tokens_details.reasoning_tokens` | — |
 
-## Simulating Metering Providers
+## Using This Service as a Metering Provider
 
-This service acts as a **drop-in simulator** for metering backends. The gateway's `external-metering` filter sends CloudEvents to whatever URL is configured — point it at this service for development, OpenMeter for staging, or a commercial billing system for production.
+This service is a **drop-in metering backend**, in real use behind an AI inference gateway. The gateway's `external-metering` filter sends CloudEvents to whatever URL is configured — this service, OpenMeter, or a commercial billing system — and the API surface is identical across them, so integrations built against one carry over to the others.
 
 ```
 Development:  meteringURL → ai-gateway-metering-service (this repo)
