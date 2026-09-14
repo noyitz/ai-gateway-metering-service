@@ -165,7 +165,7 @@ var modelChart=null,cachedModels=[];
 var COLORS=['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#39d2c0','#f778ba','#79c0ff','#7ee787','#e3b341'];
 
 function fmtN(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return String(n)}
-function fmtC(n){return '$'+n.toFixed(2)}
+function fmtC(n){if(n==null)return'$0.00';if(n!==0&&Math.abs(n)<0.01)return'$'+n.toFixed(4);return'$'+n.toFixed(2)}
 function fmtDate(s){if(!s)return'—';var d=new Date(s);return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
 function fmtTime(s){if(!s)return'—';var d=new Date(s);return d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
 function api(u){return fetch(u).then(function(r){if(!r.ok)throw new Error(r.statusText);return r.json()})}
