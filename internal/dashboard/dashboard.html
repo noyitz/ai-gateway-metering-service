@@ -261,7 +261,7 @@ let catalogModels=[];
 const COLORS=['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#39d2c0','#f778ba','#79c0ff','#7ee787','#e3b341','#ff9a8c','#d2a8ff','#56d4dd','#ffa657','#a5d6ff'];
 
 function fmtN(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return n.toString()}
-function fmtC(n){return '$'+n.toFixed(2)}
+function fmtC(n){if(n==null)return'$0.00';if(n!==0&&Math.abs(n)<0.01)return'$'+n.toFixed(4);return'$'+n.toFixed(2)}
 function fmtGroup(g){if(!g)return'';try{var a=JSON.parse(g);return Array.isArray(a)?a.join(', '):g;}catch(e){return g.replace(/^\["|"\]$/g,'').replace(/","/g,', ');}}
 // Render a user cell: "First Last" with the email muted beneath it when a
 // display name is known, otherwise just the username.
