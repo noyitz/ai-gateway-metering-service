@@ -346,15 +346,15 @@ footer .mono{font-size:12px}
     <div class="card">
       <h3>Claude Code in two lines</h3>
       <p class="cap">Point it at the unified route and go.</p>
+      <div class="callout warn"><span class="glyph">!</span><div class="cbody">
+        <p>If you've used Vertex or BedLab before, leftover variables silently bypass the gateway — run this <strong>before</strong> the block below, and clear it out of your <code>.zshrc</code> too.</p>
+        <div class="codebox"><button class="copy">copy</button><pre><span class="k">unset</span> CLAUDE_CODE_USE_VERTEX
+<span class="k">unset</span> ANTHROPIC_VERTEX_PROJECT_ID</pre></div>
+      </div></div>
       <div class="codebox hasname"><div class="fname">bash</div><button class="copy">copy</button><pre><span class="k">export</span> ANTHROPIC_BASE_URL=<span class="s">{{UNIFIED_URL}}</span>
 <span class="k">export</span> ANTHROPIC_API_KEY=<span class="s">$PRICETAG_KEY</span>
 
 claude</pre></div>
-      <div class="callout warn"><span class="glyph">!</span><div class="cbody">
-        <p>If you've used Vertex or BedLab before, leftover variables silently bypass the gateway — run this in every new shell, and clear it out of your <code>.zshrc</code> too.</p>
-        <div class="codebox"><button class="copy">copy</button><pre><span class="k">unset</span> CLAUDE_CODE_USE_VERTEX
-<span class="k">unset</span> ANTHROPIC_VERTEX_PROJECT_ID</pre></div>
-      </div></div>
     </div>
   </div>
 </section>
