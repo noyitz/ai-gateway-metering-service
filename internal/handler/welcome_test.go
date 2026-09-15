@@ -32,7 +32,7 @@ func TestServeWelcomeSubstitution(t *testing.T) {
 		"https://openai.test/v1",
 		"https://dash.test",
 		"10B monthly allowance",
-		"Qwen3.8-Flash-Next-NVFP4",
+		"qwen38-flash-next",
 		"effortLevel",
 	} {
 		if !strings.Contains(body, want) {
