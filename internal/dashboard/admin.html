@@ -604,7 +604,7 @@ td .tag{white-space:nowrap}
       <button class="btn btn-outline" style="margin-left:8px;padding:6px 14px;font-size:10px" onclick="copyInviteURL()">Copy link only</button>
     </div>
     <div class="picker-row">
-      <select id="inv-person"></select>
+      <select id="inv-person" onchange="clearInviteResult()"></select>
       <select id="inv-group"></select>
       <input type="text" class="tbl-input" id="inv-name" placeholder="key name (optional)" style="max-width:180px;width:auto">
       <button class="btn btn-grn" onclick="createInvite()">Create invite</button>
@@ -1528,6 +1528,7 @@ function populateInvitePickers() {
 function openInviteFor(slug) {
   deepInviteSlug = slug;
   showTab('keys');
+  clearInviteResult(); // never arrive wearing the last invite's message
   var apply = function() {
     populateInvitePickers();
     var sel = document.getElementById('inv-person');
@@ -1601,6 +1602,17 @@ function setInviteResult(msgElId, personName, r) {
 
 function copyInviteText() { fallbackCopy(lastInviteText); }
 function copyInviteURL() { fallbackCopy(lastInviteURL); }
+
+// The success box only ever describes the invite just created. It must die
+// the moment the picker points at someone else — otherwise a deep-link from
+// People lands on a stale "Hi <previous person>" message and looks like the
+// new invite went to the wrong human (it didn't; the box just never left).
+function clearInviteResult() {
+  var box = document.getElementById('invite-created');
+  if (box) box.style.display = 'none';
+  lastInviteText = '';
+  lastInviteURL = '';
+}
 
 function createInvite() {
   var body = {
