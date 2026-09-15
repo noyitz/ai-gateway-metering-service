@@ -118,6 +118,8 @@ body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMa
 }
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .btn-grn{background:var(--grn);color:#fff}
+@keyframes invitePulse{0%,100%{box-shadow:none}30%{box-shadow:0 0 0 2px var(--grn)}}
+.card.invite-flash{animation:invitePulse 1.1s ease 2}
 .btn-grn:hover:not(:disabled){background:#45d676;box-shadow:0 4px 12px rgba(61,204,110,.3)}
 .btn-blu{background:var(--blu);color:#fff}
 .btn-blu:hover:not(:disabled){background:#5eadf9;box-shadow:0 4px 12px rgba(77,160,248,.3)}
@@ -1521,13 +1523,28 @@ function openInviteFor(slug) {
     populateInvitePickers();
     var sel = document.getElementById('inv-person');
     if (sel) sel.value = slug;
-    if (sel && sel.value === slug) deepInviteSlug = '';
+    if (sel && sel.value === slug) {
+      deepInviteSlug = '';
+      // One-click intent: preselect the person's own group when the picker
+      // knows it — the admin reviews and presses Create, that's the whole
+      // job. (Create is never automatic; a human presses the button.)
+      var p = peopleAll.filter(function(x) { return x.slug === slug; })[0];
+      var gsel = document.getElementById('inv-group');
+      if (p && p.group_name && gsel) {
+        for (var i = 0; i < gsel.options.length; i++) {
+          if (gsel.options[i].value === p.group_name) { gsel.value = p.group_name; break; }
+        }
+      }
+    }
   };
   if (Array.isArray(peopleAll) && peopleAll.length) apply();
   else loadPeople(apply);
   loadInvites();
   var card = document.getElementById('invites-card');
   card.scrollIntoView({ behavior: 'smooth' });
+  card.classList.remove('invite-flash');
+  void card.offsetWidth; // restart the animation even on repeat clicks
+  card.classList.add('invite-flash');
 }
 
 function loadInvites() {
