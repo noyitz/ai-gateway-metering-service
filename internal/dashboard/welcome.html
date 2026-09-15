@@ -164,13 +164,15 @@ pre{
 pre .c{color:var(--code-dim)}
 pre .k{color:#8FD9B2}
 pre .s{color:#E8C37B}
+.codebox pre{padding-right:74px} /* keep code clear of the copy chip's column */
 .copy{
   position:absolute; top:26px; right:8px; z-index:2;
-  font:500 11px "IBM Plex Mono",monospace; color:var(--code-dim);
-  background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14);
-  border-radius:6px; padding:3px 9px; cursor:pointer;
+  font:600 11px "IBM Plex Mono",monospace; color:#DCE1D4;
+  background:rgba(20,28,22,.92); border:1px solid rgba(255,255,255,.3);
+  border-radius:6px; padding:4px 10px; cursor:pointer;
+  box-shadow:0 1px 3px rgba(0,0,0,.4);
 }
-.copy:hover{color:#fff; background:rgba(255,255,255,.16)}
+.copy:hover{color:#fff; border-color:rgba(255,255,255,.55); background:rgba(40,52,44,.95)}
 .copy.done{color:#8FD9B2}
 .hasname .copy{top:32px}
 
@@ -377,7 +379,7 @@ claude</pre></div>
 <!-- ============ CODEX ============ -->
 <section id="codex">
   <h2><span class="no">05</span>Set up Codex</h2>
-  <p class="lede">Codex talks the OpenAI dialect, so it rides the OpenAI route. Covers the GPT lineup (gpt-5.x), including <span class="mono">gpt-5.3-codex</span>.</p>
+  <p class="lede">Codex speaks OpenAI Responses, so setup is one provider block per route: GPT on the OpenAI route, hosted Qwen on the unified route. GPT first — the lineup (gpt-5.x) including <span class="mono">gpt-5.3-codex</span>:</p>
   <div class="codebox hasname"><div class="fname">~/.codex/config.toml</div><button class="copy">copy</button><pre><span class="c"># provider: PriceTag gateway</span>
 [<span class="k">model_providers.pricetag</span>]
 name     = <span class="s">"PriceTag"</span>
@@ -390,7 +392,18 @@ model          = <span class="s">"gpt-5.3-codex"</span>
 model_provider = <span class="s">"pricetag"</span></pre></div>
   <div class="codebox"><button class="copy">copy</button><pre><span class="k">export</span> PRICETAG_KEY=<span class="s">pk-your-key</span>
 codex --profile pricetag</pre></div>
-  <div class="callout warn"><span class="glyph">!</span><p>The hosted Qwen is <strong>not reachable through Codex</strong> — this route fronts OpenAI models only. Want Qwen in your agent loop? Use Claude Code (§4) or OpenCode (§6).</p></div>
+  <p class="cap" style="margin:18px 0 10px">And the hosted Qwen — a second provider pointed at the unified route, which serves <span class="mono">/v1/responses</span> for it too:</p>
+  <div class="codebox hasname"><div class="fname">~/.codex/config.toml — add</div><button class="copy">copy</button><pre>[<span class="k">model_providers.qwen</span>]
+name        = <span class="s">"PriceTag hosted"</span>
+base_url    = <span class="s">"{{UNIFIED_URL}}"</span>
+wire_api    = <span class="s">"responses"</span>
+http_headers = { <span class="k">"x-api-key"</span> = <span class="s">"pk-your-key"</span> }  <span class="c"># the unified route wants the key here, not as a bearer token</span>
+
+[<span class="k">profiles.qwen</span>]
+model          = <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>
+model_provider = <span class="s">"qwen"</span></pre></div>
+  <div class="codebox"><button class="copy">copy</button><pre>codex --profile qwen</pre></div>
+  <div class="callout good"><span class="glyph">✓</span><p>One catch: Codex only shows its own built-in models in the <span class="mono">/model</span> picker, so pin the hosted model id in the profile as above — it works, it just won't appear in the list.</p></div>
 </section>
 
 <!-- ============ OPENCODE ============ -->
@@ -448,12 +461,11 @@ codex --profile pricetag</pre></div>
       <p class="head">Select model</p>
       <p class="sub">Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, specify with --model.</p>
       <div class="rows">
-        <div class="r"><span class="n">↑ 5. Sonnet 5 (1M context)</span><span class="d">Sonnet 5 for long sessions · $2/$10 per Mtok</span></div>
-        <div class="r"><span class="n">6. Haiku</span><span class="d">Haiku 4.5 · Fastest for quick answers · $1/$5 per Mtok</span></div>
-        <div class="r"><span class="n">7. Claude Opus 4.8</span><span class="d">From gateway</span></div>
-        <div class="r"><span class="n">8. Qwen 3.8 27B (self-hosted)</span><span class="d">Hosted-Model vLLM via PriceTag gateway · $0.21/$2.55 per Mtok</span></div>
-        <div class="r sel"><span class="n">▸ 9. Qwen 3.8 Flash Next (NVFP4) ✓</span><span class="d">Hosted-Model vLLM via PriceTag gateway · $0.15/$0.47 per Mtok</span></div>
-        <div class="r more"><span class="n">… +4 models</span></div>
+        <div class="r"><span class="n">1. Fable</span><span class="d">Claude Fable 5 · Frontier reasoning · From gateway</span></div>
+        <div class="r"><span class="n">2. Opus 5</span><span class="d">Claude Opus 5 · Deep thinking · From gateway</span></div>
+        <div class="r"><span class="n">3. Sonnet 5</span><span class="d">Claude Sonnet 5 · $2/$10 per Mtok</span></div>
+        <div class="r"><span class="n">4. Haiku</span><span class="d">Haiku 4.5 · Fastest for quick answers · $1/$5 per Mtok</span></div>
+        <div class="r sel"><span class="n">▸ 5. Qwen 3.8 Flash Next (NVFP4) ✓</span><span class="d">Hosted-Model vLLM via PriceTag gateway · $0.15/$0.47 per Mtok</span></div>
       </div>
       <p class="eff"><i>◐</i> Medium effort <i>←/→</i> to adjust</p>
     </div>
@@ -555,14 +567,13 @@ codex --profile pricetag</pre></div>
     W = r.width; H = r.height;
     cv.width = W*dpr; cv.height = H*dpr;
     ctx.setTransform(dpr,0,0,dpr,0,0);
-    /* the gateway line sits clear of the headline block's right edge (never
-       through the text), but never closer than ~55% of the canvas; on narrow
-       screens it parks near the right edge and tokens price themselves there */
+    /* the gateway line sits at the end of the "PriceTag" title itself — the
+       inline span's text edge, not the h1's block box, which spans the whole
+       column — with a small breath of space, capped so it stays on canvas */
     var right = 0, cr = cv.getBoundingClientRect();
-    if (hero) hero.querySelectorAll("h1, .sub").forEach(function(el){
-      right = Math.max(right, el.getBoundingClientRect().right);
-    });
-    cx = Math.min(W-64, Math.max(W*0.55, right - cr.left + 56));
+    var el = hero && (hero.querySelector("h1 .pricetag") || hero.querySelector("h1"));
+    if (el) right = el.getBoundingClientRect().right;
+    cx = Math.max(24, Math.min(W-24, right - cr.left + 22));
   }
   function spawn(){
     return {
