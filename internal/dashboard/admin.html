@@ -1482,14 +1482,22 @@ function loadKeys() {
 /* ================================================================
    Keys tab: Invitations
    ================================================================ */
+// A person picker that silently defaults to the first human in the
+// directory is a misdirected-invite machine (deep-link races used to land
+// on an alphabetical first, and Create would happily invite them). An
+// unset picker now means "nobody", and a deep-link slug is re-asserted on
+// every rebuild so refreshes can't clobber it out from under the click.
+var deepInviteSlug = '';
+
 function populateInvitePickers() {
   var psel = document.getElementById('inv-person');
   if (!psel || !Array.isArray(peopleAll) || !peopleAll.length) return;
   var cur = psel.value;
-  psel.innerHTML = peopleAll.map(function(p) {
+  if (deepInviteSlug && peopleAll.some(function(p) { return p.slug === deepInviteSlug; })) cur = deepInviteSlug;
+  psel.innerHTML = '<option value="">— pick a person —</option>' + peopleAll.map(function(p) {
     return '<option value="' + esc(p.slug) + '">' + esc(p.full_name) + (p.username ? ' · has key' : '') + '</option>';
   }).join('');
-  if (cur) psel.value = cur;
+  psel.value = cur || '';
   var gsel = document.getElementById('inv-group');
   var curG = gsel.value;
   // Canonical subscription groups when we have them (same source the
@@ -1501,13 +1509,22 @@ function populateInvitePickers() {
   if (curG) gsel.value = curG;
 }
 
-/* Deep-link from a people row: jump to the Keys tab with the person picked. */
+/* Deep-link from a people row: jump to the Keys tab with the person picked.
+   The slug is applied now (if the people cache is warm) and again once the
+   cache lands; deepInviteSlug makes every intermediate picker rebuild keep
+   re-selecting them, so no refresh can drop the selection. Cleared once the
+   select actually shows them — from then on it's the admin's choice. */
 function openInviteFor(slug) {
+  deepInviteSlug = slug;
   showTab('keys');
-  loadPeople(function() {
+  var apply = function() {
     populateInvitePickers();
-    document.getElementById('inv-person').value = slug;
-  });
+    var sel = document.getElementById('inv-person');
+    if (sel) sel.value = slug;
+    if (sel && sel.value === slug) deepInviteSlug = '';
+  };
+  if (Array.isArray(peopleAll) && peopleAll.length) apply();
+  else loadPeople(apply);
   loadInvites();
   var card = document.getElementById('invites-card');
   card.scrollIntoView({ behavior: 'smooth' });
