@@ -383,12 +383,12 @@ claude</pre></div>
       <p>Claude Code's model filter only keeps <em>claude/anthropic</em> ids, so discovery alone never shows the hosted Qwen. Pin it explicitly (needs Claude Code ≥ 2.1.242):</p>
       <div class="codebox hasname"><div class="fname">~/.claude/settings.json — add</div><button class="copy">copy</button><pre>{
   <span class="k">"modelPicker"</span>: [
-    { <span class="k">"model"</span>: <span class="s">"qwen38-flash-next"</span>,
+    { <span class="k">"model"</span>: <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>,
       <span class="k">"label"</span>: <span class="s">"Qwen 3.8 Flash Next"</span>,
       <span class="k">"description"</span>: <span class="s">"Hosted vLLM via PriceTag — $0.15/$0.47 per MTok"</span> }
   ],
   <span class="k">"modelSettings"</span>: {
-    <span class="s">"qwen38-flash-next"</span>: { <span class="k">"effortLevel"</span>: <span class="s">"medium"</span> }
+    <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>: { <span class="k">"effortLevel"</span>: <span class="s">"medium"</span> }
   }
 }</pre></div>
       <div class="callout warn"><span class="glyph">!</span><p>Use the model id <strong>exactly</strong> as shown — on the unified route an unknown id falls through to Anthropic and 404s. And keep <span class="mono">effortLevel</span> at <span class="mono">"medium"</span>: the hosted endpoint accepts <span class="mono">low/medium/xhigh</span> and rejects <span class="mono">"high"</span>.</p></div>
@@ -420,7 +420,7 @@ wire_api    = <span class="s">"responses"</span>
 http_headers = { <span class="k">"x-api-key"</span> = <span class="s">"pk-your-key"</span> }  <span class="c"># the unified route wants the key here, not as a bearer token</span>
 
 [<span class="k">profiles.qwen</span>]
-model          = <span class="s">"qwen38-flash-next"</span>
+model          = <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>
 model_provider = <span class="s">"qwen"</span></pre></div>
   <div class="codebox"><button class="copy">copy</button><pre>codex --profile qwen</pre></div>
   <div class="callout good"><span class="glyph">✓</span><p>One catch: Codex only shows its own built-in models in the <span class="mono">/model</span> picker, so pin the hosted model id in the profile as above — it works, it just won't appear in the list.</p></div>
@@ -444,7 +444,7 @@ model_provider = <span class="s">"qwen"</span></pre></div>
       <span class="k">"name"</span>: <span class="s">"PriceTag (hosted)"</span>,
       <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{UNIFIED_URL}}/v1"</span>, <span class="k">"apiKey"</span>: <span class="s">"{env:PRICETAG_KEY}"</span> },
       <span class="k">"models"</span>: {
-        <span class="k">"qwen38-flash-next"</span>: {
+        <span class="k">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>: {
           <span class="k">"name"</span>: <span class="s">"Qwen 3.8 Flash Next (hosted)"</span>,
           <span class="k">"limit"</span>: { <span class="k">"context"</span>: 262144, <span class="k">"output"</span>: 8192 }
         }
@@ -489,7 +489,7 @@ model_provider = <span class="s">"qwen"</span></pre></div>
 <!-- ============ HOSTED ============ -->
 <section id="hosted">
   <h2><span class="no">07</span>Hosted models, starting with Qwen 3.8 Flash Next</h2>
-  <p class="lede">Self-hosted vLLM on our own hardware, exposed through the unified route under the id <span class="mono">qwen38-flash-next</span>. FP4 quantisation, <strong>262K context</strong>, and the price per token is a rounding error — billed honestly, tracked in your dashboard like everything else. It's the first of more hosted models to come.</p>
+  <p class="lede">Self-hosted vLLM on our own hardware, exposed through the unified route under the id <span class="mono">Inferact/Qwen3.8-Flash-Next-NVFP4</span>. FP4 quantisation, <strong>262K context</strong>, and the price per token is a rounding error — billed honestly, tracked in your dashboard like everything else. It's the first of more hosted models to come.</p>
   <div class="rates">
     <div class="rate"><div class="top"><span class="v">$0.15</span><span class="per">/ MTok</span></div><div class="k">Input</div></div>
     <div class="rate"><div class="top"><span class="v">$0.47</span><span class="per">/ MTok</span></div><div class="k">Output</div></div>
