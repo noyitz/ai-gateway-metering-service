@@ -80,7 +80,7 @@ nav .links a.cta{color:var(--accent-ink); font-weight:600}
 /* ---------- hero ---------- */
 header{position:relative; overflow:hidden; border-bottom:1px solid var(--line)}
 #flow{position:absolute; inset:0; width:100%; height:100%}
-.hero{position:relative; padding:72px 0 72px}
+.hero{position:relative; padding:72px 0 30px}
 .eyebrow{
   display:inline-flex; align-items:center; gap:8px;
   font:600 12px/1 "IBM Plex Mono",monospace; letter-spacing:.14em; text-transform:uppercase;
@@ -100,6 +100,7 @@ h1 .pricetag{color:var(--accent)}
 
 /* ---------- sections ---------- */
 section{padding:56px 0 8px}
+#why{padding-top:20px}
 h2{font-size:28px; letter-spacing:-.015em; font-weight:700; margin-bottom:6px}
 .lede{color:var(--muted); margin-bottom:26px}
 h2 .no{font:600 13px "IBM Plex Mono",monospace; color:var(--faint); margin-right:10px; vertical-align:3px}
@@ -260,8 +261,8 @@ footer .mono{font-size:12px}
   <div class="wrap">
     <a class="brand" href="#"><span class="tag"></span>PriceTag</a>
     <div class="links">
-      <a href="#key">Key</a>
       <a href="#quickstart">Quick start</a>
+      <a href="#key">Key</a>
       <a href="#claude">Claude Code</a>
       <a href="#codex">Codex</a>
       <a href="#opencode">OpenCode</a>
@@ -320,45 +321,9 @@ footer .mono{font-size:12px}
   <h2>Get Started</h2>
 </div>
 
-<!-- ============ ROUTES ============ -->
-<section id="routes">
-  <h2><span class="no">01</span>Know your routes</h2>
-  <p class="lede">Three endpoints, one key. Pick the one that speaks your client's dialect — the path suffixes differ on purpose.</p>
-  <div class="routes">
-    <div class="route">
-      <div><div class="name">Unified route</div>
-        <div class="dialect">Anthropic dialect · POST /v1/messages · no /v1 suffix</div>
-        <div class="url">{{UNIFIED_URL}}</div></div>
-      <div class="note">Everything Claude Code and other Anthropic-dialect clients expect. Routes <em>claude-*</em> to the real Anthropic API and the hosted <em>Qwen*</em> ids to our own vLLM — same URL, switch models freely.</div>
-      <div class="auth">x-api-key: pk-…</div>
-    </div>
-    <div class="route">
-      <div><div class="name">OpenAI route</div>
-        <div class="dialect">OpenAI dialect · POST /v1/chat/completions · base URL ends in /v1</div>
-        <div class="url">{{OPENAI_URL}}</div></div>
-      <div class="note">For Codex, OpenCode and any OpenAI-compatible client. Covers the GPT lineup (gpt-5.x). Hosted Qwen is served on the unified route, not here.</div>
-      <div class="auth">Authorization: Bearer pk-…</div>
-    </div>
-    <div class="route">
-      <div><div class="name">Dashboard</div>
-        <div class="dialect">usage · spend · savings · your keys</div>
-        <div class="url">{{DASHBOARD_URL}}</div></div>
-      <div class="note">Every token you send shows up here within seconds, attributed by model and day, with cost computed against the live price list.</div>
-      <div class="auth">SSO login</div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ KEY ============ -->
-<section id="key">
-  <h2><span class="no">02</span>Get a key</h2>
-  <p class="lede">One key works on both routes. Ask a gateway admin — <strong>Noy Itzikowitz</strong> or <strong>Yossi Ovadia</strong> — for a <span class="mono">pk-…</span> key, or sign in to the dashboard with SSO and mint one yourself under <em>My account → API keys</em>.</p>
-  <div class="callout good"><span class="glyph">✓</span><p>Your subscription includes <strong>{{QUOTA_LABEL}} tokens per month</strong>. Hosted-model traffic is billed at a fraction of vendor rates, so it stretches roughly twenty times further than frontier Claude.</p></div>
-</section>
-
 <!-- ============ QUICKSTART ============ -->
 <section id="quickstart">
-  <h2><span class="no">03</span>Quick start</h2>
+  <h2><span class="no">01</span>Quick start</h2>
   <p class="lede">Two commands to prove everything works, before you touch any config file.</p>
   <div class="duo">
     <div class="card">
@@ -382,9 +347,16 @@ claude</pre></div>
   </div>
 </section>
 
+<!-- ============ KEY ============ -->
+<section id="key">
+  <h2><span class="no">02</span>Get a key</h2>
+  <p class="lede">One key works on both routes. Ask a gateway admin — <strong>Noy Itzikowitz</strong> or <strong>Yossi Ovadia</strong> — for a <span class="mono">pk-…</span> key, or sign in to the dashboard with SSO and mint one yourself under <em>My account → API keys</em>.</p>
+  <div class="callout good"><span class="glyph">✓</span><p>Your subscription includes <strong>{{QUOTA_LABEL}} tokens per month</strong>. Hosted-model traffic is billed at a fraction of vendor rates, so it stretches roughly twenty times further than frontier Claude.</p></div>
+</section>
+
 <!-- ============ CLAUDE CODE ============ -->
 <section id="claude">
-  <h2><span class="no">04</span>Set up Claude Code, properly</h2>
+  <h2><span class="no">03</span>Set up Claude Code, properly</h2>
   <p class="lede">Make it permanent in <span class="mono">~/.claude/settings.json</span> and teach the <span class="mono">/model</span> picker about the hosted model.</p>
 
   <div class="steps">
@@ -421,7 +393,7 @@ claude</pre></div>
 
 <!-- ============ CODEX ============ -->
 <section id="codex">
-  <h2><span class="no">05</span>Set up Codex</h2>
+  <h2><span class="no">04</span>Set up Codex</h2>
   <p class="lede">Codex speaks OpenAI Responses, so setup is one provider block per route: GPT on the OpenAI route, hosted Qwen on the unified route. GPT first — the lineup (gpt-5.x) including <span class="mono">gpt-5.3-codex</span>:</p>
   <div class="codebox hasname"><div class="fname">~/.codex/config.toml</div><button class="copy">copy</button><pre><span class="c"># provider: PriceTag gateway</span>
 [<span class="k">model_providers.pricetag</span>]
@@ -451,7 +423,7 @@ model_provider = <span class="s">"qwen"</span></pre></div>
 
 <!-- ============ OPENCODE ============ -->
 <section id="opencode">
-  <h2><span class="no">06</span>Set up OpenCode</h2>
+  <h2><span class="no">05</span>Set up OpenCode</h2>
   <p class="lede">OpenCode can ride <em>both</em> routes at once: GPT via the OpenAI-compatible provider, hosted Qwen via the Anthropic provider against the unified route.</p>
   <div class="codebox hasname"><div class="fname">opencode.json (project root)</div><button class="copy">copy</button><pre>{
   <span class="k">"$schema"</span>: <span class="s">"https://opencode.ai/config.json"</span>,
@@ -477,6 +449,35 @@ model_provider = <span class="s">"qwen"</span></pre></div>
   <span class="k">"model"</span>: <span class="s">"pricetag/gpt-5.6-luna"</span>
 }</pre></div>
   <p>Switch models inside OpenCode with <span class="mono">/models</span> — <span class="mono">pricetag-hosted/…</span> entries run on our vLLM and bill at hosted rates.</p>
+</section>
+
+<!-- ============ ROUTES (reference, after the setup steps) ============ -->
+<section id="routes">
+  <h2><span class="no">06</span>Know your routes</h2>
+  <p class="lede">Three endpoints, one key. Pick the one that speaks your client's dialect — the path suffixes differ on purpose.</p>
+  <div class="routes">
+    <div class="route">
+      <div><div class="name">Unified route</div>
+        <div class="dialect">Anthropic dialect · POST /v1/messages · no /v1 suffix</div>
+        <div class="url">{{UNIFIED_URL}}</div></div>
+      <div class="note">Everything Claude Code and other Anthropic-dialect clients expect. Routes <em>claude-*</em> to the real Anthropic API and the hosted <em>Qwen*</em> ids to our own vLLM — same URL, switch models freely.</div>
+      <div class="auth">x-api-key: pk-…</div>
+    </div>
+    <div class="route">
+      <div><div class="name">OpenAI route</div>
+        <div class="dialect">OpenAI dialect · POST /v1/chat/completions · base URL ends in /v1</div>
+        <div class="url">{{OPENAI_URL}}</div></div>
+      <div class="note">For Codex, OpenCode and any OpenAI-compatible client. Covers the GPT lineup (gpt-5.x). Hosted Qwen is served on the unified route, not here.</div>
+      <div class="auth">Authorization: Bearer pk-…</div>
+    </div>
+    <div class="route">
+      <div><div class="name">Dashboard</div>
+        <div class="dialect">usage · spend · savings · your keys</div>
+        <div class="url">{{DASHBOARD_URL}}</div></div>
+      <div class="note">Every token you send shows up here within seconds, attributed by model and day, with cost computed against the live price list.</div>
+      <div class="auth">SSO login</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ HOSTED ============ -->
