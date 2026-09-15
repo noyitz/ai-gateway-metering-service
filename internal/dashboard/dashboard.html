@@ -85,6 +85,27 @@ tr.clickable{cursor:pointer}
 .user-name{font-weight:600;line-height:1.2}
 .user-mail{font-size:10px;color:var(--text2);margin-top:1px}
 @media(max-width:600px){.kpi-row{grid-template-columns:1fr}}
+/* ── Model pricing modal ──────────────────────────────────────────── */
+.pricing-ov{display:none;position:fixed;inset:0;background:rgba(1,4,9,.72);z-index:150;align-items:flex-start;justify-content:center;padding:5vh 16px}
+.pricing-ov.show{display:flex}
+.pricing-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;width:100%;max-width:780px;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.pm-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.pm-title{font-size:14px;font-weight:700}
+.pm-sub{font-size:11px;color:var(--text2)}
+.pm-opts{margin-left:auto;display:flex;align-items:center;gap:14px;font-size:11px;color:var(--text2)}
+.pm-close{background:var(--bg-hover);color:var(--text2);border:1px solid var(--border);width:26px;height:26px;border-radius:6px;cursor:pointer;font-size:13px;line-height:1}
+.pm-close:hover{color:var(--text);background:var(--border)}
+.pm-body{overflow:auto;padding:4px 18px 16px}
+.pm-body table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.pm-body th{position:sticky;top:0;background:var(--bg-card);text-align:right;padding:8px;color:var(--text2);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+.pm-body td{padding:7px 8px;border-bottom:1px solid var(--bg-hover);text-align:right;vertical-align:top}
+.pm-body th:first-child,.pm-body td:first-child{text-align:left}
+.pm-body .pm-zero{color:var(--text2)}
+.pm-host{display:inline-block;background:rgba(63,185,80,.12);border:1px solid rgba(63,185,80,.4);color:var(--green);border-radius:10px;font-size:9px;font-weight:700;padding:1px 7px;text-transform:uppercase;letter-spacing:.5px;margin-left:8px}
+.pm-list{color:var(--text2);font-size:10px;margin-top:1px}
+.pm-foot{padding:10px 18px 14px;color:var(--text2);font-size:11px;border-top:1px solid var(--border)}
+.pm-open{background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:6px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.pm-open:hover{color:var(--text);border-color:var(--text2)}
 </style>
 </head>
 <body>
@@ -112,8 +133,28 @@ tr.clickable{cursor:pointer}
 
 <header>
   <h1>MaaS Dogfood Environment<span id="last-refresh"></span></h1>
-  <button id="refresh-btn" onclick="refresh()" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;transition:all .15s">Refresh</button>
+  <div style="display:flex;gap:8px;align-items:center">
+    <button class="pm-open" onclick="openPricing()">Pricing</button>
+    <button id="refresh-btn" onclick="refresh()" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;transition:all .15s">Refresh</button>
+  </div>
 </header>
+
+<!-- Model pricing modal: the same rate card on every page, openable anytime -->
+<div class="pricing-ov" id="pricing-ov" onclick="if(event.target===this)closePricing()">
+  <div class="pricing-card" role="dialog" aria-modal="true" aria-label="Model pricing">
+    <div class="pm-head">
+      <span class="pm-title">Model pricing</span>
+      <span class="pm-sub">$ per million tokens</span>
+      <span class="pm-opts">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="pm-all" onchange="loadPricing()"> all catalog models</label>
+        <button class="pm-close" onclick="closePricing()" aria-label="Close">✕</button>
+      </span>
+    </div>
+    <div class="pm-body" id="pm-body"><div class="pm-sub" style="padding:14px 0">Loading…</div></div>
+    <div class="pm-foot">Hosted = runs on our own GPUs, billed at OpenRouter parity rates. Vendor rates come from the LiteLLM catalog.</div>
+  </div>
+</div>
+
 
 <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
   <span style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:600;flex-shrink:0">Filters</span>
@@ -175,13 +216,13 @@ tr.clickable{cursor:pointer}
   <div class="kpi"><span class="kpi-label">Total Requests</span><span id="kpi-requests" class="kpi-value blue">--</span></div>
   <div class="kpi"><span class="kpi-label">Total Tokens</span><span id="kpi-tokens" class="kpi-value green">--</span></div>
   <div class="kpi"><span class="kpi-label">Estimated Cost</span><span id="kpi-cost" class="kpi-value orange">--</span></div>
-  <div class="kpi saved"><span class="kpi-label">Saved · Free Models</span><span id="kpi-savings" class="kpi-value green">--</span><span id="kpi-savings-sub" class="kpi-sub">vs <select id="savings-ref-select" onchange="savingsRef=this.value;refresh();"></select><span id="kpi-savings-note"></span></span></div>
+  <div class="kpi saved"><span class="kpi-label">Saved · Hosted Models</span><span id="kpi-savings" class="kpi-value green">--</span><span id="kpi-savings-sub" class="kpi-sub">vs <select id="savings-ref-select" onchange="savingsRef=this.value;refresh();"></select><span id="kpi-savings-note"></span></span></div>
   <div class="kpi"><span class="kpi-label">Active Users</span><span id="kpi-users" class="kpi-value purple">--</span></div>
 </div>
 
 <div class="charts-row three-col">
   <div class="chart-box">
-    <h2>Token Usage · Free vs Paid</h2>
+    <h2>Token Usage · Hosted vs Vendor</h2>
     <canvas id="savings-chart"></canvas>
   </div>
   <div class="chart-box">
@@ -386,7 +427,7 @@ const COLS=[
   {key:'completion_tokens',label:'Completion Tokens',cls:'num'},
   {key:'total_tokens',label:'Total Tokens',cls:'num'},
   {key:'cost_usd',label:'Cost ($)',cls:'num'},
-  {key:'saved_usd',label:'Free-Model Saved ($)',cls:'num'}
+  {key:'saved_usd',label:'Hosted-Model Saved ($)',cls:'num'}
 ];
 
 let expandedUser='';
@@ -537,14 +578,18 @@ function populateSavingsRef(){
   }).join('');
 }
 
-// A model is "free" when it served real tokens but was metered at $0 --
-// i.e. a local / self-hosted model. Savings = what those same tokens
-// would have cost on the selected paid reference model. The reference
-// is user-selectable and always shown, so the number is never a hidden
-// assumption.
-// Free vs paid token split as a pie, annotated with the dollars those free
-// tokens would have cost on the selected paid reference model. A model counts
-// as "free" when it served real tokens but metered at $0 (local / self-hosted).
+// "Hosted" = models we serve ourselves (provider vllm, plus the legacy qwen
+// alias). Hosted traffic bills at OpenRouter parity, not $0, so it can't be
+// detected by price -- only by provider. The cost==0 catch-all stays for any
+// future deliberately-unpriced model.
+var HOSTED_PROVIDERS=['vllm','qwen'];
+function isHostedModel(m){return HOSTED_PROVIDERS.indexOf(m.provider||'')>=0||(m.cost_usd||0)===0;}
+// Savings are the DIFFERENCE: what the hosted traffic would have cost on the
+// selected paid reference model, minus what it was actually billed, floored
+// at $0 per model. The reference is user-selectable and always shown, so the
+// number is never a hidden assumption. The pie splits the same window into
+// hosted vs vendor-API tokens. Server computes the user-table column with
+// identical arithmetic.
 function renderSavings(){
   populateSavingsRef();
   // Prefer the seeded model_pricing rates served on the models API (same
@@ -559,22 +604,22 @@ function renderSavings(){
   // new + cached reads + cache writes (cached_input_tokens and
   // cache_creation_tokens are subsets of it), so each tier must be priced
   // once: new @ i, cached @ cr, cache-write @ cw.
-  // Free models served over the OpenAI dialect (vLLM chat/responses) carry no
-  // cache telemetry at all — their cached/cw columns read 0 and would be
+  // Hosted models served over the OpenAI dialect (vLLM chat/responses) carry
+  // no cache telemetry at all — their cached/cw columns read 0 and would be
   // priced 100% at the full input rate. Real interactive agent traffic on the
-  // paid models is overwhelmingly cache reads, so when a free model reports no
-  // cache at all we estimate the split from the observed cache ratio of paid
-  // traffic (the selected reference model's own ratio first, all paid models
-  // as fallback) and label the assumption on the KPI.
+  // vendor models is overwhelmingly cache reads, so when a hosted model
+  // reports no cache at all we estimate the split from the observed cache
+  // ratio of vendor traffic (the selected reference model's own ratio first,
+  // all vendor models as fallback) and label the assumption on the KPI.
   function paidCacheRatio(modelName){
     var cached=0,prompt=0;
-    // Basis is the UNFILTERED model catalog: with a user/group filter that
-    // contains no paid traffic (e.g. a free-model-only user), the filtered
-    // set has no cache ratio to observe, and the estimate would silently
-    // collapse to 100% fresh-input pricing.
+    // Basis is the UNFILTERED model catalog, vendor traffic only: with a
+    // user/group filter that contains no vendor traffic (e.g. a hosted-only
+    // user), the filtered set has no cache ratio to observe, and hosted
+    // models — which never report cache — would drag the estimate to 0.
     var basis=(typeof catalogModels!=='undefined'&&catalogModels&&catalogModels.length)?catalogModels:(cachedModels||[]);
     basis.forEach(function(m){
-      if((m.cost_usd||0)<=0)return;
+      if((m.cost_usd||0)<=0||isHostedModel(m))return;
       if(modelName&&m.model!==modelName)return;
       cached+=m.cached_input_tokens||0;
       prompt+=m.prompt_tokens||0;
@@ -588,13 +633,12 @@ function renderSavings(){
   // The server computes the user-table column with the same arithmetic
   // (same ratio basis, same reference rates), so filtered-KPI(user X) equals
   // X's row in the column and the unfiltered card equals the column's sum.
-  var totalSaved=0, freeTokens=0, totalTokens=0;
+  var totalSaved=0, hostedTokens=0, totalTokens=0;
   (cachedModels||[]).forEach(function(m){
     var tot=m.total_tokens||0;
     totalTokens+=tot;
-    var isFree=(m.cost_usd||0)===0 && tot>0;
-    if(!isFree)return;
-    freeTokens+=tot;
+    if(!isHostedModel(m)||tot<=0)return;
+    hostedTokens+=tot;
     var prompt=m.prompt_tokens||0, completion=m.completion_tokens||0;
     var cached=m.cached_input_tokens||0, cacheWrite=m.cache_creation_tokens||0;
     if(cached===0&&cacheWrite===0&&prompt>0&&assumedRatio>0){
@@ -602,12 +646,16 @@ function renderSavings(){
       ratioApplied=true;
     }
     var newInput=Math.max(prompt-cached-cacheWrite,0);
-    totalSaved+=newInput*ref.i/1e6
+    var counterfactual=newInput*ref.i/1e6
       +completion*ref.o/1e6
       +cached*ref.cr/1e6
       +cacheWrite*ref.cw/1e6;
+    // Net saving: the reference price minus what the hosted rate already
+    // billed. Floored at 0 per model so one model can never cancel another's
+    // saving (mirrors the server's GREATEST(...,0)).
+    totalSaved+=Math.max(counterfactual-(m.cost_usd||0),0);
   });
-  var paidTokens=Math.max(totalTokens-freeTokens,0);
+  var vendorTokens=Math.max(totalTokens-hostedTokens,0);
 
   var kpi=document.getElementById('kpi-savings');if(kpi)kpi.textContent=fmtC(totalSaved);
   var note=document.getElementById('kpi-savings-note');
@@ -619,12 +667,12 @@ function renderSavings(){
   savingsChart=new Chart(canvas,{
     type:'doughnut',
     data:{
-      labels:['Free — '+fmtN(freeTokens),'Paid — '+fmtN(paidTokens)],
-      datasets:[{data:[freeTokens,paidTokens],backgroundColor:['#3fb950','#d29922'],borderWidth:0}]
+      labels:['Hosted — '+fmtN(hostedTokens),'Vendor — '+fmtN(vendorTokens)],
+      datasets:[{data:[hostedTokens,vendorTokens],backgroundColor:['#3fb950','#d29922'],borderWidth:0}]
     },
     options:{responsive:true,plugins:{
       legend:{position:'right',labels:{color:'#8b949e',font:{size:12},padding:12}},
-      tooltip:{callbacks:{label:function(ctx){var tot=freeTokens+paidTokens;var lbl=ctx.dataIndex===0?'Free':'Paid';return lbl+': '+fmtN(ctx.raw)+' tokens ('+(tot>0?((ctx.raw/tot)*100).toFixed(1):'0')+'%)';}}}
+      tooltip:{callbacks:{label:function(ctx){var tot=hostedTokens+vendorTokens;var lbl=ctx.dataIndex===0?'Hosted':'Vendor';return lbl+': '+fmtN(ctx.raw)+' tokens ('+(tot>0?((ctx.raw/tot)*100).toFixed(1):'0')+'%)';}}}
     }}
   });
 }
@@ -892,6 +940,28 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
     }
   }
 }).catch(function(){});
+// ── Model pricing modal (shared rate card across all pages) ─────────
+function pmEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function pmPrice(v){v=+v||0;return v>0?'$'+v.toLocaleString(undefined,{maximumFractionDigits:3}):'<span class="pm-zero">–</span>';}
+function openPricing(){document.getElementById('pricing-ov').classList.add('show');loadPricing();}
+function closePricing(){document.getElementById('pricing-ov').classList.remove('show');}
+function loadPricing(){
+  var all=document.getElementById('pm-all').checked;
+  var body=document.getElementById('pm-body');
+  body.innerHTML='<div class="pm-sub" style="padding:14px 0">Loading…</div>';
+  fetch('/api/v1/pricing'+(all?'?used=0':'')).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(j){
+    var ms=j.models||[];
+    if(!ms.length){body.innerHTML='<div class="pm-sub" style="padding:14px 0">No rates seeded yet.</div>';return;}
+    body.innerHTML='<table><thead><tr><th>Model</th><th>Input</th><th>Output</th><th>Cache read</th><th>Cache write</th></tr></thead><tbody>'+
+      ms.map(function(m){
+        var list=(m.list_input_cost_per_mtok||m.list_output_cost_per_mtok)?'<div class="pm-list">vendor list '+pmPrice(m.list_input_cost_per_mtok)+' / '+pmPrice(m.list_output_cost_per_mtok)+'</div>':'';
+        return '<tr><td>'+pmEsc(m.model)+(m.hosted?'<span class="pm-host">hosted</span>':'')+'<div class="pm-list">'+pmEsc(m.provider)+list+'</div></td>'
+          +'<td>'+pmPrice(m.input_cost_per_mtok)+'</td><td>'+pmPrice(m.output_cost_per_mtok)+'</td>'
+          +'<td>'+pmPrice(m.cache_read_cost_per_mtok)+'</td><td>'+pmPrice(m.cache_write_cost_per_mtok)+'</td></tr>';
+      }).join('')+'</tbody></table>';
+  }).catch(function(e){body.innerHTML='<div class="pm-sub" style="padding:14px 0;color:var(--red)">Could not load pricing ('+pmEsc(e.message)+').</div>';});
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closePricing();});
 </script>
 </body>
 </html>

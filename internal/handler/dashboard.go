@@ -82,7 +82,7 @@ func (h *DashboardHandler) HandleUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	// ref selects the reference model for the SavedUSD counterfactual; the
 	// dashboard passes its savings-ref selection so the user-table column
-	// and the Saved · Free Models KPI stay in lockstep.
+	// and the Saved · Hosted Models KPI stay in lockstep.
 	result, err := h.store.GetDashboardUsers(r.Context(), since, until, group, user, model, sortCol, sortOrder, limit, r.URL.Query().Get("ref"))
 	if err != nil {
 		slog.Error("dashboard query failed", "error", err)

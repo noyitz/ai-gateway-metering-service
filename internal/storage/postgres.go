@@ -141,6 +141,13 @@ const listCostUSDExpr = `GREATEST(e.prompt_tokens - COALESCE(e.cached_input_toke
 			COALESCE(e.cache_creation_tokens, 0) * COALESCE(NULLIF(p.list_cache_write_cost_per_mtok, 0), COALESCE(p.cache_write_cost_per_mtok, 18.75))/1000000.0 +
 			e.completion_tokens * COALESCE(NULLIF(p.list_output_cost_per_mtok, 0), COALESCE(p.output_cost_per_mtok, 75))/1000000.0`
 
+// hostedProviderCond marks self-hosted models — everything served over our
+// own vLLM routes plus the legacy "qwen" alias row. Hosted traffic is
+// identified by provider, not by price: it bills at OpenRouter parity now,
+// so a $0 check would miss it. Requires usage_events aliased as `e` and
+// model_pricing as `p`.
+const hostedProviderCond = `COALESCE(p.provider,'') IN ('vllm','qwen')`
+
 // displayNameExpr resolves a user's "First Last" from user_profiles, or
 // NULL when the profile is missing or has no names — callers fall back to
 // the username. Requires usage_events aliased as `e` and the
@@ -274,14 +281,16 @@ type UserSummary struct {
 	CompletionTokens int64   `json:"completion_tokens"`
 	TotalTokens      int64   `json:"total_tokens"`
 	CostUSD          float64 `json:"cost_usd"`
-	// SavedUSD is the per-user share of the "Saved · Free Models" KPI: what
-	// this user's free-model (metered $0, real tokens) traffic would have
-	// cost on the reference model (default claude-opus-4-8), priced
-	// cache-aware at the reference's seeded rates. Free traffic that carries
-	// no cache telemetry is split using the cache ratio observed on paid
-	// traffic in the same window (reference model first, all paid as
-	// fallback). Computed with the same arithmetic the dashboard KPI applies,
-	// so the user-table column and the KPI card always agree.
+	// SavedUSD is the per-user share of the "Saved · Hosted Models" KPI:
+	// what this user's hosted-model traffic (provider vllm / legacy qwen)
+	// would have cost on the reference model (default claude-opus-4-8),
+	// priced cache-aware at the reference's seeded rates, MINUS what it was
+	// actually billed (hosted models bill at OpenRouter parity, not $0),
+	// floored at 0 per model. Hosted traffic that carries no cache telemetry
+	// is split using the cache ratio observed on vendor traffic in the same
+	// window (reference model first, all vendor paid as fallback). Computed
+	// with the same arithmetic the dashboard KPI applies, so the user-table
+	// column and the KPI card always agree.
 	SavedUSD float64 `json:"saved_usd"`
 }
 
@@ -389,30 +398,42 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 	}
 
 	// saved_usd reproduces the dashboard KPI arithmetic per user:
-	//   r_ref/r_all  observed cache ratio (cached/prompt) of PAID traffic in
-	//                the window — range-only (unfiltered), like the client's
-	//                unfiltered model catalog; reference model preferred, all
-	//                paid as fallback.
+	//   r_ref/r_all  observed cache ratio (cached/prompt) of VENDOR (paid,
+	//                non-hosted) traffic in the window — range-only
+	//                (unfiltered), like the client's unfiltered model
+	//                catalog; reference model preferred, all vendor paid as
+	//                fallback. Hosted providers (vllm / legacy qwen) are
+	//                excluded: they carry no cache telemetry, so including
+	//                them once they bill nonzero would drag the observed
+	//                ratio toward 0.
 	//   pr           reference model rates from model_pricing (aggregated so
 	//                the CTE always yields exactly one row).
-	//   fm           per-user-per-model totals over the active filters; a
-	//                model counts as free when its metered cost is 0 with
-	//                real tokens, same as the client.
-	//   sv           per-user counterfactual: free traffic priced at the
-	//                reference rates, cache-write tokens deducted from the
-	//                fresh-input term so each tier is priced once; free
-	//                traffic with no cache telemetry gets the observed ratio
-	//                applied (per model, rounded — matches the client).
+	//   fm           per-user-per-model totals over the active filters, plus
+	//                a `hosted` flag (provider vllm or the legacy qwen
+	//                alias). A model also counts as hosted when its metered
+	//                cost is 0 with real tokens, same as the client.
+	//   sv           per-user savings: for each hosted model, what its
+	//                traffic would have cost on the reference rates minus
+	//                what it was actually billed (hosted models bill at
+	//                OpenRouter parity, not $0), floored at 0 per model so
+	//                one model can never cancel another's saving. The
+	//                counterfactual is cache-aware: cache-write tokens are
+	//                deducted from the fresh-input term so each tier is
+	//                priced once; hosted traffic with no cache telemetry
+	//                gets the observed ratio applied (per model, rounded —
+	//                matches the client).
 	query := fmt.Sprintf(`
 		WITH r_ref AS (
 			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
 			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
 			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND e.model = $7 AND (%s) > 0
+			  AND NOT (`+hostedProviderCond+`)
 		),
 		r_all AS (
 			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
 			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
 			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND (%s) > 0
+			  AND NOT (`+hostedProviderCond+`)
 		),
 		rat AS (
 			SELECT CASE WHEN (SELECT r FROM r_ref) > 0 THEN (SELECT r FROM r_ref)
@@ -428,13 +449,14 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 			SELECT e.username, e.model,
 				SUM(e.prompt_tokens) as prompt, SUM(e.completion_tokens) as completion,
 				SUM(COALESCE(e.cached_input_tokens, 0)) as cached, SUM(COALESCE(e.cache_creation_tokens, 0)) as cwrite,
-				SUM(e.total_tokens) as tot, SUM(%s) as cost
+				SUM(e.total_tokens) as tot, SUM(%s) as cost,
+				bool_or(`+hostedProviderCond+`) as hosted
 			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
 			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 			GROUP BY e.username, e.model
 		),
 		sv AS (
-			SELECT fm.username, SUM(
+			SELECT fm.username, SUM(GREATEST(
 				(GREATEST(fm.prompt
 					- CASE WHEN fm.cached = 0 AND fm.cwrite = 0 AND fm.prompt > 0 AND rat.r > 0
 					       THEN LEAST(ROUND(fm.prompt * rat.r), fm.prompt)
@@ -445,9 +467,10 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 				       ELSE fm.cached END * pr.cr
 				+ fm.cwrite * pr.cw
 				+ fm.completion * pr.o) / 1000000.0
-			) as saved
+				- fm.cost
+			, 0)) as saved
 			FROM fm CROSS JOIN pr CROSS JOIN rat
-			WHERE fm.cost = 0 AND fm.tot > 0
+			WHERE (fm.hosted OR fm.cost = 0) AND fm.tot > 0
 			GROUP BY fm.username
 		)
 		SELECT e.username,
@@ -871,6 +894,42 @@ type ModelPrice struct {
 }
 
 // GetCurrentPricing returns all model pricing from the database.
+// GetPricingCatalog returns the rate card for the dashboard pricing modal.
+// usedOnly=true limits rows to models that appear in usage_events plus the
+// self-hosted rows (hosted models always show, even before their first
+// event, so the table can explain the "hosted" badge from day one). Hosted
+// rows sort first; list_* rates ride along where seeded so the modal can
+// show the vendor-list baseline next to our rate.
+func (s *Store) GetPricingCatalog(ctx context.Context, usedOnly bool) ([]ModelPrice, error) {
+	q := `SELECT model, provider, input_cost_per_mtok, output_cost_per_mtok,
+	             cache_write_cost_per_mtok, cache_read_cost_per_mtok,
+	             list_input_cost_per_mtok, list_output_cost_per_mtok,
+	             list_cache_write_cost_per_mtok, list_cache_read_cost_per_mtok
+	      FROM model_pricing`
+	if usedOnly {
+		q += ` WHERE model IN (SELECT DISTINCT model FROM usage_events) OR provider IN ('vllm','qwen')`
+	}
+	q += ` ORDER BY CASE WHEN provider IN ('vllm','qwen') THEN 0 ELSE 1 END, model`
+
+	rows, err := s.db.QueryContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var prices []ModelPrice
+	for rows.Next() {
+		var p ModelPrice
+		if err := rows.Scan(&p.Model, &p.Provider, &p.InputCost, &p.OutputCost,
+			&p.CacheWriteCost, &p.CacheReadCost,
+			&p.ListInputCost, &p.ListOutputCost, &p.ListCacheWriteCost, &p.ListCacheReadCost); err != nil {
+			return nil, err
+		}
+		prices = append(prices, p)
+	}
+	return prices, rows.Err()
+}
+
 func (s *Store) GetCurrentPricing(ctx context.Context) ([]ModelPrice, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT model, provider, input_cost_per_mtok, output_cost_per_mtok, cache_write_cost_per_mtok, cache_read_cost_per_mtok FROM model_pricing ORDER BY model`)
 	if err != nil {

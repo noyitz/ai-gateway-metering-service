@@ -227,28 +227,39 @@ func TestPricesEqual(t *testing.T) {
 	}
 }
 
-func TestLocalPrices_ZeroCostAndExactIDs(t *testing.T) {
+func TestLocalPrices_OpenRouterParity(t *testing.T) {
 	prices := LocalPrices()
 	if len(prices) == 0 {
 		t.Fatal("LocalPrices returned no entries")
 	}
 
-	// The self-hosted Qwen id must match billed traffic exactly, or model_pricing
-	// (keyed on model name) misses and the row reprices at the paid default.
-	var haveQwen bool
+	// Rates are an OpenRouter parity snapshot (per MTok). If these drift the
+	// dashboard's hosted-vs-vendor comparison silently lies, so pin them.
+	want := map[string]ModelPrice{
+		"Qwen3.8-27B-FP8":                {InputCost: 0.214, OutputCost: 2.55, CacheReadCost: 0.15},
+		"Inferact/Qwen3.8-Flash-Next-NVFP4": {InputCost: 0.15, OutputCost: 0.47, CacheReadCost: 0.016},
+		"qwen": {InputCost: 0.214, OutputCost: 2.55, CacheReadCost: 0.15},
+	}
+	seen := map[string]bool{}
 	for _, p := range prices {
 		if p.Model == "" {
 			t.Errorf("local price with empty model: %+v", p)
 		}
-		if p.InputCost != 0 || p.OutputCost != 0 || p.CacheReadCost != 0 || p.CacheWriteCost != 0 {
-			t.Errorf("local model %q must be $0, got %+v", p.Model, p)
+		w, ok := want[p.Model]
+		if !ok {
+			t.Errorf("unexpected local entry %q", p.Model)
+			continue
 		}
-		if p.Model == "Qwen3.8-27B-FP8" {
-			haveQwen = true
+		seen[p.Model] = true
+		if p.InputCost != w.InputCost || p.OutputCost != w.OutputCost ||
+			p.CacheReadCost != w.CacheReadCost || p.CacheWriteCost != 0 {
+			t.Errorf("local model %q off parity: got %+v want %+v", p.Model, p, w)
 		}
 	}
-	if !haveQwen {
-		t.Error(`missing self-hosted "Qwen3.8-27B-FP8" entry`)
+	for m := range want {
+		if !seen[m] {
+			t.Errorf("missing hosted entry %q", m)
+		}
 	}
 }
 
