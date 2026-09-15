@@ -12,16 +12,22 @@
 #   ./scripts/manage-keys.sh list-admins
 #   ./scripts/manage-keys.sh set-admin <username>
 #   ./scripts/manage-keys.sh remove-admin <username>
+#   ./scripts/manage-keys.sh set-group <username> <group>
 #   ./scripts/manage-keys.sh revoke <username> [key-name]
 #   ./scripts/manage-keys.sh revoke-user <username>
+#   ./scripts/manage-keys.sh delete <username>
+#
+# Requires: MAAS_ADMIN_USER env var — the admin identity maas-api sees
+# (maas-api trusts in-cluster identity headers; without a key this tool
+# acts on a target user's behalf).
 #
 # Examples:
-#   ./scripts/manage-keys.sh create noyitz@redhat.com
-#   ./scripts/manage-keys.sh create chris.wright@redhat.com cto-demo executive
+#   ./scripts/manage-keys.sh create jane.doe@example.com
+#   ./scripts/manage-keys.sh create jane.doe@example.com executive --admin
 #   ./scripts/manage-keys.sh list
-#   ./scripts/manage-keys.sh list noyitz@redhat.com
-#   ./scripts/manage-keys.sh revoke noyitz@redhat.com dogfood-noyitz
-#   ./scripts/manage-keys.sh revoke-user test-user@redhat.com
+#   ./scripts/manage-keys.sh list jane.doe@example.com
+#   ./scripts/manage-keys.sh revoke jane.doe@example.com dogfood-jane.doe
+#   ./scripts/manage-keys.sh revoke-user test-user@example.com
 
 set -euo pipefail
 
@@ -39,24 +45,30 @@ Commands:
   set-admin <email>                   Grant dashboard admin access
   remove-admin <email>                Revoke dashboard admin access
   set-group <email> <group>            Change a user's group (re-keys)
-  revoke <email>                      Disable a user's keys (keeps history)
+  revoke <email> [key-name]           Disable one (or all of) a user's keys
+  revoke-user <email>                 Disable all of a user's keys
   delete <email>                      Permanently remove user and usage data
+
+Environment:
+  MAAS_ADMIN_USER (required)          Admin identity maas-api sees
+  PF_PORT, MAAS_API_DEPLOY            Port-forward target (defaults below)
 
 Options:
   --help, -h    Show this help
 
 Examples:
-  ./scripts/manage-keys.sh create noyitz@redhat.com
-  ./scripts/manage-keys.sh create chris.wright@redhat.com executive --admin
+  ./scripts/manage-keys.sh create jane.doe@example.com
+  ./scripts/manage-keys.sh create jane.doe@example.com executive --admin
   ./scripts/manage-keys.sh list
-  ./scripts/manage-keys.sh list noyitz@redhat.com
+  ./scripts/manage-keys.sh list jane.doe@example.com
   ./scripts/manage-keys.sh list-groups
   ./scripts/manage-keys.sh list-admins
-  ./scripts/manage-keys.sh set-admin someone@redhat.com
-  ./scripts/manage-keys.sh remove-admin someone@redhat.com
-  ./scripts/manage-keys.sh set-group someone@redhat.com sw-eng
-  ./scripts/manage-keys.sh revoke noyitz@redhat.com
-  ./scripts/manage-keys.sh delete test-user@redhat.com
+  ./scripts/manage-keys.sh set-admin someone@example.com
+  ./scripts/manage-keys.sh remove-admin someone@example.com
+  ./scripts/manage-keys.sh set-group someone@example.com sw-eng
+  ./scripts/manage-keys.sh revoke jane.doe@example.com
+  ./scripts/manage-keys.sh revoke-user test-user@example.com
+  ./scripts/manage-keys.sh delete test-user@example.com
 
 Group defaults to "ai-eng" if omitted.
 HELP
@@ -87,9 +99,15 @@ for _ in $(seq 1 20); do
     sleep 0.5
 done
 
-# maas-api trusts in-cluster identity headers; this is the admin identity
-# it sees. Override per-run with MAAS_ADMIN_USER.
-ADMIN_USER="${MAAS_ADMIN_USER:-yovadia@redhat.com}"
+# maas-api trusts in-cluster identity headers; MAAS_ADMIN_USER is the
+# admin identity it sees. No default: failing closed beats silently
+# acting as someone, and this repo is public.
+ADMIN_USER="${MAAS_ADMIN_USER:-}"
+if [[ -z "$ADMIN_USER" ]]; then
+    echo "ERROR: MAAS_ADMIN_USER is required (the admin identity maas-api sees)." >&2
+    echo "  export MAAS_ADMIN_USER=you@redhat.com" >&2
+    exit 1
+fi
 ADMIN_GROUP='["ai-eng"]'
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -159,6 +177,9 @@ remove_admin() {
 
 # ── Actions ──────────────────────────────────────────────────
 
+# revoke-user is `revoke` without the optional key-name filter
+[[ "$ACTION" == "revoke-user" ]] && ACTION="revoke"
+
 case "$ACTION" in
 
 create)
@@ -181,7 +202,11 @@ create)
     require_email "$USERNAME"
     require_group "$GROUP"
 
-    RESPONSE=$(api -X POST "$API_BASE/v1/api-keys" \
+    # Single identity header (the target user): maas-api mints on the
+    # caller's behalf, and a stacked admin+target pair would rely on
+    # first-wins header semantics.
+    RESPONSE=$(curl -s -X POST "$API_BASE/v1/api-keys" \
+        -H "Content-Type: application/json" \
         -H "X-MaaS-Username: $USERNAME" \
         -H "X-MaaS-Group: [\"$GROUP\"]" \
         -d "{\"name\":\"$KEY_NAME\",\"description\":\"Dogfood gateway key for $USERNAME\",\"expiresIn\":\"8760h\"}")
@@ -303,6 +328,7 @@ revoke)
         exit 1
     fi
     USERNAME="$1"
+    KEY_NAME="${2:-}"
     require_email "$USERNAME"
 
     # Search as the target user to see their keys
@@ -312,17 +338,26 @@ revoke)
         -H "X-MaaS-Group: $ADMIN_GROUP" \
         -d "{}")
 
-    KEYS=$(echo "$RESPONSE" | python3 -c "
-import sys, json
+    # KEY_NAME_FILTER reaches python via the environment: the key name is
+    # operator input and must not be spliced into the interpreter source.
+    KEYS=$(KEY_NAME_FILTER="$KEY_NAME" python3 -c "
+import json, os, sys
 data = json.load(sys.stdin)
+name = os.environ.get('KEY_NAME_FILTER', '')
 for k in (data.get('data') or []):
     if k['status'] != 'active':
         continue
+    if name and k['name'] != name:
+        continue
     print(k['id'] + '|' + k['name'])
-" 2>/dev/null)
+" <<< "$RESPONSE" 2>/dev/null)
 
     if [[ -z "$KEYS" ]]; then
-        echo "No active keys found for $USERNAME"
+        if [[ -n "$KEY_NAME" ]]; then
+            echo "No active key named '$KEY_NAME' for $USERNAME"
+        else
+            echo "No active keys found for $USERNAME"
+        fi
         exit 1
     fi
 
@@ -333,7 +368,7 @@ for k in (data.get('data') or []):
             -H "X-MaaS-Username: $USERNAME" \
             -H "X-MaaS-Group: $ADMIN_GROUP" > /dev/null
         echo "Revoked: $NAME ($ID)"
-        ((COUNT++))
+        COUNT=$((COUNT + 1))
     done <<< "$KEYS"
     echo "Revoked $COUNT key(s) for $USERNAME"
     ;;
@@ -353,14 +388,20 @@ delete)
         -H "X-MaaS-Group: $ADMIN_GROUP" \
         -d "{}" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null)
 
-    EVENT_COUNT=$(oc -n "$NAMESPACE" exec postgresql-0 -- psql -U aigateway -d aigateway -t -q \
-        -c "SELECT COUNT(*) FROM usage_events WHERE username = '$USERNAME';" 2>/dev/null | tr -d ' ')
+    # One row: <events> <profiles> <unclaimed invites>
+    read -r EVENT_COUNT PROFILE_COUNT INVITE_COUNT <<< "$(oc -n "$NAMESPACE" exec postgresql-0 -- psql -U aigateway -d aigateway -t -q \
+        -c "SELECT (SELECT COUNT(*) FROM usage_events WHERE username = '$USERNAME')
+                 || ' ' || (SELECT COUNT(*) FROM user_profiles WHERE username = '$USERNAME')
+                 || ' ' || (SELECT COUNT(*) FROM key_invites WHERE claimed_at IS NULL
+                            AND person_slug IN (SELECT person_slug FROM person_identities
+                                                WHERE username = '$USERNAME'));" 2>/dev/null | tr -d '[:space:]')"
 
     echo ""
     echo "WARNING: This will permanently delete all data for $USERNAME:"
     echo ""
     echo "  - $KEY_COUNT API key(s) (active and revoked)"
     echo "  - $EVENT_COUNT metering event(s)"
+    echo "  - $PROFILE_COUNT display-name profile(s), $INVITE_COUNT unclaimed key invite(s)"
     echo ""
     echo "  This cannot be undone. If you just want to disable access,"
     echo "  use 'revoke' instead — it keeps the history."
@@ -392,13 +433,26 @@ for k in json.load(sys.stdin).get('data', []):
             -H "X-MaaS-Group: $ADMIN_GROUP" > /dev/null
     done <<< "$KEYS"
 
-    # Delete metering events
-    oc -n "$NAMESPACE" exec postgresql-0 -- psql -U aigateway -d aigateway -q \
-        -c "DELETE FROM usage_events WHERE username = '$USERNAME';" 2>/dev/null
-
-    # Delete key records (active + revoked)
-    oc -n "$NAMESPACE" exec postgresql-0 -- psql -U aigateway -d aigateway -q \
-        -c "DELETE FROM api_keys WHERE username = '$USERNAME';" 2>/dev/null
+    # Hard-delete what the API intentionally soft-deletes, in FK-safe
+    # order (key_invites still resolves person_identities via subquery).
+    # maas-api validates keys with a fresh Postgres lookup on every
+    # request (Service.ValidateAPIKey -> PostgresStore.GetByHash — no
+    # in-memory key cache), so this takes effect on the next request, no
+    # maas-api restart. Ephemeral tokens are stateless JWTs (<= 1h TTL)
+    # and lapse on their own. The org directory's people row is left
+    # alone: the org chart is HR data, not user data.
+    if ! oc -n "$NAMESPACE" exec postgresql-0 -- psql -U aigateway -d aigateway -q -c "
+        DELETE FROM key_invites WHERE claimed_at IS NULL
+            AND person_slug IN (SELECT person_slug FROM person_identities
+                                WHERE username = '$USERNAME');
+        DELETE FROM person_identities WHERE username = '$USERNAME';
+        DELETE FROM user_profiles WHERE username = '$USERNAME';
+        DELETE FROM usage_events WHERE username = '$USERNAME';
+        DELETE FROM api_keys WHERE username = '$USERNAME';
+    " ; then
+        echo "ERROR: hard delete failed — check the error above; data may be partially deleted" >&2
+        exit 1
+    fi
 
     echo "Deleted all data for $USERNAME"
     ;;
@@ -437,9 +491,11 @@ for k in json.load(sys.stdin).get('data', []):
         done <<< "$KEYS"
     fi
 
-    # Create new key in the new group
+    # Create new key in the new group (single identity header, the
+    # target user — see create for why not stacked)
     KEY_NAME="dogfood-${USERNAME%%@*}"
-    RESPONSE=$(api -X POST "$API_BASE/v1/api-keys" \
+    RESPONSE=$(curl -s -X POST "$API_BASE/v1/api-keys" \
+        -H "Content-Type: application/json" \
         -H "X-MaaS-Username: $USERNAME" \
         -H "X-MaaS-Group: [\"$NEW_GROUP\"]" \
         -d "{\"name\":\"$KEY_NAME\",\"description\":\"Dogfood gateway key for $USERNAME\",\"expiresIn\":\"8760h\"}")
