@@ -1490,6 +1490,7 @@ function loadKeys() {
 // unset picker now means "nobody", and a deep-link slug is re-asserted on
 // every rebuild so refreshes can't clobber it out from under the click.
 var deepInviteSlug = '';
+var deepInviteGroup = '';
 
 function populateInvitePickers() {
   var psel = document.getElementById('inv-person');
@@ -1501,14 +1502,22 @@ function populateInvitePickers() {
   }).join('');
   psel.value = cur || '';
   var gsel = document.getElementById('inv-group');
-  var curG = gsel.value;
   // Canonical subscription groups when we have them (same source the
   // People tab uses); usage-derived knownGroups is the fallback, since a
   // group that has traffic is definitely valid even if the CR read failed.
   var names = validGroups.length ? validGroups : knownGroups;
-  gsel.innerHTML = names.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('') ||
-    '<option value="default">default</option>';
+  // A deep-linked group must survive every rebuild until it lands —
+  // otherwise the first alphabetically-sorted CR group (usually ai-eng)
+  // silently poses as the choice for people who live in octo-eng.
+  if (deepInviteGroup && names.indexOf(deepInviteGroup) < 0) deepInviteGroup = '';
+  var curG = gsel.value || deepInviteGroup;
+  // Same placeholder discipline as the person picker and the modal: no
+  // silently-preselected group. Empty means "the service's default group"
+  // (DEFAULT_GROUP env), which claim resolves server-side.
+  gsel.innerHTML = '<option value="">-- select a group --</option>' +
+    names.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('');
   if (curG) gsel.value = curG;
+  if (deepInviteGroup && gsel.value === deepInviteGroup) deepInviteGroup = '';
 }
 
 /* Deep-link from a people row: jump to the Keys tab with the person picked.
@@ -1525,15 +1534,13 @@ function openInviteFor(slug) {
     if (sel) sel.value = slug;
     if (sel && sel.value === slug) {
       deepInviteSlug = '';
-      // One-click intent: preselect the person's own group when the picker
-      // knows it — the admin reviews and presses Create, that's the whole
-      // job. (Create is never automatic; a human presses the button.)
+      // One-click intent: carry the person's own group into the picker —
+      // the admin reviews and presses Create, that's the whole job.
+      // (Create is never automatic; a human presses the button.)
       var p = peopleAll.filter(function(x) { return x.slug === slug; })[0];
-      var gsel = document.getElementById('inv-group');
-      if (p && p.group_name && gsel) {
-        for (var i = 0; i < gsel.options.length; i++) {
-          if (gsel.options[i].value === p.group_name) { gsel.value = p.group_name; break; }
-        }
+      if (p && p.group_name) {
+        deepInviteGroup = p.group_name;
+        populateInvitePickers(); // re-asserts the group through any rebuild
       }
     }
   };
@@ -1598,7 +1605,7 @@ function copyInviteURL() { fallbackCopy(lastInviteURL); }
 function createInvite() {
   var body = {
     person_slug: document.getElementById('inv-person').value,
-    group: document.getElementById('inv-group').value || 'default',
+    group: document.getElementById('inv-group').value,
     key_name: document.getElementById('inv-name').value
   };
   if (!body.person_slug) { showToast('Pick a person first', 'error'); return; }
