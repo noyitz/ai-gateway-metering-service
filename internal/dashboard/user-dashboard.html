@@ -717,8 +717,7 @@ function renderGroupRanking(allUsers, currentUsername, currentGroup) {
         }
       },
       scales: {
-        x: { ticks: { color: '#8090a8', callback: function(v) { return ' } }, grid: { color: '#2e3848' } },
- + v.toFixed(2); } }, grid: { color: '#2e3848' } },
+        x: { ticks: { color: '#8090a8', callback: function(v) { return '$' + v.toFixed(2); } }, grid: { color: '#2e3848' } },
         y: { ticks: { color: '#8090a8', font: { size: 11 } }, grid: { display: false } }
       }
     }
@@ -771,8 +770,7 @@ function renderCompanyOverview(allUsers, currentGroup) {
         }
       },
       scales: {
-        x: { ticks: { color: '#8090a8', callback: function(v) { return ' } }, grid: { color: '#2e3848' } },
- + v.toFixed(2); } }, grid: { color: '#2e3848' } },
+        x: { ticks: { color: '#8090a8', callback: function(v) { return '$' + v.toFixed(2); } }, grid: { color: '#2e3848' } },
         y: { ticks: { color: '#8090a8', font: { size: 11 } }, grid: { display: false } }
       }
     }
