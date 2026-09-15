@@ -587,11 +587,12 @@ codex --profile pricetag</pre></div>
         var fade = age>2400 ? Math.max(0,1-(age-2400)/1600) : 1;
         ctx.globalAlpha = t.alpha*fade;
         ctx.fillStyle = a;
-        ctx.fillText(t.g, t.x - (t.vx>0?0:ctx.measureText(t.g).width), t.y);
-        /* price tag stamp */
-        ctx.fillStyle = a;
-        var px = t.x + (t.vx>0?6:-6-ctx.measureText(t.stamp).width);
-        ctx.fillText(t.stamp, px, t.y);
+        /* token + price tag as one group, tag on the leading edge with a
+           gap wider than the glyph, so they never draw on top of each other */
+        var gw = ctx.measureText(t.g).width;
+        var tw = ctx.measureText(t.stamp).width;
+        if (t.vx > 0) { ctx.fillText(t.g, t.x, t.y); ctx.fillText(t.stamp, t.x + gw + 8, t.y); }
+        else          { ctx.fillText(t.stamp, t.x, t.y); ctx.fillText(t.g, t.x + tw + 8, t.y); }
       }
       ctx.globalAlpha = 1;
       var dead = t.priced && (ts-t.born) > 4200;
