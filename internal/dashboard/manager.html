@@ -118,6 +118,8 @@ td.num,th.num{text-align:right}
   </div>
 </main>
 <script>
+// 2 decimals here on purpose: this view shows per-person period totals and
+// team KPI tiles, never per-request rows, so sub-cent rounding is irrelevant.
 const fmt$=v=>'$'+Number(v||0).toLocaleString(undefined,{maximumFractionDigits:2});
 const fmtTok=v=>{v=Number(v||0);if(v>=1e9)return (v/1e9).toFixed(2)+'B';if(v>=1e6)return (v/1e6).toFixed(2)+'M';if(v>=1e3)return (v/1e3).toFixed(1)+'K';return ''+v};
 let range='7d', rows=[], tlChart=null, sortKey='CostUSD', sortDir=-1, me={};
