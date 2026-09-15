@@ -96,8 +96,8 @@ tr.clickable{cursor:pointer}
 .pm-close{background:var(--bg-hover);color:var(--text2);border:1px solid var(--border);width:26px;height:26px;border-radius:6px;cursor:pointer;font-size:13px;line-height:1}
 .pm-close:hover{color:var(--text);background:var(--border)}
 .pm-body{overflow:auto;padding:4px 18px 16px}
-.pm-body table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
-.pm-body th{position:sticky;top:0;background:var(--bg-card);text-align:right;padding:8px;color:var(--text2);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+.pm-body table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px;font-variant-numeric:tabular-nums}
+.pm-body th{position:sticky;top:0;z-index:2;background:var(--bg-card);text-align:right;padding:8px;color:var(--text2);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
 .pm-body td{padding:7px 8px;border-bottom:1px solid var(--bg-hover);text-align:right;vertical-align:top}
 .pm-body th:first-child,.pm-body td:first-child{text-align:left}
 .pm-body .pm-zero{color:var(--text2)}
