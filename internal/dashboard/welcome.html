@@ -92,6 +92,11 @@ h1{font-size:clamp(40px,6.4vw,64px); line-height:1.04; letter-spacing:-.025em; f
 h1 .pricetag{color:var(--accent)}
 .hero .sub{max-width:56ch; color:var(--muted); font-size:18px; margin-top:18px}
 .hero .sub strong{color:var(--ink); font-weight:600}
+.hero-cta{margin-top:26px}
+/* Group title heading the numbered getting-started sequence (§01–07) */
+.gstart{margin-top:38px; padding-top:30px; border-top:2px solid var(--line-strong); scroll-margin-top:70px}
+.gstart h2{font-size:34px; font-weight:800; letter-spacing:-.02em; margin-bottom:0}
+.gstart + section{padding-top:26px}
 
 /* ---------- sections ---------- */
 section{padding:56px 0 8px}
@@ -272,6 +277,7 @@ footer .mono{font-size:12px}
     <span class="eyebrow">◈ Every token, priced</span>
     <h1>Welcome to <span class="pricetag">PriceTag</span></h1>
     <p class="sub">One gateway for <strong>Claude</strong>, <strong>OpenAI</strong> and our own <strong>hosted models</strong> — with every request metered to you, in real time. Point your tools at it once; usage, spend and savings land in your dashboard automatically.</p>
+    <p class="hero-cta"><a class="btn" href="#start">Get started ↓</a></p>
   </div>
 </header>
 
@@ -308,6 +314,11 @@ footer .mono{font-size:12px}
     </div>
   </div>
 </section>
+
+<!-- ============ GET STARTED (heads the numbered 01–07 sequence) ============ -->
+<div class="gstart" id="start">
+  <h2>Get Started</h2>
+</div>
 
 <!-- ============ ROUTES ============ -->
 <section id="routes">
