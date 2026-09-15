@@ -429,31 +429,32 @@ model_provider = <span class="s">"qwen"</span></pre></div>
 <!-- ============ OPENCODE ============ -->
 <section id="opencode">
   <h2><span class="no">05</span>Set up OpenCode</h2>
-  <p class="lede">OpenCode can ride <em>both</em> routes at once: GPT via the OpenAI-compatible provider, hosted Qwen via the Anthropic provider against the unified route.</p>
+  <p class="lede">Re-aim OpenCode's <em>built-in</em> <span class="mono">anthropic</span> and <span class="mono">openai</span> providers at the gateway. Keep them built-in on purpose: OpenCode only pulls the model chooser and effort levels from models.dev for official provider ids, so overriding <span class="mono">options</span> — instead of adding a custom provider — keeps every model and setting available in the picker.</p>
   <div class="codebox hasname"><div class="fname">opencode.json (project root)</div><button class="copy">copy</button><pre>{
   <span class="k">"$schema"</span>: <span class="s">"https://opencode.ai/config.json"</span>,
   <span class="k">"provider"</span>: {
-    <span class="k">"pricetag"</span>: {
-      <span class="k">"npm"</span>: <span class="s">"@ai-sdk/openai-compatible"</span>,
-      <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{OPENAI_URL}}"</span>, <span class="k">"apiKey"</span>: <span class="s">"{env:PRICETAG_KEY}"</span> },
-      <span class="k">"models"</span>: {
-        <span class="k">"gpt-5.6-luna"</span>: {},
-        <span class="k">"gpt-5.4"</span>: {},
-        <span class="k">"gpt-5.4-mini"</span>: {},
-        <span class="k">"gpt-5.3-codex"</span>: {}
-      }
+    <span class="k">"anthropic"</span>: {
+      <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{UNIFIED_URL}}/v1"</span>, <span class="k">"apiKey"</span>: <span class="s">"{env:PRICETAG_KEY}"</span> }
+    },
+    <span class="k">"openai"</span>: {
+      <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{OPENAI_URL}}"</span>, <span class="k">"apiKey"</span>: <span class="s">"{env:PRICETAG_KEY}"</span> }
     },
     <span class="k">"pricetag-hosted"</span>: {
       <span class="k">"npm"</span>: <span class="s">"@ai-sdk/anthropic"</span>,
-      <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{UNIFIED_URL}}"</span>, <span class="k">"apiKey"</span>: <span class="s">"{env:PRICETAG_KEY}"</span> },
+      <span class="k">"name"</span>: <span class="s">"PriceTag (hosted)"</span>,
+      <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{UNIFIED_URL}}/v1"</span>, <span class="k">"apiKey"</span>: <span class="s">"{env:PRICETAG_KEY}"</span> },
       <span class="k">"models"</span>: {
-        <span class="k">"qwen38-flash-next"</span>: { <span class="k">"name"</span>: <span class="s">"Qwen 3.8 Flash Next (hosted)"</span> }
+        <span class="k">"qwen38-flash-next"</span>: {
+          <span class="k">"name"</span>: <span class="s">"Qwen 3.8 Flash Next (hosted)"</span>,
+          <span class="k">"limit"</span>: { <span class="k">"context"</span>: 262144, <span class="k">"output"</span>: 8192 }
+        }
       }
     }
   },
-  <span class="k">"model"</span>: <span class="s">"pricetag/gpt-5.6-luna"</span>
+  <span class="k">"model"</span>: <span class="s">"anthropic/claude-sonnet-5"</span>
 }</pre></div>
-  <p>Switch models inside OpenCode with <span class="mono">/models</span> — <span class="mono">pricetag-hosted/…</span> entries run on our vLLM and bill at hosted rates.</p>
+  <p>Switch models inside OpenCode with <span class="mono">/models</span> — <span class="mono">anthropic/…</span> and <span class="mono">openai/…</span> now ride the gateway (billed like everything else), and <span class="mono">pricetag-hosted/…</span> runs on our vLLM at hosted rates. Don't want to touch the config file? OpenCode also merges the <span class="mono">OPENCODE_CONFIG_CONTENT</span> env var, which takes the same JSON as a string.</p>
+  <div class="callout warn"><span class="glyph">!</span><p>Two traps, both silent: the Anthropic SDK appends <code>/messages</code> to <span class="mono">baseURL</span>, so it needs the <strong><code>/v1</code> suffix</strong> (host root hits <code>/messages</code> and fails) — the OpenAI SDK appends <code>/chat/completions</code>, which is why <span class="mono">{{OPENAI_URL}}</span> already ends in <code>/v1</code>. And don't point the built-in <span class="mono">anthropic</span> provider at the OpenAI route: its catalog has no <span class="mono">claude-*</span> ids, so requests die with "model does not exist or you do not have access to it".</p></div>
 </section>
 
 <!-- ============ ROUTES (reference, after the setup steps) ============ -->
@@ -465,14 +466,14 @@ model_provider = <span class="s">"qwen"</span></pre></div>
       <div><div class="name">Unified route</div>
         <div class="dialect">Anthropic dialect · POST /v1/messages · no /v1 suffix</div>
         <div class="url">{{UNIFIED_URL}}</div></div>
-      <div class="note">Everything Claude Code and other Anthropic-dialect clients expect. Routes <em>claude-*</em> to the real Anthropic API and the hosted <em>Qwen*</em> ids to our own vLLM — same URL, switch models freely.</div>
+      <div class="note">Everything Claude Code and other Anthropic-dialect clients expect. Routes <em>claude-*</em> to the real Anthropic API and the hosted <em>Qwen*</em> ids to our own vLLM — same URL, switch models freely. "Unified" means unified <em>backends</em>, not unified dialects: this route only speaks Anthropic format (<span class="mono">x-api-key</span>) — OpenAI-format clients with Bearer tokens belong on the OpenAI route below.</div>
       <div class="auth">x-api-key: pk-…</div>
     </div>
     <div class="route">
       <div><div class="name">OpenAI route</div>
         <div class="dialect">OpenAI dialect · POST /v1/chat/completions · base URL ends in /v1</div>
         <div class="url">{{OPENAI_URL}}</div></div>
-      <div class="note">For Codex, OpenCode and any OpenAI-compatible client. Covers the GPT lineup (gpt-5.x). Hosted Qwen is served on the unified route, not here.</div>
+      <div class="note">For Codex, OpenCode and any OpenAI-compatible client. Covers the GPT lineup (gpt-5.x) only — there are <strong>no <em>claude-*</em> or Qwen ids here</strong>, and asking for one gets "The model … does not exist or you do not have access to it" from upstream. Those models live on the unified route.</div>
       <div class="auth">Authorization: Bearer pk-…</div>
     </div>
     <div class="route">
