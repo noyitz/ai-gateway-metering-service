@@ -567,13 +567,15 @@ model_provider = <span class="s">"qwen"</span></pre></div>
     W = r.width; H = r.height;
     cv.width = W*dpr; cv.height = H*dpr;
     ctx.setTransform(dpr,0,0,dpr,0,0);
-    /* the gateway line sits at the end of the "PriceTag" title itself — the
-       inline span's text edge, not the h1's block box, which spans the whole
-       column — with a small breath of space, capped so it stays on canvas */
+    /* the gateway line floats midway between the end of the "PriceTag"
+       title (the inline span's text edge, not the h1's block box) and the
+       right edge of the canvas, so it reads as a gate past the copy */
     var right = 0, cr = cv.getBoundingClientRect();
     var el = hero && (hero.querySelector("h1 .pricetag") || hero.querySelector("h1"));
     if (el) right = el.getBoundingClientRect().right;
-    cx = Math.max(24, Math.min(W-24, right - cr.left + 22));
+    var edge = right - cr.left + 22;
+    cx = edge + Math.max(0, (W-24) - edge) / 2;
+    cx = Math.min(W-24, Math.max(24, cx));
   }
   function spawn(){
     return {
