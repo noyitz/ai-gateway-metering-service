@@ -207,6 +207,8 @@ pre .s{color:#E8C37B}
 .callout.warn .glyph{color:var(--amber)}
 .callout.good .glyph{color:var(--accent)}
 .callout p{margin:0}
+.callout .cbody{flex:1; min-width:0}
+.callout .cbody p{margin-bottom:10px}
 .callout code{font-size:12.5px}
 
 /* hosted section */
@@ -342,7 +344,11 @@ footer .mono{font-size:12px}
 <span class="k">export</span> ANTHROPIC_API_KEY=<span class="s">$PRICETAG_KEY</span>
 
 claude</pre></div>
-      <div class="callout warn"><span class="glyph">!</span><p>If you've used Vertex or BedLab before, run <code>unset CLAUDE_CODE_USE_VERTEX ANTHROPIC_VERTEX_PROJECT_ID</code> — leftover variables silently bypass the gateway. Check your <code>.zshrc</code> too.</p></div>
+      <div class="callout warn"><span class="glyph">!</span><div class="cbody">
+        <p>If you've used Vertex or BedLab before, leftover variables silently bypass the gateway — run this in every new shell, and clear it out of your <code>.zshrc</code> too.</p>
+        <div class="codebox"><button class="copy">copy</button><pre><span class="k">unset</span> CLAUDE_CODE_USE_VERTEX
+<span class="k">unset</span> ANTHROPIC_VERTEX_PROJECT_ID</pre></div>
+      </div></div>
     </div>
   </div>
 </section>
