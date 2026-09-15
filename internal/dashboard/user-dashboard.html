@@ -371,10 +371,10 @@ tr:hover td{background:var(--c2)}
       <table>
         <thead><tr>
           <th>Time</th><th>Model</th><th>Provider</th>
-          <th class="num">Input Tokens</th><th class="num">Output Tokens</th><th class="num">Cost</th>
+          <th class="num">Input</th><th class="num">Cached</th><th class="num">Output</th><th class="num">Cost</th>
         </tr></thead>
         <tbody id="recent-tbody">
-          <tr><td colspan="6"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
+          <tr><td colspan="7"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
         </tbody>
       </table>
     </div>
@@ -788,17 +788,19 @@ function renderRecent(data) {
   });
 
   if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No recent activity.</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty">No recent activity.</div></td></tr>';
     return;
   }
 
   tbody.innerHTML = filtered.map(function(r) {
     var provColor = (r.provider === 'anthropic') ? 'var(--org)' : (r.provider === 'openai') ? 'var(--grn)' : 'var(--cyn)';
+    var cached = (r.cached_input_tokens || 0) + (r.cache_creation_tokens || 0);
     return '<tr>'
       + '<td style="white-space:nowrap;color:var(--t2)">' + esc(timeAgo(r.timestamp || r.time)) + '</td>'
       + '<td style="font-weight:600">' + esc(r.model) + '</td>'
       + '<td style="color:' + provColor + '">' + esc(r.provider) + '</td>'
       + '<td class="num">' + fmtN(r.prompt_tokens) + '</td>'
+      + '<td class="num">' + (cached > 0 ? fmtN(cached) : '—') + '</td>'
       + '<td class="num">' + fmtN(r.completion_tokens) + '</td>'
       + '<td class="num">' + fmtC(r.cost_usd) + '</td>'
       + '</tr>';
