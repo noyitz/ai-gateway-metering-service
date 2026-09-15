@@ -168,6 +168,10 @@ func parseTimeWindow(r *http.Request) (since, until time.Time) {
 	switch r.URL.Query().Get("range") {
 	case "24h":
 		return now.Add(-24 * time.Hour), now
+	case "mtd":
+		// Month to date: calendar month, matching the monthly quota window.
+		y, m, _ := now.Date()
+		return time.Date(y, m, 1, 0, 0, 0, 0, now.Location()), now
 	case "30d":
 		return now.Add(-30 * 24 * time.Hour), now
 	case "custom":

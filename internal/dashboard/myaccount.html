@@ -107,8 +107,9 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
   <span id="groupInfo"></span>
   <div class="range-btns" style="display:inline-flex;margin-left:16px">
     <button onclick="setRange('24h')" data-r="24h">24h</button>
-    <button onclick="setRange('7d')" data-r="7d" class="active">7d</button>
+    <button onclick="setRange('7d')" data-r="7d">7d</button>
     <button onclick="setRange('30d')" data-r="30d">30d</button>
+    <button onclick="setRange('mtd')" data-r="mtd" class="active" title="Month to date">MTD</button>
   </div>
 </div>
 
@@ -160,7 +161,7 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
 <div id="toast" class="toast"></div>
 
 <script>
-var me='',myGroup='',range='7d',gatewayUrl='',modelMetric='cost';
+var me='',myGroup='',range='mtd',gatewayUrl='',modelMetric='cost';
 var modelChart=null,cachedModels=[];
 var COLORS=['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#39d2c0','#f778ba','#79c0ff','#7ee787','#e3b341'];
 

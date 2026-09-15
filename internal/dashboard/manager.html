@@ -82,8 +82,9 @@ td.num,th.num{text-align:right}
     <h1 id="scopeTitle">Team view</h1>
     <div class="ranges" id="ranges">
       <button data-r="24h">24h</button>
-      <button data-r="7d" class="on">7d</button>
+      <button data-r="7d">7d</button>
       <button data-r="30d">30d</button>
+      <button data-r="mtd" class="on" title="Month to date">MTD</button>
     </div>
   </div>
   <p class="sub" id="scopeSub">Loading…</p>
@@ -120,7 +121,7 @@ td.num,th.num{text-align:right}
 <script>
 const fmt$=v=>'$'+Number(v||0).toLocaleString(undefined,{maximumFractionDigits:2});
 const fmtTok=v=>{v=Number(v||0);if(v>=1e9)return (v/1e9).toFixed(2)+'B';if(v>=1e6)return (v/1e6).toFixed(2)+'M';if(v>=1e3)return (v/1e3).toFixed(1)+'K';return ''+v};
-let range='7d', rows=[], tlChart=null, sortKey='CostUSD', sortDir=-1, me={};
+let range='mtd', rows=[], tlChart=null, sortKey='CostUSD', sortDir=-1, me={};
 
 document.getElementById('ranges').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return;
