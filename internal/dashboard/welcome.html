@@ -80,7 +80,7 @@ nav .links a.cta{color:var(--accent-ink); font-weight:600}
 /* ---------- hero ---------- */
 header{position:relative; overflow:hidden; border-bottom:1px solid var(--line)}
 #flow{position:absolute; inset:0; width:100%; height:100%}
-.hero{position:relative; padding:72px 0 0}
+.hero{position:relative; padding:72px 0 72px}
 .eyebrow{
   display:inline-flex; align-items:center; gap:8px;
   font:600 12px/1 "IBM Plex Mono",monospace; letter-spacing:.14em; text-transform:uppercase;
@@ -93,23 +93,10 @@ h1 .pricetag{color:var(--accent)}
 .hero .sub{max-width:56ch; color:var(--muted); font-size:18px; margin-top:18px}
 .hero .sub strong{color:var(--ink); font-weight:600}
 
-.statline{
-  position:relative; display:grid; grid-template-columns:repeat(3,1fr); gap:14px;
-  margin:38px 0 0; padding-bottom:44px;
-}
-.stat{
-  background:var(--surface); border:1px solid var(--line); border-radius:12px;
-  padding:16px 18px; box-shadow:var(--shadow);
-}
-.stat .num{font:600 30px/1.1 "IBM Plex Mono",monospace; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
-.stat .num .suffix{color:var(--accent)}
-.stat .lbl{color:var(--muted); font-size:13px; margin-top:4px}
-@media (max-width:640px){.statline{grid-template-columns:1fr}}
-
 /* ---------- sections ---------- */
 section{padding:56px 0 8px}
 h2{font-size:28px; letter-spacing:-.015em; font-weight:700; margin-bottom:6px}
-.lede{color:var(--muted); max-width:64ch; margin-bottom:26px}
+.lede{color:var(--muted); margin-bottom:26px}
 h2 .no{font:600 13px "IBM Plex Mono",monospace; color:var(--faint); margin-right:10px; vertical-align:3px}
 
 /* routes table */
@@ -130,6 +117,34 @@ h2 .no{font:600 13px "IBM Plex Mono",monospace; color:var(--faint); margin-right
 
 /* cards & code */
 .duo{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+/* grid children default to min-width:auto, which lets a long unbroken URL
+   grow the track past the viewport; min-width:0 hands overflow back to pre */
+.duo>*{min-width:0}
+
+/* ---------- claude code window mock (deliberately always-dark — it's a terminal) ---------- */
+.ccwin{margin-top:14px;border-radius:12px;overflow:hidden;background:#0B0F14;border:1px solid #202A36;box-shadow:var(--shadow);font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:13px;line-height:1.65}
+.ccwin .bar{display:flex;align-items:center;gap:7px;padding:9px 14px;background:#141B24;border-bottom:1px solid #202A36}
+.ccwin .bar i{width:11px;height:11px;border-radius:50%}
+.ccwin .bar i:nth-child(1){background:#E06C5F}
+.ccwin .bar i:nth-child(2){background:#D8A646}
+.ccwin .bar i:nth-child(3){background:#4CAF6D}
+.ccwin .bar span{margin-left:6px;color:#5C6A7A;font-size:11.5px}
+.ccwin .scr{padding:16px 18px;color:#C9D2DC}
+.ccwin .prompt{margin:0;white-space:nowrap}
+.ccwin .prompt .who{color:#8B7DF5;font-weight:600;padding-right:8px}
+.ccwin .caret{display:inline-block;width:7px;height:15px;background:#8B7DF5;vertical-align:-2px;margin-left:2px;animation:ccblink 1.1s steps(1) infinite}
+@keyframes ccblink{50%{opacity:0}}
+.ccwin .head{color:#93A7FF;font-weight:600;margin:12px 0 2px}
+.ccwin .sub{color:#67727F;margin:0 0 12px}
+.ccwin .rows{overflow-x:auto;padding-bottom:2px}
+.ccwin .r{display:flex;gap:20px;white-space:nowrap}
+.ccwin .r .n{flex:0 0 auto;min-width:290px}
+.ccwin .r .d{color:#67727F;overflow:hidden;text-overflow:ellipsis}
+.ccwin .r.sel .n{color:#41D98C;font-weight:600}
+.ccwin .r.more .n{color:#67727F}
+.ccwin .eff{color:#C9D2DC;margin:12px 0 0}
+.ccwin .eff i{color:#D8A646;font-style:normal}
+.ccwin .out{visibility:hidden}
 @media (max-width:760px){.duo{grid-template-columns:1fr}}
 .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:22px; box-shadow:var(--shadow)}
 .card h3{font-size:17px; margin-bottom:4px}
@@ -255,11 +270,6 @@ footer .mono{font-size:12px}
     <span class="eyebrow">◈ Every token, priced</span>
     <h1>Welcome to <span class="pricetag">PriceTag</span></h1>
     <p class="sub">One gateway for <strong>Claude</strong>, <strong>OpenAI</strong> and our own <strong>hosted Qwen</strong> — with every request metered to you, in real time. Point your tools at it once; usage, spend and savings land in your dashboard automatically.</p>
-    <div class="statline">
-      <div class="stat"><div class="num" data-count="6">6</div><div class="lbl">models on two routes — Claude, GPT &amp; hosted Qwen</div></div>
-      <div class="stat"><div class="num"><span data-count="10">10</span><span class="suffix">B</span></div><div class="lbl">tokens per user, per month, included</div></div>
-      <div class="stat"><div class="num"><span class="suffix">$</span><span data-count="0.15" data-dec="2">0.15</span></div><div class="lbl">per MTok input on the hosted model — vs $3 for a frontier Claude</div></div>
-    </div>
   </div>
 </header>
 
@@ -429,6 +439,26 @@ codex --profile pricetag</pre></div>
     <div class="save">≈ 97% cheaper per output token — and every dollar saved is counted on your dashboard</div>
   </div>
 
+  <h3 style="margin-top:30px">In Claude Code it looks like this</h3>
+  <p class="cap">Type <span class="mono">/model</span> and the hosted model sits right in the picker, next to the Claudes:</p>
+  <div class="ccwin" id="ccwin" role="img" aria-label="Claude Code model picker showing Qwen 3.8 Flash Next selected">
+    <div class="bar"><i></i><i></i><i></i><span>claude — PriceTag gateway</span></div>
+    <div class="scr" id="cpanel">
+      <p class="prompt"><span class="who">&gt;</span><span id="ctyped">/model</span><span class="caret" aria-hidden="true"></span></p>
+      <p class="head">Select model</p>
+      <p class="sub">Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, specify with --model.</p>
+      <div class="rows">
+        <div class="r"><span class="n">↑ 5. Sonnet 5 (1M context)</span><span class="d">Sonnet 5 for long sessions · $2/$10 per Mtok</span></div>
+        <div class="r"><span class="n">6. Haiku</span><span class="d">Haiku 4.5 · Fastest for quick answers · $1/$5 per Mtok</span></div>
+        <div class="r"><span class="n">7. Claude Opus 4.8</span><span class="d">From gateway</span></div>
+        <div class="r"><span class="n">8. Qwen 3.8 27B (self-hosted)</span><span class="d">Hosted-Model vLLM via PriceTag gateway · $0.21/$2.55 per Mtok</span></div>
+        <div class="r sel"><span class="n">▸ 9. Qwen 3.8 Flash Next (NVFP4) ✓</span><span class="d">Hosted-Model vLLM via PriceTag gateway · $0.15/$0.47 per Mtok</span></div>
+        <div class="r more"><span class="n">… +4 models</span></div>
+      </div>
+      <p class="eff"><i>◐</i> Medium effort <i>←/→</i> to adjust</p>
+    </div>
+  </div>
+
   <div class="duo" style="margin-top:24px">
     <div class="card">
       <h3>It's on the menu</h3>
@@ -496,23 +526,6 @@ codex --profile pricetag</pre></div>
     });
   });
 
-  /* ---- count-up stats ---- */
-  function fmt(v, dec){ return dec ? v.toFixed(dec) : Math.round(v).toLocaleString("en-US"); }
-  function countUp(el){
-    var target = parseFloat(el.getAttribute("data-count"));
-    var dec = parseInt(el.getAttribute("data-dec")||"0",10);
-    if (reduced || !target) { el.textContent = fmt(target,dec); return; }
-    var t0=null, dur=1100;
-    function tick(t){
-      if(!t0) t0=t;
-      var p = Math.min((t-t0)/dur,1), e = 1-Math.pow(1-p,3);
-      el.textContent = fmt(target*e, dec);
-      if(p<1) requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
-  }
-  document.querySelectorAll("[data-count]").forEach(countUp);
-
   /* ---- savings bars ---- */
   var cmp = document.getElementById("compare");
   if (cmp) {
@@ -531,7 +544,8 @@ codex --profile pricetag</pre></div>
   var running = true;
   var ctx = cv.getContext("2d");
   var dpr = Math.min(window.devicePixelRatio||1, 2);
-  var W=0, H=0, tokens=[];
+  var W=0, H=0, cx=0, tokens=[];
+  var hero = cv.parentElement.querySelector(".hero");
   var GLYPHS = ["0x7f3a","tok","ƒ(x)","⧉","{ }","42","1010",">>","$?","…"];
   var PRICES = ["$0.15","$0.47","$0.016","$3","$15","$0.60","$0.02","$1.20"];
   function accent(){ return getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()||"#0E7A4B"; }
@@ -541,24 +555,32 @@ codex --profile pricetag</pre></div>
     W = r.width; H = r.height;
     cv.width = W*dpr; cv.height = H*dpr;
     ctx.setTransform(dpr,0,0,dpr,0,0);
+    /* the gateway line sits clear of the headline block's right edge (never
+       through the text), but never closer than ~55% of the canvas; on narrow
+       screens it parks near the right edge and tokens price themselves there */
+    var right = 0, cr = cv.getBoundingClientRect();
+    if (hero) hero.querySelectorAll("h1, .sub").forEach(function(el){
+      right = Math.max(right, el.getBoundingClientRect().right);
+    });
+    cx = Math.min(W-64, Math.max(W*0.55, right - cr.left + 56));
   }
-  function spawn(fromRight){
-    var speed = 0.35 + Math.random()*0.85;
+  function spawn(){
     return {
-      x: fromRight ? W + 30 : -30,
+      x: -30,
       y: 14 + Math.random()*(H-28),
-      vx: (fromRight?-1:1)*speed,
+      vx: 0.35 + Math.random()*0.85,
       g: GLYPHS[(Math.random()*GLYPHS.length)|0],
       priced: false, stamp: PRICES[(Math.random()*PRICES.length)|0],
       born: 0, alpha: 0
     };
   }
   resize(); window.addEventListener("resize", resize);
-  for (var i=0;i<26;i++){ var t=spawn(i%2===0); t.x = Math.random()*W; tokens.push(t); }
+  window.addEventListener("load", resize); // webfonts change headline width
+  for (var i=0;i<26;i++){ var t=spawn(); t.x = Math.random()*cx; tokens.push(t); }
 
   function frame(ts){
     ctx.clearRect(0,0,W,H);
-    var cx = W*0.5, a = accent(), ic = ink();
+    var a = accent(), ic = ink();
 
     /* gateway column */
     var grad = ctx.createLinearGradient(cx-40,0,cx+40,0);
@@ -569,34 +591,31 @@ codex --profile pricetag</pre></div>
     ctx.strokeStyle = a + "55"; ctx.setLineDash([3,5]); ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,H); ctx.stroke(); ctx.setLineDash([]);
 
-    ctx.font = '500 12px "IBM Plex Mono", monospace';
     ctx.textBaseline = "middle";
     for (var i=0;i<tokens.length;i++){
       var t=tokens[i];
-      if (!t.priced && ((t.vx>0 && t.x>=cx) || (t.vx<0 && t.x<=cx))) {
-        t.priced=true; t.born=ts;
-      }
+      if (!t.priced && t.x>=cx) { t.priced=true; t.born=ts; }
       t.x += t.vx * (t.priced?0.35:1);
       t.alpha = Math.min(t.alpha+0.03, 1);
 
       if (!t.priced) {
+        ctx.font = '500 12px "IBM Plex Mono", monospace';
         ctx.fillStyle = ic; ctx.globalAlpha = t.alpha*0.75;
         ctx.fillText(t.g, t.x, t.y);
       } else {
+        /* the token becomes its price: glyph is gone, a dollar number takes
+           its place with a small pop, holds, then fades */
         var age = ts - t.born;
         var fade = age>2400 ? Math.max(0,1-(age-2400)/1600) : 1;
+        var pop = age<180 ? 1 + 0.35*(1-age/180) : 1;
         ctx.globalAlpha = t.alpha*fade;
         ctx.fillStyle = a;
-        /* token + price tag as one group, tag on the leading edge with a
-           gap wider than the glyph, so they never draw on top of each other */
-        var gw = ctx.measureText(t.g).width;
-        var tw = ctx.measureText(t.stamp).width;
-        if (t.vx > 0) { ctx.fillText(t.g, t.x, t.y); ctx.fillText(t.stamp, t.x + gw + 8, t.y); }
-        else          { ctx.fillText(t.stamp, t.x, t.y); ctx.fillText(t.g, t.x + tw + 8, t.y); }
+        ctx.font = '600 ' + (12*pop).toFixed(1) + 'px "IBM Plex Mono", monospace';
+        ctx.fillText(t.stamp, t.x, t.y);
       }
       ctx.globalAlpha = 1;
       var dead = t.priced && (ts-t.born) > 4200;
-      if (dead || t.x < -60 || t.x > W+60) tokens[i] = spawn(i%2===0);
+      if (dead || t.x > W+60) tokens[i] = spawn();
     }
     if (!reduced && running) requestAnimationFrame(frame);
   }
@@ -610,6 +629,48 @@ codex --profile pricetag</pre></div>
         else if (!e.isIntersecting) running=false;
       });
     },{threshold:0.01}).observe(cv);
+  }
+})();
+
+/* ---- /model picker replay (HTML ships the final frame; JS animates a replay
+       each time the window scrolls into view; reduced-motion keeps the frame) */
+(function(){
+  "use strict";
+  var win = document.getElementById("ccwin");
+  if (!win || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  var typed = win.querySelector("#ctyped");
+  var rows = [].slice.call(win.querySelectorAll(".head, .sub, .r, .eff"));
+  var CMD = "/model";
+  var timers = [], playing = false, inView = false;
+  function after(ms, fn){ timers.push(setTimeout(fn, ms)); }
+  function clearAll(){ timers.forEach(clearTimeout); timers = []; }
+  function play(){
+    if (playing) return;
+    playing = true; clearAll();
+    typed.textContent = "";
+    rows.forEach(function(r){ r.classList.add("out"); });
+    var i = 0;
+    (function type(){
+      after(95, function(){
+        typed.textContent = CMD.slice(0, ++i);
+        if (i < CMD.length) type();
+        else after(420, reveal);
+      });
+    })();
+  }
+  function reveal(){
+    rows.forEach(function(r, n){ after(n*110, function(){ r.classList.remove("out"); }); });
+    after(rows.length*110 + 7000, function(){ playing = false; if (inView && !document.hidden) play(); });
+  }
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        inView = e.isIntersecting;
+        if (inView && !playing && !document.hidden) play();
+      });
+    },{threshold:0.25}).observe(win);
+  } else {
+    inView = true; play();
   }
 })();
 </script>
