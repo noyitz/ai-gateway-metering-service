@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/noyitz/ai-gateway-metering-service/internal/config"
@@ -315,6 +316,23 @@ func (h *AdminHandler) HandleSubscriptions(w http.ResponseWriter, r *http.Reques
 		subs = []k8s.SubscriptionInfo{}
 	}
 	writeJSON(w, subs)
+}
+
+// HandleValidGroups returns the canonical, live list of org groups the
+// gateway actually grants a model subscription to — spec.owner.groups on
+// the configured MaaSSubscription CR — for the People & Org group picker.
+func (h *AdminHandler) HandleValidGroups(w http.ResponseWriter, r *http.Request) {
+	if h.k8sClient == nil {
+		writeJSON(w, map[string][]string{"groups": {}})
+		return
+	}
+	groups, err := h.k8sClient.GetMaaSSubscriptionGroups(r.Context(), h.cfg.Kubernetes.Namespace, h.cfg.Kubernetes.SubscriptionName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	sort.Strings(groups)
+	writeJSON(w, map[string][]string{"groups": groups})
 }
 
 func (h *AdminHandler) HandleKeys(w http.ResponseWriter, r *http.Request) {

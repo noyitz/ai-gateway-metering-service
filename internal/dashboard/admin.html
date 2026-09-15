@@ -642,7 +642,10 @@ td .tag{white-space:nowrap}
             <span class="card-title">People</span>
             <span class="card-count" id="people-count"></span>
           </div>
-          <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadPeople()">Refresh</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-grn" style="padding:5px 12px;font-size:10px" onclick="openInviteUserModal()">Invite user</button>
+            <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadPeople()">Refresh</button>
+          </div>
         </div>
         <div class="chipbar">
           <button class="chip on" data-pf="needs_attention" onclick="setPeopleFilter(this)">Needs attention</button>
@@ -650,6 +653,9 @@ td .tag{white-space:nowrap}
           <button class="chip" data-pf="managers" onclick="setPeopleFilter(this)">Managers</button>
           <span class="ts" id="people-subtree-note" style="display:none"></span>
           <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+            <select class="tbl-input" id="people-group-filter" style="max-width:160px" onchange="setPeopleGroupFilter(this)">
+              <option value="">All groups</option>
+            </select>
             <input type="text" class="tbl-input" id="people-search" placeholder="Filter by name…" style="max-width:200px" oninput="renderPeople()">
           </div>
         </div>
@@ -756,6 +762,52 @@ td .tag{white-space:nowrap}
   </div>
 </div>
 
+<!-- Invite User (People & Org: add someone not on the roster at all) -->
+<div class="modal-overlay" id="inviteUserModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeInviteUserModal()">&times;</button>
+    <div class="modal-title">Invite user</div>
+
+    <div id="inviteUserForm">
+      <div class="field">
+        <label>First name</label>
+        <input type="text" id="iu-first" placeholder="e.g. Alice">
+      </div>
+      <div class="field">
+        <label>Last name</label>
+        <input type="text" id="iu-last" placeholder="e.g. Chen">
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input type="text" id="iu-email" placeholder="e.g. achen@redhat.com">
+      </div>
+      <div class="field">
+        <label>Group</label>
+        <select id="iu-group">
+          <option value="">-- select a group --</option>
+        </select>
+      </div>
+      <div id="inviteUserError"></div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" onclick="closeInviteUserModal()" style="padding:7px 18px;font-size:11px">Cancel</button>
+        <button class="btn btn-grn" id="inviteUserBtn" onclick="submitInviteUser()">Invite</button>
+      </div>
+    </div>
+
+    <div id="inviteUserSuccess" style="display:none">
+      <div class="key-display">
+        <div class="key-display-label">Invite link</div>
+        <div class="key-display-value" id="inviteUserUrl" style="word-break:break-all;font-size:12px"></div>
+        <div class="key-display-warn">Send this link to the new person — it lets them claim their key.</div>
+      </div>
+      <button class="btn-copy" onclick="copyInviteUserURL()">Copy to Clipboard</button>
+      <div class="modal-actions" style="margin-top:16px">
+        <button class="btn btn-outline" onclick="closeInviteUserModal()" style="padding:7px 18px;font-size:11px">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Confirm Dialog -->
 <div class="confirm-overlay" id="confirmDialog">
   <div class="confirm-box">
@@ -778,6 +830,9 @@ var refreshTimer = null;
 var REFRESH_INTERVAL = 30000;
 var modelNameMap = {};
 var knownGroups = [];
+var validGroups = []; // canonical org groups, from the live MaaSSubscription CR
+var peopleSort = { key: '', dir: 1 };
+var peopleGroupFilter = '';
 var confirmCallback = null;
 var cachedPolicies = [];
 var cachedSubscriptions = [];
@@ -860,6 +915,7 @@ function refreshTab(name, manual) {
   } else if (name === 'people') {
     if (manual) { loadPeople(); loadIdentities(); }
     else loadPeople(); // org chart + identities follow once the cache lands
+    loadValidGroups();
   }
   if (manual) touchUpdated();
 }
@@ -1178,6 +1234,40 @@ function removeFromGroup(groupName, username) {
     loadGroups();
     loadPendingUsers();
   }).catch(function(err) { alert('Failed to remove user: ' + err.message); });
+}
+
+/* Canonical org groups (People & Org tab) — live from the MaaSSubscription
+   CR, distinct from knownGroups (OpenShift/usage-derived, Keys tab only). */
+function loadValidGroups() {
+  fetchJSON('/api/v1/admin/org/valid-groups').then(function(r) {
+    validGroups = (r && Array.isArray(r.groups)) ? r.groups : [];
+    populatePeopleGroupFilter();
+    renderPeople();
+  }).catch(function() { /* People table still works without the picker */ });
+}
+function populatePeopleGroupFilter() {
+  var sel = document.getElementById('people-group-filter');
+  if (!sel) return;
+  var cur = sel.value;
+  sel.innerHTML = '<option value="">All groups</option>' +
+    validGroups.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('');
+  sel.value = cur;
+}
+function peopleGroupOptions(current) {
+  var names = validGroups.slice();
+  if (current && names.indexOf(current) < 0) names.push(current); // stale/legacy value — keep it selectable
+  return '<option value=""></option>' + names.map(function(g) {
+    return '<option value="' + esc(g) + '"' + (g === current ? ' selected' : '') + '>' + esc(g) + '</option>';
+  }).join('');
+}
+function setPeopleGroupFilter(sel) {
+  peopleGroupFilter = sel.value;
+  renderPeople();
+}
+function sortPeopleBy(key) {
+  if (peopleSort.key === key) peopleSort.dir *= -1;
+  else { peopleSort.key = key; peopleSort.dir = 1; }
+  renderPeople();
 }
 
 function populateGroupDropdown() {
@@ -1534,9 +1624,17 @@ function renderPeople() {
     if (peopleFilter === 'needs_attention' && !needsAttention(p)) return false;
     if (peopleFilter === 'managers' && !(p.reports > 0)) return false;
     if (sub && !sub[p.slug]) return false;
+    if (peopleGroupFilter && p.group_name !== peopleGroupFilter) return false;
     if (q && (p.full_name || '').toLowerCase().indexOf(q) < 0 && (p.username || '').toLowerCase().indexOf(q) < 0) return false;
     return true;
   });
+  if (peopleSort.key) {
+    var sk = peopleSort.key, sd = peopleSort.dir;
+    rows.sort(function(a, b) {
+      var av = (a[sk] || '').toString().toLowerCase(), bv = (b[sk] || '').toString().toLowerCase();
+      return av < bv ? -sd : av > bv ? sd : 0;
+    });
+  }
   setTabBadge('people', peopleAll.filter(needsAttention).length, true);
   var note = document.getElementById('people-subtree-note');
   if (sub) {
@@ -1549,8 +1647,11 @@ function renderPeople() {
   document.getElementById('people-count').textContent = peopleAll.length ? '(' + rows.length + ' shown / ' + peopleAll.length + ')' : '';
 
   var mgrOpts = peopleAll.map(function(p) { return { v: p.slug, t: p.full_name }; });
+  var sortArrow = function(key) { return peopleSort.key === key ? (peopleSort.dir > 0 ? ' ▲' : ' ▼') : ''; };
   var html = '<div class="tbl-wrap"><table><thead><tr>' +
-    '<th>Person</th><th>Manager</th><th>Email</th><th>Login</th><th>Direct</th><th></th>' +
+    '<th style="cursor:pointer" onclick="sortPeopleBy(\'full_name\')">Person' + sortArrow('full_name') + '</th>' +
+    '<th style="cursor:pointer" onclick="sortPeopleBy(\'group_name\')">Group' + sortArrow('group_name') + '</th>' +
+    '<th>Manager</th><th>Email</th><th>Login</th><th>Direct</th><th></th>' +
     '</tr></thead><tbody>';
   rows.forEach(function(p) {
     var badges = '';
@@ -1572,6 +1673,7 @@ function renderPeople() {
     html += '<tr>' +
       '<td><div class="org-name">' + esc(p.full_name) + ' ' + badges + '</div>' +
       (p.title ? '<div class="org-title">' + esc(p.title) + '</div>' : '') + '</td>' +
+      '<td><select class="tbl-input" style="min-width:120px" onchange="setPersonField(\'' + esc(p.slug) + '\',\'group_name\',this.value)">' + peopleGroupOptions(p.group_name) + '</select></td>' +
       '<td><select class="tbl-input" style="min-width:150px" onchange="setPersonField(\'' + esc(p.slug) + '\',\'manager_slug\',this.value)">' + opts + '</select></td>' +
       '<td><input class="tbl-input" style="min-width:170px" value="' + esc(p.email || '') + '" placeholder="fill in…" onchange="setPersonField(\'' + esc(p.slug) + '\',\'email\',this.value)"></td>' +
       '<td>' + login + '</td>' +
@@ -1920,6 +2022,84 @@ function copyNewKey() {
   } else {
     fallbackCopy(keyText);
   }
+}
+
+/* ================================================================
+   Invite User Modal (People & Org: add someone not on the roster,
+   then immediately mint them a claimable key invite)
+   ================================================================ */
+function openInviteUserModal() {
+  document.getElementById('inviteUserForm').style.display = '';
+  document.getElementById('inviteUserSuccess').style.display = 'none';
+  document.getElementById('iu-first').value = '';
+  document.getElementById('iu-last').value = '';
+  document.getElementById('iu-email').value = '';
+  var gsel = document.getElementById('iu-group');
+  gsel.innerHTML = '<option value="">-- select a group --</option>' +
+    validGroups.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('');
+  document.getElementById('inviteUserError').innerHTML = '';
+  document.getElementById('inviteUserBtn').disabled = false;
+  document.getElementById('inviteUserBtn').textContent = 'Invite';
+  document.getElementById('inviteUserModal').classList.add('open');
+  setTimeout(function() { document.getElementById('iu-first').focus(); }, 100);
+}
+
+function closeInviteUserModal() {
+  document.getElementById('inviteUserModal').classList.remove('open');
+  loadPeople();
+}
+
+function submitInviteUser() {
+  var first = document.getElementById('iu-first').value.trim();
+  var last = document.getElementById('iu-last').value.trim();
+  var email = document.getElementById('iu-email').value.trim();
+  var group = document.getElementById('iu-group').value.trim();
+  var errEl = document.getElementById('inviteUserError');
+
+  if (!first || !last) {
+    errEl.innerHTML = '<div class="err-msg" style="margin-top:8px;text-align:left">First and last name are required.</div>';
+    return;
+  }
+  if (!email) {
+    errEl.innerHTML = '<div class="err-msg" style="margin-top:8px;text-align:left">Email is required.</div>';
+    return;
+  }
+  if (!group) {
+    errEl.innerHTML = '<div class="err-msg" style="margin-top:8px;text-align:left">Group is required.</div>';
+    return;
+  }
+
+  errEl.innerHTML = '';
+  var btn = document.getElementById('inviteUserBtn');
+  btn.disabled = true;
+  btn.textContent = 'Inviting...';
+
+  var person = {
+    first_name: first, last_name: last,
+    full_name: first + ' ' + last,
+    email: email, group_name: group
+  };
+
+  updateJSON('/api/v1/admin/people', 'POST', person).then(function(created) {
+    return updateJSON('/api/v1/admin/keys/invites', 'POST', {
+      person_slug: created.slug, group: group, key_name: first + '-' + last
+    });
+  }).then(function(r) {
+    document.getElementById('inviteUserUrl').textContent = location.origin + r.invite_url;
+    document.getElementById('inviteUserForm').style.display = 'none';
+    document.getElementById('inviteUserSuccess').style.display = '';
+    showToast('Invited', 'success');
+    loadPeople();
+  }).catch(function(err) {
+    errEl.innerHTML = '<div class="err-msg" style="margin-top:8px;text-align:left">' + esc(err.message) + '</div>';
+    btn.disabled = false;
+    btn.textContent = 'Invite';
+  });
+}
+
+function copyInviteUserURL() {
+  var el = document.getElementById('inviteUserUrl');
+  fallbackCopy(el.textContent);
 }
 
 function fallbackCopy(text) {

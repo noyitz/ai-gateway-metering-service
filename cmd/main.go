@@ -218,6 +218,7 @@ func main() {
 	mux.HandleFunc("/api/v1/admin/group-member", auth(handler.RequireAdmin(cfg, adminHandler.HandleGroupMember)))
 	mux.HandleFunc("/api/v1/admin/auth-policies", auth(handler.RequireAdmin(cfg, adminHandler.HandleAuthPolicies)))
 	mux.HandleFunc("/api/v1/admin/subscriptions", auth(handler.RequireAdmin(cfg, adminHandler.HandleSubscriptions)))
+	mux.HandleFunc("/api/v1/admin/org/valid-groups", auth(handler.RequireAdmin(cfg, adminHandler.HandleValidGroups)))
 	// Group + key APIs are reachable by any signed-in user: the redesigned
 	// user dashboard lists its own group membership and manages the caller's
 	// own keys. The handlers scope non-admins to their own identity, so a
