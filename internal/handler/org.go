@@ -467,6 +467,7 @@ font-size:12px;word-break:break-all;color:#3dcc6e;margin:16px 0}
 button{background:#4da0f8;color:#0b0e11;border:0;border-radius:8px;padding:10px 18px;
 font-size:13px;font-weight:600;cursor:pointer}
 .err{color:#e8554e}
+.hint{color:#8b949e;font-size:13px}
 </style></head><body>
 <div class="card">
 {{if .Done}}
@@ -494,11 +495,23 @@ through email or chat, and this service never stores it.</p>
 <script>
 async function claim(){
   const b=document.getElementById('go');b.disabled=true;b.textContent='Generating…';
-  const r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'}});
-  const j=await r.json();
-  if(!r.ok){document.querySelector('.card').innerHTML='<h1>Invite not usable</h1><p class="err">'+(j.error||'claim failed')+'</p>';return;}
-  location.reload();
-  window.__k=j.key;
+  try{
+    const r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'}});
+    const body=await r.text();
+    if(!r.ok){
+      let msg='claim failed';
+      try{msg=JSON.parse(body).error||msg;}catch(e){}
+      document.querySelector('.card').innerHTML='<h1>Invite not usable</h1><p class="err">'+msg+'</p><p class="hint">If the message says the link is still valid, <a href="">reload this page</a> and click again.</p>';
+      return;
+    }
+    // Success answers with the full claim page (the key is rendered once,
+    // server-side, and never stored) — swap it in; a reload would re-runs
+    // GET and the invite is now spent.
+    document.open();document.write(body);document.close();
+  }catch(e){
+    b.disabled=false;b.textContent='Generate my key';
+    document.querySelector('.card').insertAdjacentHTML('beforeend','<p class="err">Network problem — nothing was generated. Click again.</p>');
+  }
 }
 </script>
 {{end}}{{end}}
