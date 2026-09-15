@@ -1804,7 +1804,10 @@ function loadIdentities() {
     var html = '<div class="tbl-wrap"><table><thead><tr><th>Login</th><th>Person</th><th>Usage</th><th></th></tr></thead><tbody>';
     rows.forEach(function(ir) {
       var opts = peopleAll.map(function(p) {
-        return '<option value="' + esc(p.slug) + '"' + (p.slug === ir.slug ? ' selected' : '') + '>' + esc(p.full_name) + '</option>';
+        // API field is person_slug; reading ir.slug here meant NO option
+        // ever matched and every dropdown rendered the alphabetically-first
+        // person (display only — the links in the DB were always correct).
+        return '<option value="' + esc(p.slug) + '"' + (p.slug === ir.person_slug ? ' selected' : '') + '>' + esc(p.full_name) + '</option>';
       }).join('');
       html += '<tr><td class="mono">' + esc(ir.username) + '</td>' +
         '<td><select class="tbl-input" style="min-width:180px" onchange="relinkIdentity(\'' + esc(ir.username) + '\',this.value)">' + opts + '</select></td>' +
@@ -1818,7 +1821,9 @@ function loadIdentities() {
   });
 }
 function relinkIdentity(username, slug) {
-  updateJSON('/api/v1/admin/identities', 'PUT', { username: username, person_slug: slug })
+  // POST links/re-links (the handler has no PUT); a PUT here 405'd and the
+  // catch-reload made a real failure look like a UI hiccup.
+  updateJSON('/api/v1/admin/identities', 'POST', { username: username, person_slug: slug })
     .then(function() { showToast(username + ' → ' + slug, 'success'); loadIdentities(); loadPeople(); })
     .catch(function(e) { showToast(e.message, 'error'); loadIdentities(); });
 }
