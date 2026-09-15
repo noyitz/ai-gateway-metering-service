@@ -667,6 +667,29 @@ func (c *Client) GetSubscriptions(ctx context.Context, namespace string) ([]Subs
 	return result, nil
 }
 
+// GetMaaSSubscriptionGroups returns spec.owner.groups[].name for one named
+// MaaSSubscription CR — the canonical, live list of groups the gateway
+// actually grants a model subscription to.
+func (c *Client) GetMaaSSubscriptionGroups(ctx context.Context, namespace, name string) ([]string, error) {
+	obj, err := c.client.Resource(subscriptionGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get MaaSSubscription %s/%s: %w", namespace, name, err)
+	}
+
+	owner, _, _ := unstructured.NestedMap(obj.Object, "spec", "owner")
+	var groups []string
+	if raw, ok := owner["groups"].([]interface{}); ok {
+		for _, g := range raw {
+			if gMap, ok := g.(map[string]interface{}); ok {
+				if n, ok := gMap["name"].(string); ok {
+					groups = append(groups, n)
+				}
+			}
+		}
+	}
+	return groups, nil
+}
+
 var (
 	openshiftGroupGVR = schema.GroupVersionResource{
 		Group:    "user.openshift.io",

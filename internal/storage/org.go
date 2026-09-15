@@ -47,6 +47,7 @@ type Person struct {
 	ManagerName    string    `json:"manager_name,omitempty"`
 	Username       string    `json:"username,omitempty"` // primary linked login, "" when unlinked
 	Reports        int       `json:"reports"`
+	GroupName      string    `json:"group_name"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
@@ -113,6 +114,8 @@ var orgMigrations = []string{
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_people_manager ON people (manager_slug)`,
+	`ALTER TABLE people ADD COLUMN IF NOT EXISTS group_name TEXT NOT NULL DEFAULT ''`,
+	`CREATE INDEX IF NOT EXISTS idx_people_group ON people (group_name)`,
 	// A manager chain must stay a tree: the manager view aggregates whole
 	// subtrees, and a cycle would make the recursive walk never terminate.
 	// Enforced in the database so no code path (import, PATCH, future sync)
@@ -504,6 +507,7 @@ const personSelect = `
 		p.manual_fields, p.source, COALESCE(p.manager_slug, ''), COALESCE(m.full_name, ''),
 		COALESCE(pi.username, ''),
 		(SELECT COUNT(*) FROM people r WHERE r.manager_slug = p.slug),
+		p.group_name,
 		p.updated_at
 	FROM people p
 	LEFT JOIN people m ON m.slug = p.manager_slug
@@ -514,7 +518,8 @@ func scanPerson(row interface{ Scan(...any) error }) (Person, error) {
 	var p Person
 	err := row.Scan(&p.Slug, &p.FullName, &p.FirstName, &p.LastName, &p.Title, &p.Location,
 		&p.Email, &p.EmploymentType, pq.Array(&p.Aliases), &p.IsService, &p.Active, &p.NeedsReview,
-		pq.Array(&p.ManualFields), &p.Source, &p.ManagerSlug, &p.ManagerName, &p.Username, &p.Reports, &p.UpdatedAt)
+		pq.Array(&p.ManualFields), &p.Source, &p.ManagerSlug, &p.ManagerName, &p.Username, &p.Reports,
+		&p.GroupName, &p.UpdatedAt)
 	if p.Aliases == nil {
 		p.Aliases = []string{}
 	}
@@ -626,7 +631,7 @@ func (s *Store) GetPersonByUsername(ctx context.Context, username string) (Perso
 var editablePersonColumns = map[string]bool{
 	"full_name": true, "first_name": true, "last_name": true, "title": true,
 	"location": true, "email": true, "employment_type": true, "manager_slug": true,
-	"active": true, "needs_review": true, "is_admin": true,
+	"active": true, "needs_review": true, "is_admin": true, "group_name": true,
 }
 
 // UpdatePerson applies the given column set (keys restricted to the map
@@ -685,9 +690,9 @@ func (s *Store) CreatePerson(ctx context.Context, p Person, actor string) (Perso
 		email = "\x00" // sentinel replaced by NULL below
 	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO people (slug, full_name, first_name, last_name, title, location, email, employment_type, source)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, chr(0)), CASE WHEN $8 = '' THEN 'employee' ELSE $8 END, 'manual')`,
-		p.Slug, p.FullName, p.FirstName, p.LastName, p.Title, p.Location, email, p.EmploymentType)
+		INSERT INTO people (slug, full_name, first_name, last_name, title, location, email, employment_type, group_name, source)
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, chr(0)), CASE WHEN $8 = '' THEN 'employee' ELSE $8 END, $9, 'manual')`,
+		p.Slug, p.FullName, p.FirstName, p.LastName, p.Title, p.Location, email, p.EmploymentType, p.GroupName)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
 			return Person{}, fmt.Errorf("a person with slug %s already exists", p.Slug)

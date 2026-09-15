@@ -132,6 +132,10 @@ type Kubernetes struct {
 	PipelineConfigMap          string
 	PipelineConfigMapNamespace string
 	PipelineConfigMapKey       string
+
+	// SubscriptionName names the MaaSSubscription CR (in Namespace) whose
+	// spec.owner.groups is the canonical, live list of valid org groups.
+	SubscriptionName string
 }
 
 // Enabled reports whether the Kubernetes adapter should be initialised.
@@ -185,6 +189,7 @@ func Load() Config {
 			PipelineConfigMap:          os.Getenv("PIPELINE_CONFIGMAP"),
 			PipelineConfigMapNamespace: os.Getenv("PIPELINE_CONFIGMAP_NAMESPACE"),
 			PipelineConfigMapKey:       envDefault("PIPELINE_CONFIGMAP_KEY", "config.yaml"),
+			SubscriptionName:           envDefault("MAAS_SUBSCRIPTION_NAME", "dogfood-team"),
 		},
 	}
 }
