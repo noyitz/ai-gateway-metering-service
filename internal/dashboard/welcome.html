@@ -271,11 +271,41 @@ footer .mono{font-size:12px}
   <div class="wrap hero">
     <span class="eyebrow">◈ Every token, priced</span>
     <h1>Welcome to <span class="pricetag">PriceTag</span></h1>
-    <p class="sub">One gateway for <strong>Claude</strong>, <strong>OpenAI</strong> and our own <strong>hosted Qwen</strong> — with every request metered to you, in real time. Point your tools at it once; usage, spend and savings land in your dashboard automatically.</p>
+    <p class="sub">One gateway for <strong>Claude</strong>, <strong>OpenAI</strong> and our own <strong>hosted models</strong> — with every request metered to you, in real time. Point your tools at it once; usage, spend and savings land in your dashboard automatically.</p>
   </div>
 </header>
 
 <div class="wrap">
+
+<!-- ============ WHY (value proposition, above the fold of getting started) ============ -->
+<section id="why">
+  <h2>One key. Every frontier model. A fraction of the price.</h2>
+  <p class="lede">A single PriceTag key reaches the full Claude lineup and the GPTs — and our own hosted models sit right beside them, at a fraction of the vendor price. Same gateway, same metering; the only difference is the number.</p>
+  <div class="compare" id="compare">
+    <div class="row"><span>Hosted Flash — output</span><div class="track"><div class="fill hosted" data-w="3"></div></div><span class="amt">$0.47 / MTok</span></div>
+    <div class="row"><span>Frontier Claude — output</span><div class="track"><div class="fill paid" data-w="100"></div></div><span class="amt">$15.00 / MTok</span></div>
+    <div class="save">≈ 97% cheaper per output token — and every dollar saved is counted on your dashboard</div>
+  </div>
+
+  <h3 style="margin-top:30px">In Claude Code it looks like this</h3>
+  <p class="cap">Type <span class="mono">/model</span> and the hosted model sits right in the picker, next to the Claudes:</p>
+  <div class="ccwin" id="ccwin" role="img" aria-label="Claude Code model picker showing Qwen 3.8 Flash Next selected">
+    <div class="bar"><i></i><i></i><i></i><span>claude — PriceTag gateway</span></div>
+    <div class="scr" id="cpanel">
+      <p class="prompt"><span class="who">&gt;</span><span id="ctyped">/model</span><span class="caret" aria-hidden="true"></span></p>
+      <p class="head">Select model</p>
+      <p class="sub">Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, specify with --model.</p>
+      <div class="rows">
+        <div class="r"><span class="n">1. Fable</span><span class="d">Claude Fable 5 · Frontier reasoning · From gateway</span></div>
+        <div class="r"><span class="n">2. Opus 5</span><span class="d">Claude Opus 5 · Deep thinking · From gateway</span></div>
+        <div class="r"><span class="n">3. Sonnet 5</span><span class="d">Claude Sonnet 5 · $2/$10 per Mtok</span></div>
+        <div class="r"><span class="n">4. Haiku</span><span class="d">Haiku 4.5 · Fastest for quick answers · $1/$5 per Mtok</span></div>
+        <div class="r sel"><span class="n">▸ 5. Qwen 3.8 Flash Next (NVFP4) ✓</span><span class="d">Hosted-Model vLLM via PriceTag gateway · $0.15/$0.47 per Mtok</span></div>
+      </div>
+      <p class="eff"><i>◐</i> Medium effort <i>←/→</i> to adjust</p>
+    </div>
+  </div>
+</section>
 
 <!-- ============ ROUTES ============ -->
 <section id="routes">
@@ -438,37 +468,12 @@ model_provider = <span class="s">"qwen"</span></pre></div>
 
 <!-- ============ HOSTED ============ -->
 <section id="hosted">
-  <h2><span class="no">07</span>The hosted model: Qwen 3.8 Flash Next</h2>
-  <p class="lede">Self-hosted vLLM on our own hardware, exposed through the unified route under the id <span class="mono">Inferact/Qwen3.8-Flash-Next-NVFP4</span>. FP4 quantisation, <strong>262K context</strong>, and the price per token is a rounding error — billed honestly, tracked in your dashboard like everything else.</p>
+  <h2><span class="no">07</span>Hosted models, starting with Qwen 3.8 Flash Next</h2>
+  <p class="lede">Self-hosted vLLM on our own hardware, exposed through the unified route under the id <span class="mono">Inferact/Qwen3.8-Flash-Next-NVFP4</span>. FP4 quantisation, <strong>262K context</strong>, and the price per token is a rounding error — billed honestly, tracked in your dashboard like everything else. It's the first of more hosted models to come.</p>
   <div class="rates">
     <div class="rate"><div class="top"><span class="v">$0.15</span><span class="per">/ MTok</span></div><div class="k">Input</div></div>
     <div class="rate"><div class="top"><span class="v">$0.47</span><span class="per">/ MTok</span></div><div class="k">Output</div></div>
     <div class="rate"><div class="top"><span class="v">$0.016</span><span class="per">/ MTok</span></div><div class="k">Cache read</div></div>
-  </div>
-
-  <div class="compare" id="compare">
-    <div class="row"><span>Hosted Flash — output</span><div class="track"><div class="fill hosted" data-w="3"></div></div><span class="amt">$0.47 / MTok</span></div>
-    <div class="row"><span>Frontier Claude — output</span><div class="track"><div class="fill paid" data-w="100"></div></div><span class="amt">$15.00 / MTok</span></div>
-    <div class="save">≈ 97% cheaper per output token — and every dollar saved is counted on your dashboard</div>
-  </div>
-
-  <h3 style="margin-top:30px">In Claude Code it looks like this</h3>
-  <p class="cap">Type <span class="mono">/model</span> and the hosted model sits right in the picker, next to the Claudes:</p>
-  <div class="ccwin" id="ccwin" role="img" aria-label="Claude Code model picker showing Qwen 3.8 Flash Next selected">
-    <div class="bar"><i></i><i></i><i></i><span>claude — PriceTag gateway</span></div>
-    <div class="scr" id="cpanel">
-      <p class="prompt"><span class="who">&gt;</span><span id="ctyped">/model</span><span class="caret" aria-hidden="true"></span></p>
-      <p class="head">Select model</p>
-      <p class="sub">Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names, specify with --model.</p>
-      <div class="rows">
-        <div class="r"><span class="n">1. Fable</span><span class="d">Claude Fable 5 · Frontier reasoning · From gateway</span></div>
-        <div class="r"><span class="n">2. Opus 5</span><span class="d">Claude Opus 5 · Deep thinking · From gateway</span></div>
-        <div class="r"><span class="n">3. Sonnet 5</span><span class="d">Claude Sonnet 5 · $2/$10 per Mtok</span></div>
-        <div class="r"><span class="n">4. Haiku</span><span class="d">Haiku 4.5 · Fastest for quick answers · $1/$5 per Mtok</span></div>
-        <div class="r sel"><span class="n">▸ 5. Qwen 3.8 Flash Next (NVFP4) ✓</span><span class="d">Hosted-Model vLLM via PriceTag gateway · $0.15/$0.47 per Mtok</span></div>
-      </div>
-      <p class="eff"><i>◐</i> Medium effort <i>←/→</i> to adjust</p>
-    </div>
   </div>
 
   <div class="duo" style="margin-top:24px">
