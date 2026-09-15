@@ -393,6 +393,7 @@ delete)
         -c "SELECT (SELECT COUNT(*) FROM usage_events WHERE username = '$USERNAME')
                  || ' ' || (SELECT COUNT(*) FROM user_profiles WHERE username = '$USERNAME')
                  || ' ' || (SELECT COUNT(*) FROM key_invites WHERE claimed_at IS NULL
+                            AND revoked_at IS NULL
                             AND person_slug IN (SELECT person_slug FROM person_identities
                                                 WHERE username = '$USERNAME'));" 2>/dev/null | tr -d '[:space:]')"
 
@@ -443,6 +444,7 @@ for k in json.load(sys.stdin).get('data', []):
     # alone: the org chart is HR data, not user data.
     if ! oc -n "$NAMESPACE" exec postgresql-0 -- psql -U aigateway -d aigateway -q -c "
         DELETE FROM key_invites WHERE claimed_at IS NULL
+            AND revoked_at IS NULL
             AND person_slug IN (SELECT person_slug FROM person_identities
                                 WHERE username = '$USERNAME');
         DELETE FROM person_identities WHERE username = '$USERNAME';
