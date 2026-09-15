@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -335,6 +337,26 @@ func (h *AdminHandler) HandleValidGroups(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, map[string][]string{"groups": groups})
 }
 
+// platformGroups returns the group set to scope maas-api v1 calls with: the
+// configured MaaSSubscription's live groups — the same source the gateway
+// enforces and the valid-groups endpoint serves. maas-api requires a
+// non-empty X-MaaS-Group (it scopes the internal token it mints), so an
+// empty or unreadable list is an error; OpenShift Group objects are not a
+// valid substitute — they are empty on every real deployment.
+func (h *AdminHandler) platformGroups(ctx context.Context) ([]string, error) {
+	if h.k8sClient == nil {
+		return nil, fmt.Errorf("kubernetes client not configured")
+	}
+	groups, err := h.k8sClient.GetMaaSSubscriptionGroups(ctx, h.cfg.Kubernetes.Namespace, h.cfg.Kubernetes.SubscriptionName)
+	if err != nil {
+		return nil, err
+	}
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("MaaSSubscription %s/%s lists no groups", h.cfg.Kubernetes.Namespace, h.cfg.Kubernetes.SubscriptionName)
+	}
+	return groups, nil
+}
+
 func (h *AdminHandler) HandleKeys(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -358,16 +380,15 @@ func (h *AdminHandler) listKeys(w http.ResponseWriter, r *http.Request) {
 	if !IsAdmin(h.cfg, r) {
 		username = r.Header.Get(h.cfg.UserHeader)
 	}
-	var groups []string
-	if h.k8sClient != nil {
-		if gs, err := h.k8sClient.GetOpenShiftGroups(r.Context()); err == nil {
-			for _, g := range gs {
-				groups = append(groups, g.Name)
-			}
-		}
+	groups, err := h.platformGroups(r.Context())
+	if err != nil {
+		slog.Error("key search skipped: no platform groups", "error", err)
+		writeJSON(w, &maasapi.SearchResult{Data: []maasapi.APIKeyResponse{}})
+		return
 	}
 	result, err := h.maasClient.SearchAPIKeys(r.Context(), username, groups)
 	if err != nil {
+		slog.Error("key search failed", "error", err)
 		writeJSON(w, &maasapi.SearchResult{Data: []maasapi.APIKeyResponse{}})
 		return
 	}
@@ -434,10 +455,17 @@ func (h *AdminHandler) revokeKey(w http.ResponseWriter, r *http.Request) {
 	}
 	keyID := parts[4]
 
+	groups, err := h.platformGroups(r.Context())
+	if err != nil {
+		slog.Error("key revoke blocked: no platform groups", "key", keyID, "error", err)
+		http.Error(w, "group scope unavailable for key operations", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Non-admins may only revoke a key that belongs to them.
 	if !IsAdmin(h.cfg, r) {
 		caller := r.Header.Get(h.cfg.UserHeader)
-		own, err := h.maasClient.SearchAPIKeys(r.Context(), caller, nil)
+		own, err := h.maasClient.SearchAPIKeys(r.Context(), caller, groups)
 		if err != nil {
 			http.Error(w, "unable to verify key ownership", http.StatusInternalServerError)
 			return
@@ -455,14 +483,6 @@ func (h *AdminHandler) revokeKey(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var groups []string
-	if h.k8sClient != nil {
-		if gs, err := h.k8sClient.GetOpenShiftGroups(r.Context()); err == nil {
-			for _, g := range gs {
-				groups = append(groups, g.Name)
-			}
-		}
-	}
 	if err := h.maasClient.RevokeAPIKey(r.Context(), keyID, groups); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
