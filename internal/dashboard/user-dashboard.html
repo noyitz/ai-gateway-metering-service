@@ -934,8 +934,8 @@ function loadDashboard() {
   loadMyKeys();
 
   Promise.all([
-    fetchJSON('/api/v1/dashboard/users?range=7d'),
-    fetchJSON('/api/v1/dashboard/models?range=7d&user=' + encodeURIComponent(currentUser)),
+    fetchJSON('/api/v1/dashboard/users?range=mtd'),
+    fetchJSON('/api/v1/dashboard/models?range=mtd&user=' + encodeURIComponent(currentUser)),
     fetchJSON('/api/v1/dashboard/recent?limit=10')
   ]).then(function(results) {
     var allUsers = results[0] || [];
