@@ -557,7 +557,6 @@ model_provider = <span class="s">"qwen"</span></pre></div>
   var ctx = cv.getContext("2d");
   var dpr = Math.min(window.devicePixelRatio||1, 2);
   var W=0, H=0, cx=0, tokens=[];
-  var hero = cv.parentElement.querySelector(".hero");
   var GLYPHS = ["0x7f3a","tok","ƒ(x)","⧉","{ }","42","1010",">>","$?","…"];
   var PRICES = ["$0.15","$0.47","$0.016","$3","$15","$0.60","$0.02","$1.20"];
   function accent(){ return getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()||"#0E7A4B"; }
@@ -567,14 +566,18 @@ model_provider = <span class="s">"qwen"</span></pre></div>
     W = r.width; H = r.height;
     cv.width = W*dpr; cv.height = H*dpr;
     ctx.setTransform(dpr,0,0,dpr,0,0);
-    /* the gateway line floats midway between the end of the "PriceTag"
-       title (the inline span's text edge, not the h1's block box) and the
-       right edge of the canvas, so it reads as a gate past the copy */
-    var right = 0, cr = cv.getBoundingClientRect();
-    var el = hero && (hero.querySelector("h1 .pricetag") || hero.querySelector("h1"));
-    if (el) right = el.getBoundingClientRect().right;
-    var edge = right - cr.left + 22;
-    cx = edge + Math.max(0, (W-24) - edge) / 2;
+    /* the gateway line sits directly under the "OpenCode" nav link — the
+       top bar is the reference the eye already scans, and the line reads as
+       the gate dropped straight below it (nav is a sibling of the header,
+       so compare against the canvas rect for the same x-space) */
+    var cr = cv.getBoundingClientRect();
+    var el = document.querySelector('nav a[href="#opencode"]');
+    if (el) {
+      var lr = el.getBoundingClientRect();
+      cx = lr.left - cr.left + lr.width/2;
+    } else {
+      cx = W * 0.72; // fallback if the nav is ever restructured
+    }
     cx = Math.min(W-24, Math.max(24, cx));
   }
   function spawn(){
