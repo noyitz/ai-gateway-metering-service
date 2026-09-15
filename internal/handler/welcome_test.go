@@ -31,7 +31,7 @@ func TestServeWelcomeSubstitution(t *testing.T) {
 		"https://unified.test",
 		"https://openai.test/v1",
 		"https://dash.test",
-		"10B tokens per month",
+		"10B monthly allowance",
 		"Qwen3.8-Flash-Next-NVFP4",
 		"effortLevel",
 	} {
@@ -62,7 +62,7 @@ func TestServeWelcomeFallbacks(t *testing.T) {
 	}
 	for _, want := range []string{
 		welcomeUnifiedFallback, welcomeOpenAIFallback, welcomeDashboardFallback,
-		"100M tokens per month",
+		"100M monthly allowance",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fallback page missing %q", want)
