@@ -60,6 +60,21 @@ type Config struct {
 
 	KeyService KeyService
 	Kubernetes Kubernetes
+	Welcome    Welcome
+}
+
+// Welcome holds the public gateway endpoints surfaced on the
+// unauthenticated /welcome onboarding page. The URLs are injected into the
+// page at serve time from the deployment environment instead of being
+// written into the template, so no cluster-specific host ever lands in the
+// repository.
+type Welcome struct {
+	// UnifiedURL is the Anthropic-dialect gateway base URL (no /v1 suffix).
+	UnifiedURL string
+	// OpenAIURL is the OpenAI-dialect gateway base URL (ends in /v1).
+	OpenAIURL string
+	// DashboardURL is this service's public base URL, as users reach it.
+	DashboardURL string
 }
 
 // KeyService describes an optional upstream that issues and revokes API
@@ -149,6 +164,11 @@ func Load() Config {
 			TenantHeader:       envDefault("KEY_SERVICE_TENANT_HEADER", "X-Auth-Tenant"),
 			Tenant:             os.Getenv("KEY_SERVICE_TENANT"),
 			InsecureSkipVerify: envBool("KEY_SERVICE_INSECURE_SKIP_VERIFY", false),
+		},
+		Welcome: Welcome{
+			UnifiedURL:   strings.TrimSuffix(os.Getenv("WELCOME_UNIFIED_URL"), "/"),
+			OpenAIURL:    strings.TrimSuffix(os.Getenv("WELCOME_OPENAI_URL"), "/"),
+			DashboardURL: strings.TrimSuffix(os.Getenv("WELCOME_DASHBOARD_URL"), "/"),
 		},
 		Kubernetes: Kubernetes{
 			Namespace:                  envDefault("K8S_NAMESPACE", "default"),

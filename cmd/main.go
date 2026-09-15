@@ -163,14 +163,18 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
-	// Root redirect — session required
-	mux.HandleFunc("/", auth(func(w http.ResponseWriter, r *http.Request) {
+	// Public onboarding page — no session by design: it is the link you
+	// send someone before they have a key. Its gateway URLs are substituted
+	// at serve time from WELCOME_*_URL env vars, so the repo template stays
+	// host-free. Root sends newcomers here; signed-in users navigate on.
+	mux.HandleFunc("/welcome", dashboardHandler.ServeWelcome)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
-			http.Redirect(w, r, "/dashboard", http.StatusFound)
+			http.Redirect(w, r, "/welcome", http.StatusFound)
 			return
 		}
 		http.NotFound(w, r)
-	}))
+	})
 
 	// User pages — session required. /whoami backs both the legacy pages and
 	// the redesigned user dashboard (name, groups, admin flag, impersonation).

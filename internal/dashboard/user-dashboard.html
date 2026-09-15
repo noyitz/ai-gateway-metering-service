@@ -446,7 +446,7 @@ tr:hover td{background:var(--c2)}
       <span class="pm-title">Model pricing</span>
       <span class="pm-sub">$ per million tokens</span>
       <span class="pm-opts">
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="pm-all" onchange="loadPricing()"> all catalog models</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="pm-all" onchange="loadPricing()" title="Off: only models you have used, plus hosted models. On: every model in the price list, even ones with no usage yet."> Show price list for unused models too</label>
         <button class="pm-close" onclick="closePricing()" aria-label="Close">✕</button>
       </span>
     </div>
