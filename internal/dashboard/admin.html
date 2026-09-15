@@ -595,10 +595,11 @@ td .tag{white-space:nowrap}
     <div class="ts" style="margin-bottom:10px">An invite is a one-time link: the person opens it and the gateway key is minted on their first visit. The key itself is shown once to the claimant and never stored here.</div>
     <div id="invite-created" style="display:none">
       <div class="key-display">
-        <div class="key-display-label">Invite link — shown once, share it now</div>
-        <div class="invite-url-box" id="invite-url"></div>
+        <div class="key-display-label">Invite created — paste this straight into Slack or email</div>
+        <div class="invite-url-box" id="invite-msg" style="white-space:pre-wrap;font-size:12px"></div>
       </div>
-      <button class="btn-copy" onclick="copyInviteURL()">Copy link</button>
+      <button class="btn-copy" onclick="copyInviteText()">Copy message</button>
+      <button class="btn btn-outline" style="margin-left:8px;padding:6px 14px;font-size:10px" onclick="copyInviteURL()">Copy link only</button>
     </div>
     <div class="picker-row">
       <select id="inv-person"></select>
@@ -796,11 +797,11 @@ td .tag{white-space:nowrap}
 
     <div id="inviteUserSuccess" style="display:none">
       <div class="key-display">
-        <div class="key-display-label">Invite link</div>
-        <div class="key-display-value" id="inviteUserUrl" style="word-break:break-all;font-size:12px"></div>
-        <div class="key-display-warn">Send this link to the new person — it lets them claim their key.</div>
+        <div class="key-display-label">Paste this to the new person — it lets them claim their key</div>
+        <div class="invite-url-box" id="inviteUser-msg" style="white-space:pre-wrap;font-size:12px"></div>
       </div>
-      <button class="btn-copy" onclick="copyInviteUserURL()">Copy to Clipboard</button>
+      <button class="btn-copy" onclick="copyInviteText()">Copy message</button>
+      <button class="btn btn-outline" style="margin-left:8px;padding:6px 14px;font-size:10px" onclick="copyInviteURL()">Copy link only</button>
       <div class="modal-actions" style="margin-top:16px">
         <button class="btn btn-outline" onclick="closeInviteUserModal()" style="padding:7px 18px;font-size:11px">Done</button>
       </div>
@@ -907,6 +908,7 @@ function refreshTab(name, manual) {
     if (manual || !profilesDirty) loadProfiles();
   } else if (name === 'keys') {
     loadKeys();
+    loadValidGroups();
     populateInvitePickers();
     loadInvites();
   } else if (name === 'platform') {
@@ -1242,8 +1244,9 @@ function loadValidGroups() {
   fetchJSON('/api/v1/admin/org/valid-groups').then(function(r) {
     validGroups = (r && Array.isArray(r.groups)) ? r.groups : [];
     populatePeopleGroupFilter();
+    populateInvitePickers();
     renderPeople();
-  }).catch(function() { /* People table still works without the picker */ });
+  }).catch(function() { /* People/invite pickers fall back to usage-derived groups */ });
 }
 function populatePeopleGroupFilter() {
   var sel = document.getElementById('people-group-filter');
@@ -1485,8 +1488,14 @@ function populateInvitePickers() {
   }).join('');
   if (cur) psel.value = cur;
   var gsel = document.getElementById('inv-group');
-  gsel.innerHTML = knownGroups.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('') ||
+  var curG = gsel.value;
+  // Canonical subscription groups when we have them (same source the
+  // People tab uses); usage-derived knownGroups is the fallback, since a
+  // group that has traffic is definitely valid even if the CR read failed.
+  var names = validGroups.length ? validGroups : knownGroups;
+  gsel.innerHTML = names.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('') ||
     '<option value="default">default</option>';
+  if (curG) gsel.value = curG;
 }
 
 /* Deep-link from a people row: jump to the Keys tab with the person picked. */
@@ -1525,6 +1534,30 @@ function loadInvites() {
   });
 }
 
+/* Both invite boxes (Keys tab + Invite-user modal) share one render: a
+   ready-to-paste message — claim link, expiry, what to do with it, and the
+   welcome-page pointer — so the admin sends one block instead of a bare URL
+   the claimant can't act on. */
+var lastInviteText = '';
+var lastInviteURL = '';
+
+function inviteMessage(name, url, ttlHours) {
+  var ttl = ttlHours ? ttlHours + 'h' : '72h';
+  return 'Hi ' + (name || 'there') + " — here's your one-time link to generate your gateway API key (expires in " + ttl + '):\n'
+    + url + '\n\n'
+    + "Open it, click \"Generate my key\", and copy the key somewhere safe — it's shown once and can't be recovered.\n"
+    + 'Setup recipes for Claude Code / OpenCode / Codex: ' + location.origin + '/welcome';
+}
+
+function setInviteResult(msgElId, personName, r) {
+  lastInviteURL = location.origin + r.invite_url;
+  lastInviteText = inviteMessage(personName, lastInviteURL, r.expires_in_hours);
+  document.getElementById(msgElId).textContent = lastInviteText;
+}
+
+function copyInviteText() { fallbackCopy(lastInviteText); }
+function copyInviteURL() { fallbackCopy(lastInviteURL); }
+
 function createInvite() {
   var body = {
     person_slug: document.getElementById('inv-person').value,
@@ -1533,16 +1566,11 @@ function createInvite() {
   };
   if (!body.person_slug) { showToast('Pick a person first', 'error'); return; }
   updateJSON('/api/v1/admin/keys/invites', 'POST', body).then(function(r) {
-    var box = document.getElementById('invite-created');
-    document.getElementById('invite-url').textContent = location.origin + r.invite_url;
-    box.style.display = '';
+    var p = peopleAll.filter(function(x) { return x.slug === body.person_slug; })[0];
+    setInviteResult('invite-msg', p ? p.full_name : '', r);
+    document.getElementById('invite-created').style.display = '';
     loadInvites();
   }).catch(function(e) { showToast(e.message, 'error'); });
-}
-
-function copyInviteURL() {
-  var el = document.getElementById('invite-url');
-  fallbackCopy(el.textContent);
 }
 
 function revokeInvite(id) {
@@ -2085,7 +2113,7 @@ function submitInviteUser() {
       person_slug: created.slug, group: group, key_name: first + '-' + last
     });
   }).then(function(r) {
-    document.getElementById('inviteUserUrl').textContent = location.origin + r.invite_url;
+    setInviteResult('inviteUser-msg', person.full_name, r);
     document.getElementById('inviteUserForm').style.display = 'none';
     document.getElementById('inviteUserSuccess').style.display = '';
     showToast('Invited', 'success');
@@ -2095,11 +2123,6 @@ function submitInviteUser() {
     btn.disabled = false;
     btn.textContent = 'Invite';
   });
-}
-
-function copyInviteUserURL() {
-  var el = document.getElementById('inviteUserUrl');
-  fallbackCopy(el.textContent);
 }
 
 function fallbackCopy(text) {

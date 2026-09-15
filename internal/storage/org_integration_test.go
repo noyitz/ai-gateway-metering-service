@@ -437,3 +437,87 @@ func TestOrgTree(t *testing.T) {
 		t.Fatalf("leaf tree wrong: %+v %v", leaf, err)
 	}
 }
+
+// TestOrgManualAddClaimable guards the invite flow for people who are not
+// on the roster: a manual add with an email must be pre-linked to that
+// login (MaaS usernames ARE emails), or the invite claim consumes its
+// single-use token and then fails with "account not linked". Also covers
+// the mint-failure recovery: a claim released after a failed mint must be
+// claimable again, while a claim that recorded a key stays consumed.
+func TestOrgManualAddClaimable(t *testing.T) {
+	s, ctx := openTestStore(t)
+
+	p, err := s.CreatePerson(ctx, Person{
+		FullName: "Alice Chen", FirstName: "Alice", LastName: "Chen",
+		Email: "achen@x.com", GroupName: "ai-eng",
+	}, "boss")
+	if err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	if p.Username != "achen@x.com" {
+		t.Fatalf("manual add with email did not auto-link identity: username=%q", p.Username)
+	}
+	// An email-less add stays unlinked — nothing to link to yet.
+	p2, err := s.CreatePerson(ctx, Person{FullName: "No Email"}, "boss")
+	if err != nil {
+		t.Fatalf("create person 2: %v", err)
+	}
+	if p2.Username != "" {
+		t.Fatalf("email-less person should stay unlinked, got %q", p2.Username)
+	}
+
+	// Mint-failure recovery: consumed, then released → claimable again.
+	tok, _, err := s.CreateInvite(ctx, p.Slug, "ai-eng", "alice-key", "boss", time.Hour)
+	if err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+	id, _, _, _, err := s.ClaimInvite(ctx, tok)
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if err := s.ReleaseInviteClaim(ctx, id); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	if _, _, _, _, err := s.ClaimInvite(ctx, tok); err != nil {
+		t.Fatalf("invite not claimable after release: %v", err)
+	}
+
+	// Once a key id is recorded the claim is permanent — release is a no-op.
+	tok2, _, err := s.CreateInvite(ctx, p.Slug, "ai-eng", "k2", "boss", time.Hour)
+	if err != nil {
+		t.Fatalf("invite 2: %v", err)
+	}
+	id2, _, _, _, err := s.ClaimInvite(ctx, tok2)
+	if err != nil {
+		t.Fatalf("claim 2: %v", err)
+	}
+	if err := s.SetInviteKey(ctx, id2, "key-abc"); err != nil {
+		t.Fatalf("set key: %v", err)
+	}
+	if err := s.ReleaseInviteClaim(ctx, id2); err != nil {
+		t.Fatalf("release 2: %v", err)
+	}
+	if _, _, _, _, err := s.ClaimInvite(ctx, tok2); err == nil {
+		t.Fatal("invite with a minted key must stay claimed")
+	}
+
+	// Clearing emails stores NULL, not '': the column is UNIQUE and two
+	// people without emails must coexist (the People-table inline edit).
+	if _, err := s.UpdatePerson(ctx, p.Slug, "boss", map[string]any{"email": ""}); err != nil {
+		t.Fatalf("clear email on p: %v", err)
+	}
+	if _, err := s.UpdatePerson(ctx, p2.Slug, "boss", map[string]any{"email": ""}); err != nil {
+		t.Fatalf("clear email on p2 (would collide on stored ''): %v", err)
+	}
+
+	// The claim-time profile upsert is what puts names on the reports.
+	if _, err := s.UpsertUserProfiles(ctx, []UserProfile{
+		{Username: "achen@x.com", FirstName: "Alice", LastName: "Chen"},
+	}); err != nil {
+		t.Fatalf("upsert profile: %v", err)
+	}
+	prof, err := s.GetUserProfile(ctx, "achen@x.com")
+	if err != nil || prof.DisplayName() != "Alice Chen" {
+		t.Fatalf("profile after claim upsert: %+v %v", prof, err)
+	}
+}

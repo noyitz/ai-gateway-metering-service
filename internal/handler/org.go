@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"html/template"
@@ -474,7 +475,9 @@ font-size:13px;font-weight:600;cursor:pointer}
 recovered from this service: we keep only a hash. Lost it? Rotate it from the admin's Keys screen.</p>
 <code id="k">{{.Key}}</code>
 <button onclick="navigator.clipboard.writeText(document.getElementById('k').textContent).then(()=>this.textContent='Copied')">Copy key</button>
-<p>Setup for Claude Code: set <code style="display:inline;padding:2px 6px">ANTHROPIC_API_KEY</code> (or the gateway base URL + key) to this value.</p>
+<p>Setup recipes for Claude Code, OpenCode and Codex — each with its own route,
+auth header and base-URL placement — live on the
+<a href="/welcome" style="color:#4da0f8">welcome page</a>.</p>
 {{else if .Error}}
 <h1>Invite not usable</h1>
 <p class="err">{{.Error}}</p>
@@ -527,53 +530,106 @@ func (h *OrgHandler) HandleClaim(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if iv.Status == "pending" {
+			// Preview what POST will resolve, so a broken identity surfaces
+			// BEFORE the claimant spends their one click.
+			_, login, err := h.resolveClaimLogin(r.Context(), iv.PersonSlug)
+			if err != nil || login == "" {
+				renderClaim(w, claimData{Error: "Your directory record has no email to mint a key against. Ask your admin to add one and re-send the invite."})
+				return
+			}
 			renderClaim(w, claimData{Name: iv.PersonName})
 		} else {
 			renderClaim(w, claimData{Error: "This invite is " + iv.Status + "."})
 		}
 	case http.MethodPost:
-		inviteID, personSlug, group, keyName, err := h.store.ClaimInvite(r.Context(), token)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusGone)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		// Resolve the mint target BEFORE consuming: ClaimInvite remains the
+		// atomic single-use gate below, but an unfixable precondition (no
+		// email to mint against) must not burn the link — a re-issue would
+		// hit the same wall, and the claimant eats a dead link for free.
+		iv, err := h.store.InviteByTokenHash(r.Context(), token)
+		if err != nil || iv.Status != "pending" {
+			writeClaimError(w, http.StatusGone, "this invite is invalid, already claimed, revoked, or expired")
 			return
 		}
-		person, err := h.store.GetPerson(r.Context(), personSlug)
-		if err != nil || person.Username == "" {
-			// No login bound yet — mint against the person's best-known
-			// identity is impossible; fail the invite cleanly so the admin
-			// can link the identity and re-issue (invite already consumed —
-			// the admin sees the failure in the invite list).
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusPreconditionFailed)
-			json.NewEncoder(w).Encode(map[string]string{"error": "your account is not linked yet — ask your admin to finish account linking and send a new invite"})
+		person, login, err := h.resolveClaimLogin(r.Context(), iv.PersonSlug)
+		if err != nil {
+			slog.Error("claim identity resolve failed", "person", iv.PersonSlug, "error", err)
+			writeClaimError(w, http.StatusInternalServerError, "could not resolve your account — retry or contact your admin")
+			return
+		}
+		if login == "" {
+			writeClaimError(w, http.StatusPreconditionFailed, "your directory record has no email to mint a key against — ask your admin to add one and re-send the invite")
 			return
 		}
 		if h.maasClient == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(map[string]string{"error": "key service unavailable"})
+			writeClaimError(w, http.StatusServiceUnavailable, "key service unavailable")
 			return
 		}
+		group := iv.GroupName
 		if group == "" {
 			group = h.cfg.DefaultGroup
 		}
-		created, err := h.maasClient.CreateAPIKey(r.Context(), person.Username, group, keyName)
+		inviteID, _, _, _, err := h.store.ClaimInvite(r.Context(), token)
 		if err != nil {
-			slog.Error("claim mint failed", "person", personSlug, "error", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadGateway)
-			json.NewEncoder(w).Encode(map[string]string{"error": "could not mint the key — your admin has been noted; ask for a new invite"})
+			writeClaimError(w, http.StatusGone, err.Error())
+			return
+		}
+		created, err := h.maasClient.CreateAPIKey(r.Context(), login, group, iv.KeyName)
+		if err != nil {
+			slog.Error("claim mint failed", "person", iv.PersonSlug, "error", err)
+			// Hand the token back: a transient maas-api failure becomes
+			// "click again" instead of "beg the admin for a new invite".
+			if rerr := h.store.ReleaseInviteClaim(r.Context(), inviteID); rerr != nil {
+				slog.Error("invite release failed", "invite", inviteID, "error", rerr)
+			}
+			writeClaimError(w, http.StatusBadGateway, "could not mint the key — this link is still valid, retry or contact your admin")
 			return
 		}
 		_ = h.store.SetInviteKey(r.Context(), inviteID, created.ID)
-		_ = h.store.Audit(r.Context(), person.Username, "key.claim", personSlug, map[string]string{"key_id": created.ID})
+		_ = h.store.Audit(r.Context(), login, "key.claim", iv.PersonSlug, map[string]string{"key_id": created.ID})
+		// Reports read names from user_profiles, not the directory — seed
+		// theirs now so usage shows named from the first request. The
+		// Display Names card can still overwrite this afterwards.
+		if person.FirstName != "" || person.LastName != "" {
+			if _, err := h.store.UpsertUserProfiles(r.Context(), []storage.UserProfile{
+				{Username: login, FirstName: person.FirstName, LastName: person.LastName},
+			}); err != nil {
+				slog.Warn("claim name profile upsert failed", "login", login, "error", err)
+			}
+		}
 		// The plaintext key: rendered once, in the claimant's browser.
 		renderClaim(w, claimData{Done: true, Key: created.Key})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// resolveClaimLogin decides which MaaS username a claim mints against: the
+// person's linked login, or — when no link exists (manual adds pre-dating
+// auto-link, roster rows without a unique candidate) — their directory
+// email, linked on the spot. MaaS usernames ARE emails, so this is not a
+// guess; LinkIdentity is the same write the admin's identity picker makes.
+func (h *OrgHandler) resolveClaimLogin(ctx context.Context, slug string) (storage.Person, string, error) {
+	person, err := h.store.GetPerson(ctx, slug)
+	if err != nil {
+		return person, "", err
+	}
+	if person.Username != "" {
+		return person, person.Username, nil
+	}
+	if person.Email != "" {
+		if err := h.store.LinkIdentity(ctx, person.Email, slug, "invite-claim"); err != nil {
+			return person, "", err
+		}
+		return person, person.Email, nil
+	}
+	return person, "", nil
+}
+
+func writeClaimError(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
 type claimData struct {
