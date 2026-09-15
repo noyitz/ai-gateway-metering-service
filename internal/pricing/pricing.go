@@ -82,37 +82,53 @@ func LoadPrices(ctx context.Context) ([]ModelPrice, string) {
 	return prices, "bundled"
 }
 
-// LocalPrices returns pricing for self-hosted / on-prem models that LiteLLM's
-// catalog does not carry. These run on our own GPUs at no per-token cost, so
-// they price at $0 and appear as "free" in the dashboard's savings view.
+// LocalPrices returns pricing for the self-hosted ("hosted") models that
+// LiteLLM's catalog does not carry. They run on our own GPUs but are billed
+// at OpenRouter parity — the same per-token rates OpenRouter lists for the
+// equivalent hosted model — so a fair comparison against vendor APIs stays
+// possible and no traffic is silently $0. The dashboard identifies hosted
+// traffic by provider (vllm / legacy qwen), not by price, so the savings
+// view keeps working at nonzero rates.
 //
-// They must be seeded explicitly for two reasons: LiteLLM never emits them (its
-// $0 entries are dropped in entryToModelPrice), and without a model_pricing row
-// the cost query falls back to the default paid rate (~$15/M in), silently
-// turning free traffic into phantom spend. Seeding here makes the rows
-// reproducible across DB rebuilds instead of relying on manual INSERTs.
+// Parity snapshot (OpenRouter, per MTok, 2026-09-14):
+//   - qwen/qwen3.8-27b:            in $0.214 · out $2.55 · cache read $0.15
+//   - qwen/qwen3.8-flash:          in $0.15  · out $0.47 · cache read $0.016
+//   Neither lists a cache-write premium.
+//
+// They must be seeded explicitly for two reasons: LiteLLM never emits them,
+// and without a model_pricing row the cost query falls back to the default
+// paid rate (~$15/M in), silently turning hosted traffic into phantom spend.
+// Seeding here makes the rows reproducible across DB rebuilds instead of
+// relying on manual INSERTs.
 //
 // Model strings MUST match exactly what the gateway records in
 // usage_events.model — model_pricing keys on the model name alone.
 func LocalPrices() []ModelPrice {
 	return []ModelPrice{
 		// Self-hosted Qwen on vLLM — the model id billed traffic records.
-		{Model: "Qwen3.8-27B-FP8", Provider: "vllm"},
+		// Priced at OpenRouter qwen/qwen3.8-27b parity.
+		{Model: "Qwen3.8-27B-FP8", Provider: "vllm",
+			InputCost: 0.214, OutputCost: 2.55, CacheReadCost: 0.15},
 		// Qwen3.8-Flash-Next on external cluster, proxied via qwen-flash-proxy.
-		{Model: "Inferact/Qwen3.8-Flash-Next-NVFP4", Provider: "vllm"},
+		// Priced at OpenRouter qwen/qwen3.8-flash parity (closest listed match).
+		{Model: "Inferact/Qwen3.8-Flash-Next-NVFP4", Provider: "vllm",
+			InputCost: 0.15, OutputCost: 0.47, CacheReadCost: 0.016},
 		// Legacy alias: older events recorded model="qwen" before the id above
-		// was adopted. Kept at $0 so historical rows don't reprice to the paid
-		// default. Safe to drop once no events with model="qwen" remain.
-		{Model: "qwen", Provider: "qwen"},
+		// was adopted. Same model, so it carries the same 27B rates —
+		// historical rows price like current ones instead of repricing to
+		// the paid default. Safe to drop once no events with model="qwen"
+		// remain.
+		{Model: "qwen", Provider: "qwen",
+			InputCost: 0.214, OutputCost: 2.55, CacheReadCost: 0.15},
 	}
 }
 
-// LocalListPrices gives the self-hosted models a list baseline for the
-// cost-saved column: the price of an equivalent hosted model. Qwen3.8-27B is
-// a 27B MoE serving at ~$0, so the honest comparison is a hosted Sonnet-class
-// model (Claude Sonnet list: $3 / $15, cache read $0.30, cache write $3.75
-// per MTok). Without these, LocalPrices()'s $0 rows have no list price and
-// the column would show $0 savings for the traffic that actually saves money.
+// LocalListPrices gives the self-hosted models a vendor list baseline: what
+// the same tokens cost on a Sonnet-class hosted model (Claude Sonnet list:
+// $3 / $15, cache read $0.30, cache write $3.75 per MTok). The 27B class is
+// a small model, so Sonnet is the honest "what the vendor API would charge"
+// anchor; the savings KPI's own reference model is separately selectable in
+// the UI, this list_* seed just keeps the DB row complete for any consumer.
 func LocalListPrices() []ModelPrice {
 	sonnetList := ModelPrice{
 		Provider:           "anthropic",

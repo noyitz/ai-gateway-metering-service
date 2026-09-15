@@ -55,9 +55,11 @@ func main() {
 		}
 	}
 
-	// Seed self-hosted / on-prem model pricing ($0). These are not in LiteLLM's
-	// catalog, so they must be seeded independently — even when the LiteLLM load
-	// above fails — or the cost query reprices free traffic at the paid default.
+	// Seed self-hosted ("hosted") model pricing at OpenRouter parity. These
+	// are not in LiteLLM's catalog, so they must be seeded independently —
+	// even when the LiteLLM load above fails — or the cost query reprices
+	// hosted traffic at the paid default. Seeded last so these rows always
+	// win the upsert.
 	localPrices := pricing.LocalPrices()
 	storeLocal := make([]storage.ModelPrice, len(localPrices))
 	for i, p := range localPrices {
@@ -68,7 +70,7 @@ func main() {
 		}
 	}
 	if updated, seedErr := store.SeedPricing(ctx, storeLocal); seedErr != nil {
-		slog.Warn("local pricing seed failed — free models may show as paid", "error", seedErr)
+		slog.Warn("local pricing seed failed — hosted models may reprice at the paid default", "error", seedErr)
 	} else {
 		slog.Info("local model pricing seeded", "models", len(storeLocal), "updated", updated)
 	}
@@ -187,6 +189,10 @@ func main() {
 	mux.HandleFunc("/api/v1/dashboard/models", auth(dashboardHandler.HandleModels))
 	mux.HandleFunc("/api/v1/dashboard/timeline", auth(dashboardHandler.HandleTimeline))
 	mux.HandleFunc("/api/v1/dashboard/recent", auth(dashboardHandler.HandleRecent))
+
+	// Pricing modal rate card — readable by any logged-in user: the rates
+	// are the same numbers every request is billed at, no user data.
+	mux.HandleFunc("/api/v1/pricing", auth(handler.NewPricingRefreshHandler(store).HandleList))
 
 	// Admin pages — session + admin required
 	mux.HandleFunc("/admin", auth(handler.RequireAdmin(cfg, adminHandler.ServeAdmin)))
