@@ -36,6 +36,8 @@ func TestServeWelcomeSubstitution(t *testing.T) {
 		"effortLevel",
 		"Set up Hermes CLI",
 		"~/.hermes/config.yaml",
+		"missing API key",
+		"extra_headers",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing %q", want)
