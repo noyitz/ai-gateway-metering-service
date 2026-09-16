@@ -112,6 +112,7 @@ tr.clickable{cursor:pointer}
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
   <div style="display:flex;gap:4px">
     <a href="/dashboard" style="background:var(--blue);color:#fff;border:1px solid var(--blue);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
+    <a href="/manager" class="manager-only" data-show="inline-block" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px" title="See usage for everyone on your team">My team</a>
     <a href="/routing" class="superadmin-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
     <a href="/compression" class="superadmin-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
     <a href="/admin" class="superadmin-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Admin</a>
@@ -930,6 +931,12 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
     if(mvb)mvb.href='/admin/impersonate?as='+encodeURIComponent(d.user);
     isAdmin=!!d.isAdmin;
     isSuperAdmin=!!d.isSuperAdmin;
+    // A manager (anyone with reports) or an admin gets the "My team" tab —
+    // the /manager page lists every team member, even those with no usage
+    // yet, which the scoped Usage view can't show (it only lists activity).
+    if(d.isManager||isAdmin){
+      document.querySelectorAll('.manager-only').forEach(function(el){el.style.display=el.dataset.show||'';});
+    }
     // Admins keep the org-wide usage view (.admin-only widgets); only
     // super-admins surface the operator nav (.superadmin-only).
     if(isAdmin){
