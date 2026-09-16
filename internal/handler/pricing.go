@@ -27,16 +27,16 @@ type refreshResponse struct {
 }
 
 type pricingCatalogEntry struct {
-	Model             string  `json:"model"`
-	Provider          string  `json:"provider"`
-	Hosted            bool    `json:"hosted"`
-	InputCost         float64 `json:"input_cost_per_mtok"`
-	OutputCost        float64 `json:"output_cost_per_mtok"`
-	CacheReadCost     float64 `json:"cache_read_cost_per_mtok"`
-	CacheWriteCost    float64 `json:"cache_write_cost_per_mtok"`
-	ListInputCost     float64 `json:"list_input_cost_per_mtok,omitempty"`
-	ListOutputCost    float64 `json:"list_output_cost_per_mtok,omitempty"`
-	ListCacheReadCost float64 `json:"list_cache_read_cost_per_mtok,omitempty"`
+	Model              string  `json:"model"`
+	Provider           string  `json:"provider"`
+	Hosted             bool    `json:"hosted"`
+	InputCost          float64 `json:"input_cost_per_mtok"`
+	OutputCost         float64 `json:"output_cost_per_mtok"`
+	CacheReadCost      float64 `json:"cache_read_cost_per_mtok"`
+	CacheWriteCost     float64 `json:"cache_write_cost_per_mtok"`
+	ListInputCost      float64 `json:"list_input_cost_per_mtok,omitempty"`
+	ListOutputCost     float64 `json:"list_output_cost_per_mtok,omitempty"`
+	ListCacheReadCost  float64 `json:"list_cache_read_cost_per_mtok,omitempty"`
 	ListCacheWriteCost float64 `json:"list_cache_write_cost_per_mtok,omitempty"`
 }
 
