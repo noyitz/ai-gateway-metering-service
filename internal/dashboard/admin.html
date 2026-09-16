@@ -1513,7 +1513,11 @@ function populateInvitePickers() {
   // otherwise the first alphabetically-sorted CR group (usually ai-eng)
   // silently poses as the choice for people who live in octo-eng.
   if (deepInviteGroup && names.indexOf(deepInviteGroup) < 0) deepInviteGroup = '';
-  var curG = gsel.value || deepInviteGroup;
+  // The deep-linked group WINS over whatever the picker held from the last
+  // invite — same precedence the person picker already uses. The old
+  // leftover-first order silently issued an ai-eng invite to a global-eng
+  // person: the deep-link set the intent, a stale selection overrode it.
+  var curG = deepInviteGroup || gsel.value;
   // Same placeholder discipline as the person picker and the modal: no
   // silently-preselected group. Empty means "the service's default group"
   // (DEFAULT_GROUP env), which claim resolves server-side.
