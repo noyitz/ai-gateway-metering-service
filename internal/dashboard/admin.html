@@ -1591,10 +1591,13 @@ var lastInviteURL = '';
 
 function inviteMessage(name, url, ttlHours) {
   var ttl = ttlHours ? ttlHours + 'h' : '72h';
-  return 'Hi ' + (name || 'there') + " — here's your one-time link to generate your gateway API key (expires in " + ttl + '):\n'
+  return 'Hi ' + (name || 'there') + " — welcome to PriceTag! 🎉\n\n"
+    + "Your AI gateway access is ready. This one-time link generates your personal API key (expires in " + ttl + '):\n'
     + url + '\n\n'
-    + "Open it, click \"Generate my key\", and copy the key somewhere safe — it's shown once and can't be recovered.\n"
-    + 'Setup recipes for Claude Code / OpenCode / Codex: ' + location.origin + '/welcome';
+    + "Open it, click \"Generate my key\", then save the key somewhere safe — it's shown once and can't be recovered.\n\n"
+    + "Once you have the key, the welcome page has ready-made setup recipes for Claude Code / OpenCode / Codex:\n"
+    + location.origin + '/welcome\n\n'
+    + "This is early — if anything in the onboarding or the docs felt unclear, reply here and tell us. Feedback is how this gets better.";
 }
 
 function setInviteResult(msgElId, personName, r) {
