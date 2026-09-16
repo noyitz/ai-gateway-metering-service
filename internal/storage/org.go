@@ -1120,7 +1120,7 @@ func (s *Store) GetPersonModelUsage(ctx context.Context, usernames []string, sin
 				       THEN LEAST(ROUND(fm.prompt * rat.r), fm.prompt)
 				       ELSE fm.cached END * pr.cr
 				+ fm.cwrite * pr.cw
-				+ fm.completion * pr.o) / 1000000.0 - fm.cost, 0)::numeric, 2)
+				+ fm.completion * pr.o) / 1000000.0 - fm.cost, 0)::numeric, 2), 0)
 				ELSE 0 END,
 			to_char(fm.last_used, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		FROM fm CROSS JOIN pr CROSS JOIN rat
