@@ -223,6 +223,9 @@ func main() {
 	mux.HandleFunc("/api/v1/admin/auth-policies", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleAuthPolicies)))
 	mux.HandleFunc("/api/v1/admin/subscriptions", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleSubscriptions)))
 	mux.HandleFunc("/api/v1/admin/org/valid-groups", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleValidGroups)))
+	// Platform roles (admin / super-admin) so the People & Org table can badge
+	// each person. Read-only — env-derived, not editable from the console.
+	mux.HandleFunc("/api/v1/admin/org/roles", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleRoles)))
 	// Group + key APIs are reachable by any signed-in user: the redesigned
 	// user dashboard lists its own group membership and manages the caller's
 	// own keys. The handlers scope non-admins to their own identity, so a

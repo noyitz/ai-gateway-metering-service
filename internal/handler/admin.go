@@ -384,6 +384,18 @@ func (h *AdminHandler) HandleValidGroups(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, map[string][]string{"groups": groups})
 }
 
+// HandleRoles returns the configured admin and super-admin identities so the
+// People & Org table can badge each person's platform role. Read-only: both
+// lists are env-derived (ADMIN_USERS / SUPERADMIN_USERS) and cannot be edited
+// from the console — the operators own that surface deliberately.
+func (h *AdminHandler) HandleRoles(w http.ResponseWriter, r *http.Request) {
+	admins := append([]string{}, h.cfg.AdminUsers...)
+	supers := append([]string{}, h.cfg.SuperAdminUsers...)
+	sort.Strings(admins)
+	sort.Strings(supers)
+	writeJSON(w, map[string][]string{"admins": admins, "superAdmins": supers})
+}
+
 // platformGroups returns the group set to scope maas-api v1 calls with: the
 // configured MaaSSubscription's live groups — the same source the gateway
 // enforces and the valid-groups endpoint serves. maas-api requires a

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -156,5 +157,29 @@ func TestRequireSuperAdmin_Fallbacks(t *testing.T) {
 	RequireSuperAdmin(cfg, func(http.ResponseWriter, *http.Request) { reached = true })(w, r)
 	if !reached {
 		t.Error("operator must reach the super-admin handler")
+	}
+}
+
+func TestHandleRoles(t *testing.T) {
+	h := &AdminHandler{cfg: config.Config{
+		AdminUsers:      []string{"bob", "alice"},
+		SuperAdminUsers: []string{"operator"},
+	}}
+	w := httptest.NewRecorder()
+	h.HandleRoles(w, httptest.NewRequest(http.MethodGet, "/api/v1/admin/org/roles", nil))
+
+	var got struct {
+		Admins      []string `json:"admins"`
+		SuperAdmins []string `json:"superAdmins"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode roles: %v", err)
+	}
+	// Sorted for a stable table order.
+	if len(got.Admins) != 2 || got.Admins[0] != "alice" || got.Admins[1] != "bob" {
+		t.Errorf("admins = %v, want [alice bob]", got.Admins)
+	}
+	if len(got.SuperAdmins) != 1 || got.SuperAdmins[0] != "operator" {
+		t.Errorf("superAdmins = %v, want [operator]", got.SuperAdmins)
 	}
 }

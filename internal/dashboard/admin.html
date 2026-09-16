@@ -517,7 +517,7 @@ td .tag{white-space:nowrap}
 <div class="vtabs">
   <button class="vtab" id="vtab-users" onclick="showTab('users')">Users &amp; Groups<span class="tcount" id="badge-users" style="display:none"></span></button>
   <button class="vtab" id="vtab-keys" onclick="showTab('keys')">Keys<span class="tcount" id="badge-keys" style="display:none"></span></button>
-  <button class="vtab" id="vtab-people" onclick="showTab('people')">People &amp; Org<span class="tcount" id="badge-people" style="display:none"></span></button>
+  <button class="vtab" id="vtab-people" onclick="showTab('people')">Users<span class="tcount" id="badge-people" style="display:none"></span></button>
   <button class="vtab" id="vtab-platform" onclick="showTab('platform')">Platform<span class="tcount" id="badge-platform" style="display:none"></span></button>
   <div class="vtab-tools">
     <span id="last-updated"></span>
@@ -619,69 +619,38 @@ td .tag{white-space:nowrap}
 
 <!-- ============ TAB: People & Org ============ -->
 <div class="tab-panel" id="tab-people">
-  <div class="people-grid">
-    <div>
-      <div class="card">
-        <div class="card-hdr">
-          <div>
-            <span class="card-title">Org chart</span>
-            <span class="card-count" id="orgchart-count"></span>
-          </div>
-          <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadOrgChart()">Refresh</button>
-        </div>
-        <div class="picker-row" style="margin-bottom:14px">
-          <span class="ts">Root:</span>
-          <select id="orgchart-root" onchange="loadOrgChart()"></select>
-        </div>
-        <div class="tree" id="orgchart-tree">
-          <div class="loading"><div class="spinner"></div>Loading chart...</div>
-        </div>
-        <div class="ts" style="margin-top:12px">Click a person to scope the directory to their team.</div>
+  <div class="card">
+    <div class="card-hdr">
+      <div>
+        <span class="card-title">Users</span>
+        <span class="card-count" id="people-count"></span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-grn" style="padding:5px 12px;font-size:10px" onclick="openAddUserModal()">Add user</button>
+        <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadPeople()">Refresh</button>
       </div>
     </div>
-    <div>
-      <div class="card">
-        <div class="card-hdr">
-          <div>
-            <span class="card-title">People</span>
-            <span class="card-count" id="people-count"></span>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn btn-grn" style="padding:5px 12px;font-size:10px" onclick="openAddUserModal()">Add user</button>
-            <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadPeople()">Refresh</button>
-          </div>
-        </div>
-        <div class="chipbar">
-          <button class="chip on" data-pf="needs_attention" onclick="setPeopleFilter(this)">Needs attention</button>
-          <button class="chip" data-pf="" onclick="setPeopleFilter(this)">All</button>
-          <button class="chip" data-pf="managers" onclick="setPeopleFilter(this)">Managers</button>
-          <span class="ts" id="people-subtree-note" style="display:none"></span>
-          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-            <select class="tbl-input" id="people-group-filter" style="max-width:160px" onchange="setPeopleGroupFilter(this)">
-              <option value="">All groups</option>
-            </select>
-            <input type="text" class="tbl-input" id="people-search" placeholder="Filter by name…" style="max-width:200px" oninput="renderPeople()">
-          </div>
-        </div>
-        <div class="ts" style="margin-bottom:10px">Org facts only — spend is never stored here, it is derived from usage. Edits mark the field manual so the next roster import won't overwrite them. Roster updates themselves are imported from the command line.</div>
-        <div id="people-list">
-          <div class="loading"><div class="spinner"></div>Loading people...</div>
-        </div>
+    <div class="chipbar">
+      <button class="chip on" data-pf="" onclick="setPeopleFilter(this)">All</button>
+      <button class="chip" data-pf="needs_attention" onclick="setPeopleFilter(this)">Needs attention</button>
+      <button class="chip" data-pf="managers" onclick="setPeopleFilter(this)">Managers</button>
+      <span class="ts" id="people-subtree-note" style="display:none"></span>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <select class="tbl-input" id="people-role-filter" style="max-width:150px" onchange="setPeopleRoleFilter(this)">
+          <option value="">All roles</option>
+          <option value="super">Super admin</option>
+          <option value="admin">Admin</option>
+          <option value="regular">Regular</option>
+        </select>
+        <select class="tbl-input" id="people-group-filter" style="max-width:160px" onchange="setPeopleGroupFilter(this)">
+          <option value="">All groups</option>
+        </select>
+        <input type="text" class="tbl-input" id="people-search" placeholder="Filter by name…" style="max-width:200px" oninput="renderPeople()">
       </div>
-
-      <div class="card">
-        <div class="card-hdr">
-          <div>
-            <span class="card-title">Login ↔ person</span>
-            <span class="card-count" id="identities-count"></span>
-          </div>
-          <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadIdentities()">Refresh</button>
-        </div>
-        <div class="ts" style="margin-bottom:10px">Which gateway login belongs to which person. Re-linking moves the login — history in usage_events is untouched.</div>
-        <div id="identities-list">
-          <div class="loading"><div class="spinner"></div>Loading identities...</div>
-        </div>
-      </div>
+    </div>
+    <div class="ts" style="margin-bottom:10px">Org facts only — spend is never stored here, it is derived from usage. Edits mark the field manual so the next roster import won't overwrite them. Role (admin / super admin) is env-derived and read-only. Roster updates themselves are imported from the command line.</div>
+    <div id="people-list">
+      <div class="loading"><div class="spinner"></div>Loading users...</div>
     </div>
   </div>
 </div>
@@ -838,6 +807,8 @@ var knownGroups = [];
 var validGroups = []; // canonical org groups, from the live MaaSSubscription CR
 var peopleSort = { key: '', dir: 1 };
 var peopleGroupFilter = '';
+var peopleRoleFilter = '';
+var roleData = { admins: [], superAdmins: [] }; // env-derived platform roles, read-only
 var confirmCallback = null;
 var cachedPolicies = [];
 var cachedSubscriptions = [];
@@ -922,9 +893,9 @@ function refreshTab(name, manual) {
     loadPolicies();
     loadSubscriptions();
   } else if (name === 'people') {
-    if (manual) { loadPeople(); loadIdentities(); }
-    else loadPeople(); // org chart + identities follow once the cache lands
+    loadPeople();
     loadValidGroups();
+    loadRoles();
   }
   if (manual) touchUpdated();
 }
@@ -1272,6 +1243,36 @@ function setPeopleGroupFilter(sel) {
   peopleGroupFilter = sel.value;
   renderPeople();
 }
+function setPeopleRoleFilter(sel) {
+  peopleRoleFilter = sel.value;
+  renderPeople();
+}
+/* Platform roles (admin / super-admin), env-derived and read-only. Loaded
+   once with the tab so the Users table can badge + filter each person. */
+function loadRoles() {
+  fetchJSON('/api/v1/admin/org/roles').then(function(r) {
+    roleData = {
+      admins: (r && Array.isArray(r.admins)) ? r.admins.map(function(s){return s.toLowerCase();}) : [],
+      superAdmins: (r && Array.isArray(r.superAdmins)) ? r.superAdmins.map(function(s){return s.toLowerCase();}) : []
+    };
+    renderPeople();
+  }).catch(function() { /* table falls back to "regular" for everyone */ });
+}
+/* A person's platform role: match their login or email (case-insensitive)
+   against the configured lists. Super-admin wins; super-admin implies admin. */
+function personRole(p) {
+  var ids = [p.username, p.email].filter(Boolean).map(function(s){return s.toLowerCase();});
+  var hit = function(list){ return ids.some(function(id){ return list.indexOf(id) >= 0; }); };
+  if (hit(roleData.superAdmins)) return 'super';
+  if (hit(roleData.admins)) return 'admin';
+  return 'regular';
+}
+function roleBadge(role) {
+  if (role === 'super') return '<span class="badge badge-pur">super admin</span>';
+  if (role === 'admin') return '<span class="badge badge-cyn">admin</span>';
+  return '<span class="badge badge-gray">regular</span>';
+}
+function roleRank(role) { return role === 'super' ? 0 : role === 'admin' ? 1 : 2; }
 function sortPeopleBy(key) {
   if (peopleSort.key === key) peopleSort.dir *= -1;
   else { peopleSort.key = key; peopleSort.dir = 1; }
@@ -1703,7 +1704,7 @@ function revokeKey(keyId) {
    inline edits would be clobbered mid-typing. Use Refresh.
    ================================================================ */
 var peopleAll = [];        // full directory cache — the one source for filters, selects, tree scoping
-var peopleFilter = 'needs_attention';
+var peopleFilter = '';
 var peopleSubtree = null;  // slug when the table is scoped from the org chart
 
 function needsAttention(p) {
@@ -1721,10 +1722,6 @@ function loadPeople(cb) {
     peopleAll = Array.isArray(people) ? people : [];
     renderPeople();
     if (cb) cb();
-    else if (document.getElementById('tab-people').classList.contains('on')) {
-      loadOrgChart();
-      loadIdentities();
-    }
   }).catch(function(e) {
     document.getElementById('people-list').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
     if (cb) cb();
@@ -1747,16 +1744,21 @@ function renderPeople() {
   var q = (document.getElementById('people-search').value || '').toLowerCase();
   var sub = peopleSubtree ? subtreeSet(peopleSubtree) : null;
   var rows = peopleAll.filter(function(p) {
+    p._role = personRole(p); // cache for badge + sort
     if (peopleFilter === 'needs_attention' && !needsAttention(p)) return false;
     if (peopleFilter === 'managers' && !(p.reports > 0)) return false;
     if (sub && !sub[p.slug]) return false;
     if (peopleGroupFilter && p.group_name !== peopleGroupFilter) return false;
+    if (peopleRoleFilter && p._role !== peopleRoleFilter) return false;
     if (q && (p.full_name || '').toLowerCase().indexOf(q) < 0 && (p.username || '').toLowerCase().indexOf(q) < 0) return false;
     return true;
   });
   if (peopleSort.key) {
     var sk = peopleSort.key, sd = peopleSort.dir;
     rows.sort(function(a, b) {
+      if (sk === 'role') {
+        return (roleRank(a._role) - roleRank(b._role)) * sd;
+      }
       var av = (a[sk] || '').toString().toLowerCase(), bv = (b[sk] || '').toString().toLowerCase();
       return av < bv ? -sd : av > bv ? sd : 0;
     });
@@ -1776,6 +1778,7 @@ function renderPeople() {
   var sortArrow = function(key) { return peopleSort.key === key ? (peopleSort.dir > 0 ? ' ▲' : ' ▼') : ''; };
   var html = '<div class="tbl-wrap"><table><thead><tr>' +
     '<th style="cursor:pointer" onclick="sortPeopleBy(\'full_name\')">Person' + sortArrow('full_name') + '</th>' +
+    '<th style="cursor:pointer" onclick="sortPeopleBy(\'role\')">Role' + sortArrow('role') + '</th>' +
     '<th style="cursor:pointer" onclick="sortPeopleBy(\'group_name\')">Group' + sortArrow('group_name') + '</th>' +
     '<th>Manager</th><th>Email</th><th>Login</th><th>Direct</th><th></th>' +
     '</tr></thead><tbody>';
@@ -1799,6 +1802,7 @@ function renderPeople() {
     html += '<tr>' +
       '<td><div class="org-name">' + esc(p.full_name) + ' ' + badges + '</div>' +
       (p.title ? '<div class="org-title">' + esc(p.title) + '</div>' : '') + '</td>' +
+      '<td>' + roleBadge(p._role) + '</td>' +
       '<td><select class="tbl-input" style="min-width:120px" onchange="setPersonField(\'' + esc(p.slug) + '\',\'group_name\',this.value)">' + peopleGroupOptions(p.group_name) + '</select></td>' +
       '<td><select class="tbl-input" style="min-width:150px" onchange="setPersonField(\'' + esc(p.slug) + '\',\'manager_slug\',this.value)">' + opts + '</select></td>' +
       '<td><input class="tbl-input" style="min-width:170px" value="' + esc(p.email || '') + '" placeholder="fill in…" onchange="setPersonField(\'' + esc(p.slug) + '\',\'email\',this.value)"></td>' +
@@ -1817,7 +1821,6 @@ function setPersonField(slug, field, value) {
   updateJSON('/api/v1/admin/people/' + encodeURIComponent(slug), 'PATCH', body).then(function() {
     showToast(field === 'manager_slug' ? 'Reporting line updated' : 'Saved', 'success');
     loadPeople();
-    loadOrgChart(); // the chart sits right next to the table — keep it in sync
   }).catch(function(e) {
     showToast(e.message, 'error');
     loadPeople(); // restore the select/input to server truth (cycle refusals included)
@@ -1826,111 +1829,6 @@ function setPersonField(slug, field, value) {
 function clearPeopleSubtree() {
   peopleSubtree = null;
   renderPeople();
-  highlightTreeNode();
-}
-
-/* --- Org chart (left pane of the People & Org tab) --- */
-function fillRootOptions() {
-  var roots = peopleAll.filter(function(p) { return !p.manager_slug; });
-  var sel = document.getElementById('orgchart-root');
-  var cur = sel.value;
-  sel.innerHTML = roots.map(function(p) { return '<option value="' + esc(p.slug) + '">' + esc(p.full_name) + '</option>'; }).join('') ||
-    '<option value="">(no roots — is everyone reporting to someone?)</option>';
-  if (cur) sel.value = cur;
-}
-function loadOrgChart() {
-  var go = function() {
-    fillRootOptions();
-    var roots = peopleAll.filter(function(p) { return !p.manager_slug; });
-    var sel = document.getElementById('orgchart-root');
-    var root = sel.value || (roots.length ? roots[0].slug : '');
-    if (!root) {
-      document.getElementById('orgchart-tree').innerHTML = '<div class="empty">No root people — import the roster first.</div>';
-      return;
-    }
-    renderTreeFor(root);
-  };
-  if (peopleAll.length) {
-    go();
-  } else {
-    fetchJSON('/api/v1/admin/people?filter=').then(function(pp) {
-      peopleAll = Array.isArray(pp) ? pp : [];
-      populateInvitePickers();
-      go();
-    }).catch(function(e) {
-      document.getElementById('orgchart-tree').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
-    });
-  }
-}
-function renderTreeFor(root) {
-  if (!root) return;
-  var sel = document.getElementById('orgchart-root');
-  for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === root) sel.value = root;
-  fetchJSON('/api/v1/org/tree?root=' + encodeURIComponent(root)).then(function(tree) {
-    document.getElementById('orgchart-count').textContent = tree.subtree_size ? '(' + tree.subtree_size + ' people)' : '';
-    var walk = function(n) {
-      return '<li><span class="node" data-slug="' + esc(n.slug) + '" onclick="scopePeopleTo(\'' + esc(n.slug) + '\')">' +
-        '<b>' + esc(n.full_name) + '</b>' +
-        (n.title ? '<span class="nt">' + esc(n.title) + '</span>' : '') +
-        (n.is_manager ? '<span class="nc">' + n.subtree_size + '</span>' : '') +
-        (n.username ? '<span class="nt mono">' + esc(n.username) + '</span>' : '<span class="badge badge-red">no login</span>') +
-        '</span>' + (n.children && n.children.length ? '<ul>' + n.children.map(walk).join('') + '</ul>' : '') + '</li>';
-    };
-    document.getElementById('orgchart-tree').innerHTML = '<ul>' + walk(tree) + '</ul>';
-    highlightTreeNode();
-  }).catch(function(e) {
-    document.getElementById('orgchart-tree').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
-  });
-}
-function highlightTreeNode() {
-  var nodes = document.querySelectorAll('#orgchart-tree .node');
-  for (var i = 0; i < nodes.length; i++) {
-    nodes[i].classList.toggle('on', peopleSubtree && nodes[i].getAttribute('data-slug') === peopleSubtree);
-  }
-}
-function scopePeopleTo(slug) {
-  peopleSubtree = (peopleSubtree === slug) ? null : slug; // click again to un-scope
-  renderPeople();
-  highlightTreeNode();
-}
-
-/* --- Identities --- */
-function loadIdentities() {
-  fetchJSON('/api/v1/admin/identities').then(function(rows) {
-    rows = Array.isArray(rows) ? rows : [];
-    document.getElementById('identities-count').textContent = rows.length ? '(' + rows.length + ')' : '';
-    var html = '<div class="tbl-wrap"><table><thead><tr><th>Login</th><th>Person</th><th>Usage</th><th></th></tr></thead><tbody>';
-    rows.forEach(function(ir) {
-      var opts = peopleAll.map(function(p) {
-        // API field is person_slug; reading ir.slug here meant NO option
-        // ever matched and every dropdown rendered the alphabetically-first
-        // person (display only — the links in the DB were always correct).
-        return '<option value="' + esc(p.slug) + '"' + (p.slug === ir.person_slug ? ' selected' : '') + '>' + esc(p.full_name) + '</option>';
-      }).join('');
-      html += '<tr><td class="mono">' + esc(ir.username) + '</td>' +
-        '<td><select class="tbl-input" style="min-width:180px" onchange="relinkIdentity(\'' + esc(ir.username) + '\',this.value)">' + opts + '</select></td>' +
-        '<td>' + (ir.has_usage ? '<span class="badge badge-grn">has usage</span>' : '<span class="badge badge-gray">no usage yet</span>') + '</td>' +
-        '<td><button class="btn btn-red" onclick="unlinkIdentity(\'' + esc(ir.username) + '\')">Unlink</button></td></tr>';
-    });
-    html += '</tbody></table></div>';
-    document.getElementById('identities-list').innerHTML = rows.length ? html : '<div class="empty">No logins linked yet — links appear after the roster import or manual invites.</div>';
-  }).catch(function(e) {
-    document.getElementById('identities-list').innerHTML = '<div class="err-msg">' + esc(e.message) + '</div>';
-  });
-}
-function relinkIdentity(username, slug) {
-  // POST links/re-links (the handler has no PUT); a PUT here 405'd and the
-  // catch-reload made a real failure look like a UI hiccup.
-  updateJSON('/api/v1/admin/identities', 'POST', { username: username, person_slug: slug })
-    .then(function() { showToast(username + ' → ' + slug, 'success'); loadIdentities(); loadPeople(); })
-    .catch(function(e) { showToast(e.message, 'error'); loadIdentities(); });
-}
-function unlinkIdentity(username) {
-  showConfirm('Unlink login "' + username + '" from its person? Their usage history stays in place; the person just becomes unlinked.', function() {
-    updateJSON('/api/v1/admin/identities?username=' + encodeURIComponent(username), 'DELETE')
-      .then(function() { showToast('Unlinked', 'success'); loadIdentities(); loadPeople(); })
-      .catch(function(e) { showToast(e.message, 'error'); });
-  });
 }
 
 /* ================================================================
