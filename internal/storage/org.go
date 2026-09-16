@@ -705,13 +705,23 @@ func (s *Store) CreatePerson(ctx context.Context, p Person, actor string) (Perso
 	if p.Email != "" {
 		email = p.Email
 	}
+	// Manager is optional at creation: an empty slug stores NULL (no manager
+	// yet). The FK to people(slug) rejects unknown managers; the no-cycle
+	// trigger cannot fire for a brand-new slug.
+	var manager any
+	if ms := SlugNorm(p.ManagerSlug); ms != "" {
+		manager = ms
+	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO people (slug, full_name, first_name, last_name, title, location, email, employment_type, group_name, source)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 = '' THEN 'employee' ELSE $8 END, $9, 'manual')`,
-		p.Slug, p.FullName, p.FirstName, p.LastName, p.Title, p.Location, email, p.EmploymentType, p.GroupName)
+		INSERT INTO people (slug, full_name, first_name, last_name, title, location, email, employment_type, group_name, manager_slug, source)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 = '' THEN 'employee' ELSE $8 END, $9, $10, 'manual')`,
+		p.Slug, p.FullName, p.FirstName, p.LastName, p.Title, p.Location, email, p.EmploymentType, p.GroupName, manager)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
 			return Person{}, fmt.Errorf("a person with slug %s already exists", p.Slug)
+		}
+		if strings.Contains(err.Error(), "foreign key") {
+			return Person{}, fmt.Errorf("manager %s is not in the directory", p.ManagerSlug)
 		}
 		return Person{}, err
 	}

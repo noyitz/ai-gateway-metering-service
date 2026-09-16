@@ -521,3 +521,43 @@ func TestOrgManualAddClaimable(t *testing.T) {
 		t.Fatalf("profile after claim upsert: %+v %v", prof, err)
 	}
 }
+
+// The Add-user modal can pin a manager at creation (dropdown over the
+// existing directory, with an explicit "no manager yet" empty choice).
+func TestOrgCreateWithManager(t *testing.T) {
+	s, ctx := openTestStore(t)
+	seedFixture(t, s, ctx)
+
+	withMgr, err := s.CreatePerson(ctx, Person{
+		FullName: "New Report", FirstName: "New", LastName: "Report",
+		ManagerSlug: "mgr",
+	}, "tester")
+	if err != nil {
+		t.Fatalf("create with manager: %v", err)
+	}
+	if withMgr.ManagerSlug != "mgr" {
+		t.Fatalf("manager not stored at creation: %q", withMgr.ManagerSlug)
+	}
+
+	// No manager chosen: the row stores NULL, settable inline later.
+	bare, err := s.CreatePerson(ctx, Person{FullName: "No Manager"}, "tester")
+	if err != nil {
+		t.Fatalf("create without manager: %v", err)
+	}
+	if bare.ManagerSlug != "" {
+		t.Fatalf("expected empty manager, got %q", bare.ManagerSlug)
+	}
+	if _, err := s.UpdatePerson(ctx, bare.Slug, "tester", map[string]any{"manager_slug": "boss"}); err != nil {
+		t.Fatalf("inline manager set after creation: %v", err)
+	}
+
+	// A manager outside the directory must fail with a clear message,
+	// not a raw FK dump and not a silently-dropped value.
+	if _, err := s.CreatePerson(ctx, Person{
+		FullName: "Bad Manager", ManagerSlug: "nobody-here",
+	}, "tester"); err == nil {
+		t.Fatal("unknown manager must be rejected")
+	} else if got := err.Error(); got != "manager nobody-here is not in the directory" {
+		t.Fatalf("unclear error for unknown manager: %q", got)
+	}
+}

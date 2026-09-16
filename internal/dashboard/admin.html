@@ -646,7 +646,7 @@ td .tag{white-space:nowrap}
             <span class="card-count" id="people-count"></span>
           </div>
           <div style="display:flex;gap:8px">
-            <button class="btn btn-grn" style="padding:5px 12px;font-size:10px" onclick="openInviteUserModal()">Invite user</button>
+            <button class="btn btn-grn" style="padding:5px 12px;font-size:10px" onclick="openAddUserModal()">Add user</button>
             <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadPeople()">Refresh</button>
           </div>
         </div>
@@ -765,47 +765,50 @@ td .tag{white-space:nowrap}
   </div>
 </div>
 
-<!-- Invite User (People & Org: add someone not on the roster at all) -->
-<div class="modal-overlay" id="inviteUserModal">
+<!-- Add User (People & Org: put someone who is not on the roster into the directory; the key invite is minted from their row afterwards) -->
+<div class="modal-overlay" id="addUserModal">
   <div class="modal">
-    <button class="modal-close" onclick="closeInviteUserModal()">&times;</button>
-    <div class="modal-title">Invite user</div>
+    <button class="modal-close" onclick="closeAddUserModal()">&times;</button>
+    <div class="modal-title">Add user</div>
 
-    <div id="inviteUserForm">
+    <div id="addUserForm">
       <div class="field">
         <label>First name</label>
-        <input type="text" id="iu-first" placeholder="e.g. Alice">
+        <input type="text" id="au-first" placeholder="e.g. Alice">
       </div>
       <div class="field">
         <label>Last name</label>
-        <input type="text" id="iu-last" placeholder="e.g. Chen">
+        <input type="text" id="au-last" placeholder="e.g. Chen">
       </div>
       <div class="field">
         <label>Email</label>
-        <input type="text" id="iu-email" placeholder="e.g. achen@redhat.com">
+        <input type="text" id="au-email" placeholder="e.g. achen@redhat.com">
       </div>
       <div class="field">
         <label>Group</label>
-        <select id="iu-group">
+        <select id="au-group">
           <option value="">-- select a group --</option>
         </select>
       </div>
-      <div id="inviteUserError"></div>
+      <div class="field">
+        <label>Manager <span style="color:#8b949e;font-weight:400">(optional — leave empty if not in the directory yet)</span></label>
+        <select id="au-manager">
+          <option value="">— no manager (yet) —</option>
+        </select>
+      </div>
+      <div id="addUserError"></div>
       <div class="modal-actions">
-        <button class="btn btn-outline" onclick="closeInviteUserModal()" style="padding:7px 18px;font-size:11px">Cancel</button>
-        <button class="btn btn-grn" id="inviteUserBtn" onclick="submitInviteUser()">Invite</button>
+        <button class="btn btn-outline" onclick="closeAddUserModal()" style="padding:7px 18px;font-size:11px">Cancel</button>
+        <button class="btn btn-grn" id="addUserBtn" onclick="submitAddUser()">Add user</button>
       </div>
     </div>
 
-    <div id="inviteUserSuccess" style="display:none">
-      <div class="key-display">
-        <div class="key-display-label">Paste this to the new person — it lets them claim their key</div>
-        <div class="invite-url-box" id="inviteUser-msg" style="white-space:pre-wrap;font-size:12px"></div>
-      </div>
-      <button class="btn-copy" onclick="copyInviteText()">Copy message</button>
-      <button class="btn btn-outline" style="margin-left:8px;padding:6px 14px;font-size:10px" onclick="copyInviteURL()">Copy link only</button>
+    <div id="addUserSuccess" style="display:none">
+      <div class="ts" id="addUserAddedMsg" style="margin-bottom:12px"></div>
+      <div class="ts">To send their gateway-key invite, press <strong>Invite</strong> on their new row.</div>
       <div class="modal-actions" style="margin-top:16px">
-        <button class="btn btn-outline" onclick="closeInviteUserModal()" style="padding:7px 18px;font-size:11px">Done</button>
+        <button class="btn btn-outline" onclick="closeAddUserModal()" style="padding:7px 18px;font-size:11px">Done</button>
+        <button class="btn btn-grn" id="addUserInviteBtn" style="padding:7px 18px;font-size:11px">Send key invite now</button>
       </div>
     </div>
   </div>
@@ -2114,36 +2117,45 @@ function copyNewKey() {
 }
 
 /* ================================================================
-   Invite User Modal (People & Org: add someone not on the roster,
-   then immediately mint them a claimable key invite)
+   Add-user modal (People & Org): puts someone who is not on the
+   roster into the directory. Deliberately does NOT mint a key
+   invite — that is a separate step from the person's row (Invite
+   → Keys tab with the person preselected), or "Send key invite
+   now" in the success panel below.
    ================================================================ */
-function openInviteUserModal() {
-  document.getElementById('inviteUserForm').style.display = '';
-  document.getElementById('inviteUserSuccess').style.display = 'none';
-  document.getElementById('iu-first').value = '';
-  document.getElementById('iu-last').value = '';
-  document.getElementById('iu-email').value = '';
-  var gsel = document.getElementById('iu-group');
+function openAddUserModal() {
+  document.getElementById('addUserForm').style.display = '';
+  document.getElementById('addUserSuccess').style.display = 'none';
+  document.getElementById('au-first').value = '';
+  document.getElementById('au-last').value = '';
+  document.getElementById('au-email').value = '';
+  var gsel = document.getElementById('au-group');
   gsel.innerHTML = '<option value="">-- select a group --</option>' +
     validGroups.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('');
-  document.getElementById('inviteUserError').innerHTML = '';
-  document.getElementById('inviteUserBtn').disabled = false;
-  document.getElementById('inviteUserBtn').textContent = 'Invite';
-  document.getElementById('inviteUserModal').classList.add('open');
-  setTimeout(function() { document.getElementById('iu-first').focus(); }, 100);
+  // Manager candidates are the existing directory entries; empty means
+  // "no manager yet", which is valid — it can be set later inline.
+  var msel = document.getElementById('au-manager');
+  msel.innerHTML = '<option value="">— no manager (yet) —</option>' +
+    peopleAll.map(function(p) { return '<option value="' + esc(p.slug) + '">' + esc(p.full_name) + '</option>'; }).join('');
+  document.getElementById('addUserError').innerHTML = '';
+  document.getElementById('addUserBtn').disabled = false;
+  document.getElementById('addUserBtn').textContent = 'Add user';
+  document.getElementById('addUserModal').classList.add('open');
+  setTimeout(function() { document.getElementById('au-first').focus(); }, 100);
 }
 
-function closeInviteUserModal() {
-  document.getElementById('inviteUserModal').classList.remove('open');
+function closeAddUserModal() {
+  document.getElementById('addUserModal').classList.remove('open');
   loadPeople();
 }
 
-function submitInviteUser() {
-  var first = document.getElementById('iu-first').value.trim();
-  var last = document.getElementById('iu-last').value.trim();
-  var email = document.getElementById('iu-email').value.trim();
-  var group = document.getElementById('iu-group').value.trim();
-  var errEl = document.getElementById('inviteUserError');
+function submitAddUser() {
+  var first = document.getElementById('au-first').value.trim();
+  var last = document.getElementById('au-last').value.trim();
+  var email = document.getElementById('au-email').value.trim();
+  var group = document.getElementById('au-group').value.trim();
+  var manager = document.getElementById('au-manager').value;
+  var errEl = document.getElementById('addUserError');
 
   if (!first || !last) {
     errEl.innerHTML = '<div class="err-msg" style="margin-top:8px;text-align:left">First and last name are required.</div>';
@@ -2159,30 +2171,30 @@ function submitInviteUser() {
   }
 
   errEl.innerHTML = '';
-  var btn = document.getElementById('inviteUserBtn');
+  var btn = document.getElementById('addUserBtn');
   btn.disabled = true;
-  btn.textContent = 'Inviting...';
+  btn.textContent = 'Adding...';
 
   var person = {
     first_name: first, last_name: last,
     full_name: first + ' ' + last,
-    email: email, group_name: group
+    email: email, group_name: group, manager_slug: manager
   };
 
   updateJSON('/api/v1/admin/people', 'POST', person).then(function(created) {
-    return updateJSON('/api/v1/admin/keys/invites', 'POST', {
-      person_slug: created.slug, group: group, key_name: first + '-' + last
-    });
-  }).then(function(r) {
-    setInviteResult('inviteUser-msg', person.full_name, r);
-    document.getElementById('inviteUserForm').style.display = 'none';
-    document.getElementById('inviteUserSuccess').style.display = '';
-    showToast('Invited', 'success');
+    document.getElementById('addUserAddedMsg').innerHTML = '<strong>' + esc(created.full_name) + '</strong> was added to the directory.';
+    document.getElementById('addUserInviteBtn').onclick = function() {
+      document.getElementById('addUserModal').classList.remove('open');
+      openInviteFor(created.slug);
+    };
+    document.getElementById('addUserForm').style.display = 'none';
+    document.getElementById('addUserSuccess').style.display = '';
+    showToast('User added', 'success');
     loadPeople();
   }).catch(function(err) {
     errEl.innerHTML = '<div class="err-msg" style="margin-top:8px;text-align:left">' + esc(err.message) + '</div>';
     btn.disabled = false;
-    btn.textContent = 'Invite';
+    btn.textContent = 'Add user';
   });
 }
 
