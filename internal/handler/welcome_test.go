@@ -34,6 +34,8 @@ func TestServeWelcomeSubstitution(t *testing.T) {
 		"10B monthly allowance",
 		"Inferact/Qwen3.8-Flash-Next-NVFP4",
 		"effortLevel",
+		"Set up Hermes CLI",
+		"~/.hermes/config.yaml",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing %q", want)

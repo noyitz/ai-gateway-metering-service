@@ -93,7 +93,7 @@ h1 .pricetag{color:var(--accent)}
 .hero .sub{max-width:56ch; color:var(--muted); font-size:18px; margin-top:18px}
 .hero .sub strong{color:var(--ink); font-weight:600}
 .hero-cta{margin-top:26px}
-/* Group title heading the numbered getting-started sequence (§01–07) */
+/* Group title heading the numbered getting-started sequence (§01–08) */
 .gstart{margin-top:38px; padding-top:30px; border-top:2px solid var(--line-strong); scroll-margin-top:70px}
 .gstart h2{font-size:34px; font-weight:800; letter-spacing:-.02em; margin-bottom:0}
 .gstart + section{padding-top:26px}
@@ -268,6 +268,7 @@ footer .mono{font-size:12px}
       <a href="#claude">Claude Code</a>
       <a href="#codex">Codex</a>
       <a href="#opencode">OpenCode</a>
+      <a href="#hermes">Hermes CLI</a>
       <a href="#hosted">Hosted models</a>
       <a class="cta" href="{{DASHBOARD_URL}}/dashboard">Dashboard ↗</a>
     </div>
@@ -462,9 +463,27 @@ model_context_window = 262144</pre></div>
   <div class="callout warn"><span class="glyph">!</span><p>Two traps, both silent: the Anthropic SDK appends <code>/messages</code> to <span class="mono">baseURL</span>, so it needs the <strong><code>/v1</code> suffix</strong> (host root hits <code>/messages</code> and fails) — the OpenAI SDK appends <code>/chat/completions</code>, which is why <span class="mono">{{OPENAI_URL}}</span> already ends in <code>/v1</code>. And don't point the built-in <span class="mono">anthropic</span> provider at the OpenAI route: its catalog has no <span class="mono">claude-*</span> ids, so requests die with "model does not exist or you do not have access to it".</p></div>
 </section>
 
+<!-- ============ HERMES CLI ============ -->
+<section id="hermes">
+  <h2><span class="no">06</span>Set up Hermes CLI</h2>
+  <p class="lede"><a href="https://github.com/NousResearch/hermes-agent" target="_blank">Hermes</a> takes the gateway as one provider per dialect, same rule as everywhere else: the GPT lineup on a <em>custom</em> OpenAI-compatible endpoint, the hosted Qwen on the built-in <span class="mono">anthropic</span> provider re-aimed at the unified route. The choice is saved under <span class="mono">model:</span> in <span class="mono">~/.hermes/config.yaml</span> — the <span class="mono">hermes model</span> wizard writes it, or edit it directly:</p>
+  <div class="codebox hasname"><div class="fname">~/.hermes/config.yaml — GPT lineup (OpenAI dialect)</div><button class="copy">copy</button><pre>model:
+  provider: <span class="s">"custom"</span>
+  default:  <span class="s">"gpt-5.3-codex"</span>
+  base_url: <span class="s">"{{OPENAI_URL}}"</span>   <span class="c"># already ends in /v1</span></pre></div>
+  <div class="codebox hasname"><div class="fname">~/.hermes/config.yaml — hosted Qwen (Anthropic dialect)</div><button class="copy">copy</button><pre>model:
+  provider: <span class="s">"anthropic"</span>
+  default:  <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>
+  base_url: <span class="s">"{{UNIFIED_URL}}/v1"</span>   <span class="c"># the /v1 suffix is required</span></pre></div>
+  <div class="codebox hasname"><div class="fname">~/.hermes/.env — one key, used twice</div><button class="copy">copy</button><pre>OPENAI_API_KEY=<span class="s">pk-your-key</span>
+ANTHROPIC_API_KEY=<span class="s">pk-your-key</span></pre></div>
+  <p>The same PriceTag key works on both lines — the <em>route</em> decides the dialect, not the key. The <span class="mono">anthropic</span> provider sends it as <span class="mono">x-api-key</span> natively, which is exactly what the unified route reads. Switch providers with <span class="mono">hermes model</span>; <span class="mono">/model</span> inside a session only switches between providers already set up.</p>
+  <div class="callout warn"><span class="glyph">!</span><p>Three traps, learned the hard way this week: the OpenAI route has <strong>no Qwen ids</strong> — asking for one gets "The model … does not exist or you do not have access to it" from upstream, so keep the model id and the base URL as a matched pair, never mix halves. The <span class="mono">anthropic</span> provider needs the <strong><code>/v1</code> suffix</strong> on <span class="mono">base_url</span>. And Hermes auxiliary tasks (session titles, compression) follow the main model by default — pointing the default at the hosted id means those calls ride on it too.</p></div>
+</section>
+
 <!-- ============ ROUTES (reference, after the setup steps) ============ -->
 <section id="routes">
-  <h2><span class="no">06</span>Know your routes</h2>
+  <h2><span class="no">07</span>Know your routes</h2>
   <p class="lede">Three endpoints, one key. Pick the one that speaks your client's dialect — the path suffixes differ on purpose.</p>
   <div class="routes">
     <div class="route">
@@ -493,7 +512,7 @@ model_context_window = 262144</pre></div>
 
 <!-- ============ HOSTED ============ -->
 <section id="hosted">
-  <h2><span class="no">07</span>Hosted models, starting with Qwen 3.8 Flash Next</h2>
+  <h2><span class="no">08</span>Hosted models, starting with Qwen 3.8 Flash Next</h2>
   <p class="lede">Self-hosted vLLM on our own hardware, exposed through the unified route under the id <span class="mono">Inferact/Qwen3.8-Flash-Next-NVFP4</span>. FP4 quantisation, <strong>262K context</strong>, and the price per token is a rounding error — billed honestly, tracked in your dashboard like everything else. It's the first of more hosted models to come.</p>
   <div class="rates">
     <div class="rate"><div class="top"><span class="v">$0.15</span><span class="per">/ MTok</span></div><div class="k">Input</div></div>
