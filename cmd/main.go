@@ -247,6 +247,7 @@ func main() {
 	mux.HandleFunc("/api/v1/org/scope", auth(orgHandler.HandleScope))
 	mux.HandleFunc("/api/v1/org/tree", auth(orgHandler.HandleOrgTree))
 	mux.HandleFunc("/api/v1/org/usage", auth(orgHandler.HandleOrgUsage))
+	mux.HandleFunc("/api/v1/org/person", auth(orgHandler.HandleOrgPerson))
 
 	// Directory administration — super-admin only (backs the console's
 	// People & Org and Keys tabs).

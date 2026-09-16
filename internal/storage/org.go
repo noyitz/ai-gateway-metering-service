@@ -996,6 +996,158 @@ func (s *Store) GetOrgUsage(ctx context.Context, rootSlug string, since, until t
 	return out, rows.Err()
 }
 
+// PersonUsernames lists every login linked to one person. A person can hold
+// several (a work email plus a service account), and their spend is the sum
+// across all of them.
+func (s *Store) PersonUsernames(ctx context.Context, slug string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT username FROM person_identities
+		WHERE person_slug = $1 AND is_service = false ORDER BY username`, slug)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// InSubtree reports whether targetSlug is rootSlug itself or sits under it.
+// This is the drill-down permission check: a manager may open the team views
+// rooted at anyone inside their own tree, which is what lets a manager of
+// managers focus on one branch without seeing a sibling branch.
+func (s *Store) InSubtree(ctx context.Context, rootSlug, targetSlug string) (bool, error) {
+	var found bool
+	err := s.db.QueryRowContext(ctx, `
+		WITH RECURSIVE subtree(slug) AS (
+			SELECT $1
+			UNION ALL
+			SELECT p.slug FROM people p JOIN subtree st ON p.manager_slug = st.slug
+		)
+		SELECT EXISTS (SELECT 1 FROM subtree WHERE slug = $2)`, rootSlug, targetSlug).Scan(&found)
+	if err != nil {
+		return false, err
+	}
+	return found, nil
+}
+
+// OrgPersonModelRow is one model's usage for a single person — the same
+// granularity the Usage view shows, narrowed to one member so a manager can
+// open a person and see where their spend actually went.
+type OrgPersonModelRow struct {
+	Model            string  `json:"model"`
+	Provider         string  `json:"provider"`
+	Hosted           bool    `json:"hosted"`
+	Requests         int     `json:"requests"`
+	PromptTokens     int64   `json:"prompt_tokens"`
+	CompletionTokens int64   `json:"completion_tokens"`
+	CachedTokens     int64   `json:"cached_tokens"`
+	TotalTokens      int64   `json:"total_tokens"`
+	CostUSD          float64 `json:"cost_usd"`
+	SavedUSD         float64 `json:"saved_usd"`
+	LastUsed         *string `json:"last_used,omitempty"`
+}
+
+// GetPersonModelUsage breaks one identity's window down by model, reusing
+// costUSDExpr (one cost model across every number in the product) and the
+// dashboard's saved_usd arithmetic: for each hosted model, what its traffic
+// would have cost on the reference model's rates minus what it was actually
+// billed, floored at zero. The reference-model cache ratio is observed over
+// the caller's own username filter, so a manager's drill-down reflects their
+// team's traffic rather than the whole company's.
+func (s *Store) GetPersonModelUsage(ctx context.Context, usernames []string, since, until time.Time, refModel string) ([]OrgPersonModelRow, error) {
+	if len(usernames) == 0 {
+		return nil, nil
+	}
+	if refModel == "" {
+		refModel = "claude-opus-4-8"
+	}
+	userList := strings.Join(usernames, ",")
+	query := fmt.Sprintf(`
+		WITH r_ref AS (
+			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
+			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND e.model = $4
+			  AND e.username = ANY(string_to_array($3, ',')) AND (%s) > 0
+			  AND NOT (`+hostedProviderCond+`)
+		),
+		r_all AS (
+			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
+			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+			WHERE e.timestamp >= $1 AND e.timestamp < $2
+			  AND e.username = ANY(string_to_array($3, ',')) AND (%s) > 0
+			  AND NOT (`+hostedProviderCond+`)
+		),
+		rat AS (
+			SELECT CASE WHEN (SELECT r FROM r_ref) > 0 THEN (SELECT r FROM r_ref)
+			            WHEN (SELECT r FROM r_all) > 0 THEN (SELECT r FROM r_all)
+			            ELSE 0 END as r
+		),
+		pr AS (
+			SELECT COALESCE(MAX(input_cost_per_mtok), 0) as i, COALESCE(MAX(output_cost_per_mtok), 0) as o,
+			       COALESCE(MAX(cache_read_cost_per_mtok), 0) as cr, COALESCE(MAX(cache_write_cost_per_mtok), 0) as cw
+			FROM model_pricing WHERE model = $4
+		),
+		fm AS (
+			SELECT e.model,
+				MAX(COALESCE(e.provider, '')) as provider,
+				COUNT(*) as reqs,
+				SUM(e.prompt_tokens) as prompt, SUM(e.completion_tokens) as completion,
+				SUM(COALESCE(e.cached_input_tokens, 0)) as cached, SUM(COALESCE(e.cache_creation_tokens, 0)) as cwrite,
+				SUM(e.total_tokens) as tot, SUM(%s) as cost,
+				bool_or(`+hostedProviderCond+`) as hosted,
+				MAX(e.timestamp) as last_used
+			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND e.username = ANY(string_to_array($3, ','))
+			GROUP BY e.model
+		)
+		SELECT fm.model, fm.provider, fm.hosted, fm.reqs,
+			fm.prompt, fm.completion, fm.cached, fm.tot,
+			COALESCE(ROUND(fm.cost::numeric, 2), 0),
+			CASE WHEN (fm.hosted OR fm.cost = 0) AND fm.tot > 0 THEN COALESCE(ROUND(GREATEST(
+				(GREATEST(fm.prompt
+					- CASE WHEN fm.cached = 0 AND fm.cwrite = 0 AND fm.prompt > 0 AND rat.r > 0
+					       THEN LEAST(ROUND(fm.prompt * rat.r), fm.prompt)
+					       ELSE fm.cached END
+					- fm.cwrite, 0) * pr.i
+				+ CASE WHEN fm.cached = 0 AND fm.cwrite = 0 AND fm.prompt > 0 AND rat.r > 0
+				       THEN LEAST(ROUND(fm.prompt * rat.r), fm.prompt)
+				       ELSE fm.cached END * pr.cr
+				+ fm.cwrite * pr.cw
+				+ fm.completion * pr.o) / 1000000.0 - fm.cost, 0)::numeric, 2)
+				ELSE 0 END,
+			to_char(fm.last_used, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		FROM fm CROSS JOIN pr CROSS JOIN rat
+		ORDER BY fm.cost DESC, fm.tot DESC`, costUSDExpr, costUSDExpr, costUSDExpr)
+
+	rows, err := s.db.QueryContext(ctx, query, since, until, userList, refModel)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OrgPersonModelRow
+	for rows.Next() {
+		var r OrgPersonModelRow
+		var lastUsed sql.NullString
+		if err := rows.Scan(&r.Model, &r.Provider, &r.Hosted, &r.Requests,
+			&r.PromptTokens, &r.CompletionTokens, &r.CachedTokens, &r.TotalTokens,
+			&r.CostUSD, &r.SavedUSD, &lastUsed); err != nil {
+			return nil, err
+		}
+		if lastUsed.Valid {
+			r.LastUsed = &lastUsed.String
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // --- Key invites ---
 
 // CreateInvite mints a single-use invite. The token is returned exactly
