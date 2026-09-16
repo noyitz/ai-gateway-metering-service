@@ -50,6 +50,7 @@ func (h *DashboardHandler) ServeWelcome(w http.ResponseWriter, r *http.Request) 
 	).Replace(string(data))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Write([]byte(page))
 }
 

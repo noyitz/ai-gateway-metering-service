@@ -62,6 +62,7 @@ func (h *AdminHandler) ServeAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(data)
 }
 
@@ -72,6 +73,7 @@ func (h *AdminHandler) ServeMyAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(data)
 }
 
@@ -82,6 +84,7 @@ func (h *AdminHandler) ServeRouting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(data)
 }
 
@@ -92,6 +95,7 @@ func (h *AdminHandler) ServeCompression(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(data)
 }
 

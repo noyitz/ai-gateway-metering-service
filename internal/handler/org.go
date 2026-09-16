@@ -123,6 +123,7 @@ func (h *OrgHandler) ServeManager(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(data)
 }
 
@@ -654,6 +655,7 @@ type claimData struct {
 
 func renderClaim(w http.ResponseWriter, d claimData) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 	if err := claimTmpl.Execute(w, d); err != nil {
 		slog.Error("claim page render failed", "error", err)
 	}
