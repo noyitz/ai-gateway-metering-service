@@ -99,28 +99,49 @@ tr.sep td{border-top:2px dashed var(--bdr);text-align:center;color:var(--t2);fon
 .pm-body .pm-zero{color:var(--t2)}
 .pm-host{display:inline-block;background:rgba(61,204,110,.12);border:1px solid rgba(61,204,110,.4);color:var(--grn);border-radius:10px;font-size:9px;font-weight:700;padding:1px 7px;text-transform:uppercase;letter-spacing:.5px;margin-left:8px}
 .pm-list{color:var(--t2);font-size:10px;margin-top:1px}
-.pm-open{background:var(--c2);color:var(--t2);border:1px solid var(--bdr);padding:5px 12px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
-.pm-open:hover{color:var(--t);background:var(--bdr)}
+/* ── Shared appbar (same convention on every page; var fallbacks let
+   either token spelling work) ──────────────────────────────────────── */
+.appbar{display:flex;align-items:center;gap:16px;padding:12px 22px;background:var(--bg-card,var(--c1,#141820));border:1px solid var(--border,var(--bdr,#2e3848));border-radius:10px;margin-bottom:16px;flex-wrap:wrap}
+.appbar .logo{font-weight:700;font-size:15px;letter-spacing:.2px;white-space:nowrap;color:var(--text,var(--t,#e2e6ec))}
+.appbar .logo em{font-style:normal;color:var(--blue,var(--blu,#4da0f8))}
+.appbar nav{display:flex;gap:2px;flex-wrap:wrap}
+.appbar nav a{padding:5px 11px;border-radius:7px;color:var(--text2,var(--t2,#8090a8));font-size:13px;text-decoration:none}
+.appbar nav a:hover{background:var(--bg-card2,var(--c2,#1a2030));color:var(--text,var(--t,#e2e6ec))}
+.appbar nav a.on{background:var(--bg-card2,var(--c2,#1a2030));color:var(--text,var(--t,#e2e6ec));font-weight:600}
+.appbar .ab-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.ab-btn{background:transparent;color:var(--text2,var(--t2,#8090a8));border:1px solid var(--border,var(--bdr,#2e3848));padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:none}
+.ab-btn:hover{color:var(--text,var(--t,#e2e6ec))}
+.ab-user{color:var(--grn,#3dcc6e);font-size:13px;font-weight:600}
+.ab-user .role{color:var(--text2,var(--t2,#8090a8));font-weight:400}
+.ab-out{color:#e8554e;border:1px solid var(--border,var(--bdr,#2e3848));padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none}
+.ab-out:hover{border-color:#e8554e}
 </style>
 </head>
 <body>
+
+<header class="appbar">
+  <a class="logo" href="/dashboard">Price<em>Tag</em></a>
+  <nav>
+    <a href="/dashboard">Usage</a>
+    <a href="/manager" id="tab-team" style="display:none" title="Usage for everyone on your team">My team</a>
+    <a href="/me" class="on">My account</a>
+    <a href="/routing" id="tab-routing" style="display:none">Routing</a>
+    <a href="/compression" id="tab-compression" style="display:none">Compression</a>
+    <a href="/admin" id="tab-admin" style="display:none">Admin</a>
+  </nav>
+  <div class="ab-right">
+    <a href="#" id="my-view-btn" class="ab-btn" style="display:none;color:var(--blu)" title="See the dashboard as a regular user would">My view as user</a>
+    <button class="ab-btn" onclick="openPricing()">Pricing</button>
+    <span class="ab-user" id="abUser" style="display:none"></span>
+    <a href="/logout" class="ab-out" id="abOut" style="display:none">Sign out</a>
+  </div>
+</header>
 
 <div id="impersonation-banner" style="display:none;align-items:center;gap:10px;background:rgba(210,153,34,.12);border:1px solid #d29922;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:12px">
   <span style="font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:10px;color:#d29922">Viewing as</span>
   <b id="impersonated-user"></b>
   <span style="color:var(--t2)">(you are <span id="real-user"></span>)</span>
   <a href="/admin/impersonate" style="margin-left:auto;background:#d29922;color:#1a1a1a;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:700;text-decoration:none">Back to admin view</a>
-</div>
-
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-  <div style="display:flex;gap:4px">
-    <a href="/me" class="auth-only" style="display:none;background:var(--cyn);color:#fff;border:1px solid var(--cyn);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My Account</a>
-  </div>
-  <div style="display:flex;align-items:center;gap:12px">
-    <button class="pm-open" onclick="openPricing()">Pricing</button>
-    <span id="userInfo" style="font-size:11px;color:var(--t2)"></span>
-    <a href="/logout" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600">Logout</a>
-  </div>
 </div>
 
 <div style="font-size:18px;font-weight:700;margin-bottom:6px" id="pageTitle">My Account</div>
@@ -225,9 +246,27 @@ async function init(){
     me=w.user||'';
     myGroup=w.groups||'';
     if(myGroup.startsWith('[')){try{myGroup=JSON.parse(myGroup)[0]||'';}catch(e){myGroup='';}}
-    if(me){document.querySelectorAll('.auth-only').forEach(function(el){el.style.display='';});}
     var myName=w.display_name||me;
-    document.getElementById('userInfo').textContent=myName;
+    // Header identity + role-gated tabs (same convention as every page).
+    if(me){
+      var ab=document.getElementById('abUser');
+      ab.textContent=myName;
+      if(w.isSuperAdmin||w.isAdmin){
+        var role=document.createElement('span');
+        role.className='role';
+        role.textContent=w.isSuperAdmin?' (super admin)':' (admin)';
+        ab.appendChild(role);
+      }
+      ab.style.display='';
+      document.getElementById('abOut').style.display='';
+      if(w.isManager||w.isAdmin)document.getElementById('tab-team').style.display='';
+      if(w.isSuperAdmin){
+        ['tab-routing','tab-compression','tab-admin'].forEach(function(id){document.getElementById(id).style.display='';});
+        var mvb=document.getElementById('my-view-btn');
+        mvb.href='/admin/impersonate?as='+encodeURIComponent(w.user);
+        mvb.style.display='';
+      }
+    }
     document.getElementById('pageTitle').textContent='Welcome, '+myName;
     document.getElementById('groupInfo').textContent=myGroup?'Group: '+myGroup:'';
     var host=window.location.hostname;

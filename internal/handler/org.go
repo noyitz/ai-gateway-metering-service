@@ -166,9 +166,12 @@ func (h *OrgHandler) HandleScope(w http.ResponseWriter, r *http.Request) {
 }
 
 // scopeRoot resolves which subtree a ?root= request may read. Admins may
-// name any slug (defaulting to the org's first root); managers only their
-// own; everyone else gets their own name — which has no tree, so callers
-// get an empty chart rather than a 403 on a page they're allowed to open.
+// name any slug (defaulting to the org's first root). A manager may name
+// their own slug or any slug INSIDE their subtree — that is the manager of
+// managers drill-down: focusing the team view on one subordinate manager's
+// branch. Anyone outside the tree gets a 403; people with no directory entry
+// get their own name — which has no tree, so callers get an empty chart
+// rather than a 403 on a page they're allowed to open.
 func (h *OrgHandler) scopeRoot(w http.ResponseWriter, r *http.Request) (string, bool) {
 	me := caller(r, h.cfg)
 	reqRoot := storage.SlugNorm(r.URL.Query().Get("root"))
@@ -189,9 +192,18 @@ func (h *OrgHandler) scopeRoot(w http.ResponseWriter, r *http.Request) (string, 
 		return "", false
 	}
 	if reqRoot != "" && reqRoot != slug {
-		// Explicitly outside the caller's tree.
-		http.Error(w, "outside your visibility scope", http.StatusForbidden)
-		return "", false
+		inside, err := h.store.InSubtree(r.Context(), slug, reqRoot)
+		if err != nil {
+			slog.Error("subtree check failed", "root", slug, "target", reqRoot, "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return "", false
+		}
+		if !inside {
+			// Explicitly outside the caller's tree.
+			http.Error(w, "outside your visibility scope", http.StatusForbidden)
+			return "", false
+		}
+		return reqRoot, true
 	}
 	return slug, true
 }
@@ -233,6 +245,76 @@ func (h *OrgHandler) HandleOrgUsage(w http.ResponseWriter, r *http.Request) {
 		rows = []storage.OrgUsageRow{}
 	}
 	writeJSON(w, rows)
+}
+
+// HandleOrgPerson: GET /api/v1/org/person?slug=&range= — one person's
+// per-model breakdown, the drill-down behind a row in the team table. The
+// permission is the same one that governs the tree: an admin may open
+// anyone; everyone else may open a person inside their own subtree (which
+// always includes themselves).
+func (h *OrgHandler) HandleOrgPerson(w http.ResponseWriter, r *http.Request) {
+	slug := storage.SlugNorm(r.URL.Query().Get("slug"))
+	if slug == "" {
+		http.Error(w, "slug required", http.StatusBadRequest)
+		return
+	}
+	if !IsAdmin(h.cfg, r) {
+		_, _, mine, err := h.store.ScopeUsernames(r.Context(), caller(r, h.cfg))
+		if err != nil {
+			slog.Error("scope resolution failed", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if mine == "" {
+			http.Error(w, "not in directory", http.StatusNotFound)
+			return
+		}
+		if mine != slug {
+			inside, err := h.store.InSubtree(r.Context(), mine, slug)
+			if err != nil {
+				slog.Error("subtree check failed", "error", err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			if !inside {
+				http.Error(w, "outside your visibility scope", http.StatusForbidden)
+				return
+			}
+		}
+	}
+	person, err := h.store.GetPerson(r.Context(), slug)
+	if err == sql.ErrNoRows {
+		http.Error(w, "no such person", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		slog.Error("get person failed", "slug", slug, "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	usernames, err := h.store.PersonUsernames(r.Context(), slug)
+	if err != nil {
+		slog.Error("person identities failed", "slug", slug, "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	since, until := parseTimeWindow(r)
+	models, err := h.store.GetPersonModelUsage(r.Context(), usernames, since, until, "")
+	if err != nil {
+		slog.Error("person usage query failed", "slug", slug, "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if models == nil {
+		models = []storage.OrgPersonModelRow{}
+	}
+	writeJSON(w, map[string]any{
+		"slug":        person.Slug,
+		"fullName":    person.FullName,
+		"usernames":   usernames,
+		"noIdentity":  len(usernames) == 0,
+		"models":      models,
+	})
 }
 
 // --- Admin: people CRUD ---

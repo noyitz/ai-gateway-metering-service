@@ -101,24 +101,59 @@ body{background:var(--bg);color:var(--t);font-family:'Inter',-apple-system,sans-
 .toast.show{transform:translateY(0);opacity:1}
 .toast.ok{background:var(--grn);color:#fff}
 .toast.err{background:var(--red);color:#fff}
+/* ── Shared appbar (same block on every page; var fallbacks let either
+   token spelling work) ─────────────────────────────────────────────── */
+.appbar{display:flex;align-items:center;gap:16px;padding:11px 18px;background:var(--c1,#141820);border-bottom:1px solid var(--bdr,#232b3b);flex-wrap:wrap;margin:-24px -32px 16px -32px}
+.appbar .logo{font-weight:700;font-size:15px;letter-spacing:.2px;white-space:nowrap;color:var(--t,#e2e6ec)}
+.appbar .logo em{font-style:normal;color:var(--blu,#4da0f8)}
+.appbar nav{display:flex;gap:2px;flex-wrap:wrap}
+.appbar nav a{padding:5px 11px;border-radius:7px;color:var(--t2,#8090a8);font-size:13px;text-decoration:none}
+.appbar nav a:hover{background:var(--c2,#1a2030);color:var(--t,#e2e6ec)}
+.appbar nav a.on{background:var(--c2,#1a2030);color:var(--t,#e2e6ec);font-weight:600}
+.appbar .ab-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.ab-btn{background:none;border:1px solid var(--bdr,#232b3b);color:var(--t2,#8090a8);border-radius:7px;padding:4px 11px;font-size:13px;cursor:pointer;text-decoration:none}
+.ab-btn:hover{color:var(--t,#e2e6ec)}
+.ab-user{color:var(--grn,#3dcc6e);font-size:13px;font-weight:600}
+.ab-user .role{color:var(--t2,#8090a8);font-weight:400}
+.ab-out{color:var(--red,#e8554e);border:1px solid var(--bdr,#232b3b);border-radius:7px;padding:4px 11px;font-size:13px;text-decoration:none}
+.ab-out:hover{border-color:var(--red,#e8554e)}
+/* Pricing modal (shared rate card across all pages) */
+.pm-ov{display:none;position:fixed;inset:0;background:rgba(5,7,10,.72);z-index:120;align-items:flex-start;justify-content:center;padding:40px 14px}
+.pm-ov.show{display:flex}
+.pm-card{background:var(--c1,#141820);border:1px solid var(--bdr,#232b3b);border-radius:12px;max-width:900px;width:100%;padding:14px 18px;max-height:calc(100vh - 80px);overflow:auto;color:var(--t,#e2e6ec)}
+.pm-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.pm-title{font-size:16px;font-weight:700}
+.pm-sub{color:var(--t2,#8090a8);font-size:12px}
+.pm-opts{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--t2,#8090a8);font-size:12px}
+.pm-close{background:none;border:1px solid var(--bdr,#232b3b);color:var(--t2,#8090a8);border-radius:7px;padding:3px 9px;cursor:pointer}
+.pm-body table{width:100%;border-collapse:collapse;font-size:12.5px;text-align:left}
+.pm-body th{color:var(--t2,#8090a8);font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:6px 8px;border-bottom:1px solid var(--bdr,#232b3b)}
+.pm-body td{padding:6px 8px;border-bottom:1px solid var(--bdr,#232b3b)}
+.pm-zero{color:var(--t2,#8090a8)}
+.pm-host{color:var(--grn,#3dcc6e);font-size:10.5px;margin-left:6px;border:1px solid var(--bdr,#232b3b);border-radius:99px;padding:0 6px}
+.pm-list{color:var(--t2,#8090a8);font-size:11px}
 </style>
 </head>
 <body>
 <div class="pg">
 
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-  <div style="display:flex;gap:4px">
-    <a href="/me" class="auth-only" style="display:none;background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">My Account</a>
-    <a href="/dashboard" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
-    <a href="/routing" style="background:var(--blu);color:#fff;border:1px solid var(--blu);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
-    <a href="/compression" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
-    <a href="/admin" class="admin-only" style="display:none;background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Admin</a>
+<header class="appbar">
+  <a class="logo" href="/dashboard">Price<em>Tag</em></a>
+  <nav>
+    <a href="/dashboard">Usage</a>
+    <a href="/manager" id="tab-team" style="display:none" title="Usage for everyone on your team">My team</a>
+    <a href="/me" id="tab-me" style="display:none">My account</a>
+    <a href="/routing" class="on" id="tab-routing">Routing</a>
+    <a href="/compression" id="tab-compression" style="display:none">Compression</a>
+    <a href="/admin" id="tab-admin" style="display:none">Admin</a>
+  </nav>
+  <div class="ab-right">
+    <a href="#" id="my-view-btn" class="ab-btn" style="display:none;border-color:var(--blu,#4da0f8);color:var(--blu,#4da0f8)" title="See the dashboard as a regular user would">My view as user</a>
+    <button class="ab-btn" onclick="openPricing()">Pricing</button>
+    <span class="ab-user" id="abUser" style="display:none"></span>
+    <a href="/logout" class="ab-out" id="abOut" style="display:none">Sign out</a>
   </div>
-  <div style="display:flex;align-items:center;gap:12px">
-    <span id="userInfo" style="font-size:11px;color:var(--t2)"></span>
-    <a href="/logout" style="background:var(--c1);color:var(--t2);border:1px solid var(--bdr);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600;letter-spacing:.3px">Logout</a>
-  </div>
-</div>
+</header>
 <div style="font-size:17px;font-weight:700;letter-spacing:-.2px;margin-bottom:16px">Model Routing</div>
 
 <div class="flow" id="flow">
@@ -359,20 +394,69 @@ function animDots(s,x1,y1,x2,y2,n){for(var i=0;i<n;i++){var d=svgE('circle');d.s
 function pathDots(s,pid,n){for(var i=0;i<n;i++){var d=svgE('circle');d.setAttribute('r','2.5');d.className.baseVal='flow-dot';var am=svgE('animateMotion');am.setAttribute('dur','1.8s');am.setAttribute('repeatCount','indefinite');am.setAttribute('begin',i*.5+'s');var mp=svgE('mpath');mp.setAttributeNS('http://www.w3.org/1999/xlink','href','#'+pid);am.appendChild(mp);d.appendChild(am);s.appendChild(d)}}
 
 function toast(m,t){var e=document.getElementById('toast');e.textContent=m;e.className='toast '+t+' show';setTimeout(function(){e.className='toast'},3000)}
+// Header identity + tabs. /routing is super-admin-only server-side, so
+// operator tabs show unconditionally here; only Usage-side tabs check role.
 fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
-  if(d.user)document.getElementById('userInfo').textContent=d.user;
+  if(!d||!d.user)return;
+  var ab=document.getElementById('abUser');
+  ab.textContent=d.display_name||d.user;
+  if(d.isSuperAdmin||d.isAdmin){
+    var role=document.createElement('span');
+    role.className='role';
+    role.textContent=d.isSuperAdmin?' (super admin)':' (admin)';
+    ab.appendChild(role);
+  }
+  ab.style.display='';
+  document.getElementById('abOut').style.display='';
+  document.getElementById('tab-me').style.display='';
+  if(d.isManager||d.isAdmin)document.getElementById('tab-team').style.display='';
+  document.getElementById('tab-compression').style.display='';
+  document.getElementById('tab-admin').style.display='';
+  var mvb=document.getElementById('my-view-btn');
+  mvb.href='/admin/impersonate?as='+encodeURIComponent(d.user);
+  mvb.style.display='';
 }).catch(function(){});
 
 window.addEventListener('resize',function(){if(selected)requestAnimationFrame(drawLines)});
 init();
 </script>
+<!-- Model pricing modal (shared across pages) -->
+<div class="pm-ov" id="pricing-ov" onclick="if(event.target===this)closePricing()">
+  <div class="pm-card">
+    <div class="pm-head">
+      <span class="pm-title">Model pricing</span>
+      <span class="pm-sub">$ per million tokens</span>
+      <span class="pm-opts">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="pm-all" onchange="loadPricing()" title="Off: only models you have used, plus hosted models. On: every model in the price list, even ones with no usage yet."> Show price list for unused models too</label>
+        <button class="pm-close" onclick="closePricing()" aria-label="Close">✕</button>
+      </span>
+    </div>
+    <div class="pm-body" id="pm-body"><div class="pm-sub" style="padding:14px 0">Loading…</div></div>
+  </div>
+</div>
 <script>
-// Reveal auth-only nav (My Account) only when an identity is present
-// (SSO/oauth-proxy). Hidden on the unauthenticated dogfood.
-fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
-  if(d&&d.user){document.querySelectorAll('.auth-only').forEach(function(el){el.style.display='';});}
-  if(d&&d.isSuperAdmin){document.querySelectorAll('.admin-only').forEach(function(el){el.style.display='';});}
-}).catch(function(){});
+// ── Model pricing modal (shared rate card across all pages) ─────────
+function pmEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function pmPrice(v){v=+v||0;return v>0?'$'+v.toLocaleString(undefined,{maximumFractionDigits:3}):'<span class="pm-zero">–</span>';}
+function openPricing(){document.getElementById('pricing-ov').classList.add('show');loadPricing();}
+function closePricing(){document.getElementById('pricing-ov').classList.remove('show');}
+function loadPricing(){
+  var all=document.getElementById('pm-all').checked;
+  var body=document.getElementById('pm-body');
+  body.innerHTML='<div class="pm-sub" style="padding:14px 0">Loading…</div>';
+  fetch('/api/v1/pricing'+(all?'?used=0':'')).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(j){
+    var ms=j.models||[];
+    if(!ms.length){body.innerHTML='<div class="pm-sub" style="padding:14px 0">No rates seeded yet.</div>';return;}
+    body.innerHTML='<table><thead><tr><th>Model</th><th>Input</th><th>Output</th><th>Cache read</th><th>Cache write</th></tr></thead><tbody>'+
+      ms.map(function(m){
+        var list=(m.list_input_cost_per_mtok||m.list_output_cost_per_mtok)?'<div class="pm-list">vendor list '+pmPrice(m.list_input_cost_per_mtok)+' / '+pmPrice(m.list_output_cost_per_mtok)+'</div>':'';
+        return '<tr><td>'+pmEsc(m.model)+(m.hosted?'<span class="pm-host">hosted</span>':'')+'<div class="pm-list">'+pmEsc(m.provider)+list+'</div></td>'
+          +'<td>'+pmPrice(m.input_cost_per_mtok)+'</td><td>'+pmPrice(m.output_cost_per_mtok)+'</td>'
+          +'<td>'+pmPrice(m.cache_read_cost_per_mtok)+'</td><td>'+pmPrice(m.cache_write_cost_per_mtok)+'</td></tr>';
+      }).join('')+'</tbody></table>';
+  }).catch(function(e){body.innerHTML='<div class="pm-sub" style="padding:14px 0;color:var(--red,#e8554e)">Could not load pricing ('+pmEsc(e.message)+').</div>';});
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closePricing();});
 </script>
 </body>
 </html>

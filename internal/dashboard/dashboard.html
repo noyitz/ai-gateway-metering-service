@@ -105,24 +105,49 @@ tr.clickable{cursor:pointer}
 .pm-list{color:var(--text2);font-size:10px;margin-top:1px}
 .pm-open{background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:6px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
 .pm-open:hover{color:var(--text);border-color:var(--text2)}
+/* ── Unified app header ────────────────────────────────────────────────
+   One header on every signed-in page: logo + role-gated tabs on the
+   left, page widgets + identity on the right. Var fallbacks let the
+   same block paste onto pages using either token spelling
+   (--blue/--bg-card on the usage page, --blu/--c1 elsewhere). */
+.appbar{display:flex;align-items:center;gap:16px;padding:12px 22px;background:var(--bg-card,var(--c1,#141820));border:1px solid var(--border,var(--bdr,#2e3848));border-radius:10px;margin-bottom:16px;flex-wrap:wrap}
+.appbar .logo{font-weight:700;font-size:15px;letter-spacing:.2px;color:var(--text,var(--t,#e2e6ec));text-decoration:none;white-space:nowrap}
+.appbar .logo em{color:var(--blue,var(--blu,#4da0f8));font-style:normal}
+.appbar nav{display:flex;gap:4px;flex-wrap:wrap}
+.appbar nav a{color:var(--text2,var(--t2,#8090a8));text-decoration:none;padding:6px 14px;border-radius:8px;font-weight:600;font-size:12px}
+.appbar nav a:hover{color:var(--text,var(--t,#e2e6ec));background:var(--bg-hover,var(--c3,#232d40))}
+.appbar nav a.on{color:var(--text,var(--t,#e2e6ec));background:var(--bg-hover,var(--c3,#232d40))}
+.ab-right{margin-left:auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ab-btn{background:transparent;color:var(--text2,var(--t2,#8090a8));border:1px solid var(--border,var(--bdr,#2e3848));padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:none}
+.ab-btn:hover{color:var(--text,var(--t,#e2e6ec));border-color:var(--text2,var(--t2,#8090a8))}
+.ab-clock{font-size:11px;color:var(--text2,var(--t2,#8090a8));white-space:nowrap}
+.ab-user{font-size:12px;font-weight:700;color:#3dcc6e}
+.ab-user .role{color:var(--text2,var(--t2,#8090a8));font-weight:600;font-size:11px}
+.ab-out{color:#e8554e;border:1px solid var(--border,var(--bdr,#2e3848));padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none}
+.ab-out:hover{border-color:#e8554e}
 </style>
 </head>
 <body>
 
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-  <div style="display:flex;gap:4px">
-    <a href="/dashboard" style="background:var(--blue);color:#fff;border:1px solid var(--blue);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
-    <a href="/manager" class="manager-only" data-show="inline-block" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px" title="See usage for everyone on your team">My team</a>
-    <a href="/routing" class="superadmin-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
-    <a href="/compression" class="superadmin-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
-    <a href="/admin" class="superadmin-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Admin</a>
+<header class="appbar">
+  <a class="logo" href="/dashboard">Price<em>Tag</em></a>
+  <nav>
+    <a href="/dashboard" class="on">Usage</a>
+    <a href="/manager" id="tab-team" style="display:none" title="Usage for everyone on your team">My team</a>
+    <a href="/me" id="tab-me" style="display:none">My account</a>
+    <a href="/routing" id="tab-routing" style="display:none">Routing</a>
+    <a href="/compression" id="tab-compression" style="display:none">Compression</a>
+    <a href="/admin" id="tab-admin" style="display:none">Admin</a>
+  </nav>
+  <div class="ab-right">
+    <span class="ab-clock" id="last-refresh"></span>
+    <button id="refresh-btn" class="ab-btn" onclick="refresh()">Refresh</button>
+    <a href="#" id="my-view-btn" class="ab-btn" style="display:none" title="See the dashboard as a regular user would">My view as user</a>
+    <button class="ab-btn" onclick="openPricing()">Pricing</button>
+    <span class="ab-user" id="abUser" style="display:none"></span>
+    <a href="/logout" class="ab-out" id="abOut" style="display:none">Sign out</a>
   </div>
-  <div style="display:flex;align-items:center;gap:12px">
-    <a href="#" id="my-view-btn" class="superadmin-only" data-show="inline" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600" title="See the dashboard as a regular user would">My view as user</a>
-    <span id="userInfo" style="font-size:11px;color:var(--text2)"></span>
-    <a href="/logout" class="auth-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600;letter-spacing:.3px">Logout</a>
-  </div>
-</div>
+</header>
 
 <div id="impersonation-banner" style="display:none;align-items:center;gap:10px;background:rgba(210,153,34,.12);border:1px solid #d29922;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:12px">
   <span style="font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:10px;color:#d29922">Viewing as</span>
@@ -130,14 +155,6 @@ tr.clickable{cursor:pointer}
   <span style="color:var(--text2)">(you are <span id="real-user"></span>)</span>
   <a href="/admin/impersonate" style="margin-left:auto;background:#d29922;color:#1a1a1a;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:700;text-decoration:none">Back to admin view</a>
 </div>
-
-<header>
-  <h1>PriceTag<span id="last-refresh"></span></h1>
-  <div style="display:flex;gap:8px;align-items:center">
-    <button class="pm-open" onclick="openPricing()">Pricing</button>
-    <button id="refresh-btn" onclick="refresh()" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;transition:all .15s">Refresh</button>
-  </div>
-</header>
 
 <!-- Model pricing modal: the same rate card on every page, openable anytime -->
 <div class="pricing-ov" id="pricing-ov" onclick="if(event.target===this)closePricing()">
@@ -915,11 +932,25 @@ setInterval(refresh,30000);
 
 fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
   if(d.user){
-    document.getElementById('userInfo').textContent=d.display_name||d.user;
-    // Only surface auth-only nav (My Account, Logout) when an
-    // identity is present (SSO/oauth-proxy). On the unauthenticated
-    // dogfood there is no X-Forwarded-User, so these stay hidden.
-    document.querySelectorAll('.auth-only').forEach(function(el){el.style.display='';});
+    isAdmin=!!d.isAdmin;
+    isSuperAdmin=!!d.isSuperAdmin;
+    // Identity + role-gated tabs. The name renders green, the role in grey
+    // beside it — the same convention every page's header now uses.
+    var ab=document.getElementById('abUser');
+    ab.innerHTML=pmEsc(d.display_name||d.user)+(d.isSuperAdmin?' <span class="role">(super admin)</span>':d.isAdmin?' <span class="role">(admin)</span>':'');
+    ab.style.display='';
+    document.getElementById('abOut').style.display='';
+    document.getElementById('tab-me').style.display='';
+    // A manager (anyone with reports) or an admin gets the "My team" tab —
+    // the /manager page lists every team member, even those with no usage
+    // yet, which the scoped Usage view can't show (it only lists activity).
+    if(d.isManager||isAdmin)document.getElementById('tab-team').style.display='';
+    if(isSuperAdmin){
+      ['tab-routing','tab-compression','tab-admin'].forEach(function(id){document.getElementById(id).style.display='';});
+      var mvb=document.getElementById('my-view-btn');
+      mvb.href='/admin/impersonate?as='+encodeURIComponent(d.user);
+      mvb.style.display='';
+    }
     // "Viewing as" state: show the banner with the way back to admin.
     var banner=document.getElementById('impersonation-banner');
     if(d.impersonating){
@@ -927,18 +958,7 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
       document.getElementById('impersonated-user').textContent=d.display_name?d.display_name+' ('+d.user+')':d.user;
       document.getElementById('real-user').textContent=d.real_user_display?d.real_user_display+' ('+d.real_user+')':d.real_user;
     } else banner.style.display='none';
-    var mvb=document.getElementById('my-view-btn');
-    if(mvb)mvb.href='/admin/impersonate?as='+encodeURIComponent(d.user);
-    isAdmin=!!d.isAdmin;
-    isSuperAdmin=!!d.isSuperAdmin;
-    // A manager (anyone with reports) or an admin gets the "My team" tab —
-    // the /manager page lists every team member, even those with no usage
-    // yet, which the scoped Usage view can't show (it only lists activity).
-    if(d.isManager||isAdmin){
-      document.querySelectorAll('.manager-only').forEach(function(el){el.style.display=el.dataset.show||'';});
-    }
-    // Admins keep the org-wide usage view (.admin-only widgets); only
-    // super-admins surface the operator nav (.superadmin-only).
+    // In-page widgets keep their old class gates.
     if(isAdmin){
       document.querySelectorAll('.admin-only').forEach(function(el){el.style.display=el.dataset.show||'';});
     }

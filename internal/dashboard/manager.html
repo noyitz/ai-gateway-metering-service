@@ -3,107 +3,112 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Team view · PriceTag</title>
+<title>PriceTag · My team</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
-/* Tokens copied from admin.html so the manager page is the same product. */
 :root{
-  --bg:#0b0e11; --c1:#141820; --c2:#1a2030; --c3:#232d40; --bdr:#2e3848;
-  --t:#e2e6ec; --t2:#8090a8; --blu:#4da0f8; --grn:#3dcc6e; --org:#eba830;
-  --red:#e8554e; --pur:#a88cf8; --cyn:#38d4c2;
+  color-scheme:dark;
+  --bg:#0c0f14; --panel:#141820; --panel2:#1a2030; --border:#232b3b;
+  --text:#e2e6ec; --muted:#8090a8; --accent:#4da0f8; --accent2:#3dcc6e;
+  --saved:#3dcc6e; --warn:#eba830;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--t);font:13px/1.5 Inter,system-ui,sans-serif}
-header{display:flex;align-items:center;gap:18px;padding:14px 24px;border-bottom:1px solid var(--bdr);background:var(--c1)}
-.logo{font-weight:700;font-size:14px;letter-spacing:.2px}
-.logo em{color:var(--blu);font-style:normal}
-nav{display:flex;gap:4px}
-nav a{color:var(--t2);text-decoration:none;padding:6px 12px;border-radius:8px;font-weight:600}
-nav a:hover{color:var(--t);background:var(--c3)}
-nav a.on{color:var(--t);background:var(--c3)}
-nav a.hidden{display:none}
-.who{margin-left:auto;display:flex;gap:10px;align-items:center;color:var(--t2)}
-.who a{color:var(--t2);text-decoration:none}
-#banner{display:none;gap:10px;align-items:center;justify-content:center;padding:8px;background:#2a2433;border-bottom:1px solid var(--bdr);color:var(--pur);font-weight:600;font-size:12px}
-#banner button{background:var(--c3);color:var(--t);border:1px solid var(--bdr);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer}
-main{max-width:1200px;margin:0 auto;padding:24px}
-.head-row{display:flex;align-items:baseline;gap:14px;margin-bottom:4px}
-h1{font-size:17px;margin:0;text-wrap:balance}
-.sub{color:var(--t2);margin:0 0 20px}
-.ranges{margin-left:auto;display:flex;gap:4px}
-.ranges button{background:var(--c1);color:var(--t2);border:1px solid var(--bdr);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer}
-.ranges button.on{background:var(--c3);color:var(--t)}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
-.kpi{background:var(--c1);border:1px solid var(--bdr);border-radius:12px;padding:16px 18px}
-.kpi .l{color:var(--t2);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
-.kpi .v{font-size:24px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
-.kpi .s{color:var(--t2);font-size:11px;margin-top:2px}
-.panel{background:var(--c1);border:1px solid var(--bdr);border-radius:12px;padding:18px;margin-bottom:20px}
-.panel h2{font-size:13px;margin:0 0 12px;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
-.cols{display:grid;grid-template-columns:1fr 320px;gap:20px}
-@media (max-width:900px){.cols{grid-template-columns:1fr}}
-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-th{color:var(--t2);font-size:11px;text-transform:uppercase;letter-spacing:.4px;text-align:left;padding:8px 10px;border-bottom:1px solid var(--bdr);cursor:pointer;user-select:none}
-td{padding:8px 10px;border-bottom:1px solid var(--c2)}
-tr:hover td{background:var(--c2)}
-td.num,th.num{text-align:right}
-.mgr{color:var(--pur);font-weight:600}
-.dim{color:var(--t2)}
-.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:10px;font-weight:700;text-transform:uppercase}
-.pill.zero{background:#241a1b;color:var(--red)}
-.pill.on{background:#16281c;color:var(--grn)}
-.tree ul{list-style:none;margin:0;padding-left:16px;border-left:1px solid var(--c3)}
-.tree li{padding:3px 0}
-.tree .node{cursor:pointer;padding:2px 8px;border-radius:6px;display:inline-flex;gap:8px;align-items:center}
-.tree .node:hover{background:var(--c2)}
-.tree .node.on{background:var(--c3)}
-.tree .cnt{color:var(--t2);font-size:11px}
-.self-note{background:var(--c2);border:1px dashed var(--bdr);border-radius:10px;padding:14px 16px;color:var(--t2);margin-bottom:20px}
-.self-note b{color:var(--t)}
-.err{color:var(--red);padding:20px}
-/* ── Model pricing modal ──────────────────────────────────────────── */
-.pricing-ov{display:none;position:fixed;inset:0;background:rgba(1,4,9,.72);z-index:150;align-items:flex-start;justify-content:center;padding:5vh 16px}
-.pricing-ov.show{display:flex}
-.pricing-card{background:var(--c1);border:1px solid var(--bdr);border-radius:12px;width:100%;max-width:780px;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.5)}
-.pm-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--bdr);flex-wrap:wrap}
-.pm-title{font-size:14px;font-weight:700}
-.pm-sub{font-size:11px;color:var(--t2)}
-.pm-opts{margin-left:auto;display:flex;align-items:center;gap:14px;font-size:11px;color:var(--t2)}
-.pm-close{background:var(--c2);color:var(--t2);border:1px solid var(--bdr);width:26px;height:26px;border-radius:6px;cursor:pointer;font-size:13px;line-height:1}
-.pm-close:hover{color:var(--t);background:var(--bdr)}
-.pm-body{overflow:auto;padding:4px 18px 16px}
-.pm-body table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px;font-variant-numeric:tabular-nums}
-.pm-body th{position:sticky;top:0;z-index:2;background:var(--c1);text-align:right;padding:8px;color:var(--t2);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--bdr)}
-.pm-body td{padding:7px 8px;border-bottom:1px solid var(--c2);text-align:right;vertical-align:top}
-.pm-body th:first-child,.pm-body td:first-child{text-align:left}
-.pm-body .pm-zero{color:var(--t2)}
-.pm-host{display:inline-block;background:rgba(61,204,110,.12);border:1px solid rgba(61,204,110,.4);color:var(--grn);border-radius:10px;font-size:9px;font-weight:700;padding:1px 7px;text-transform:uppercase;letter-spacing:.5px;margin-left:8px}
-.pm-list{color:var(--t2);font-size:10px;margin-top:1px}
-.pm-open{background:var(--c2);color:var(--t2);border:1px solid var(--bdr);padding:5px 12px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
-.pm-open:hover{color:var(--t);background:var(--bdr)}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:inherit;text-decoration:none}
+.appbar{display:flex;align-items:center;gap:16px;padding:11px 18px;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.appbar .logo{font-weight:700;font-size:15px;letter-spacing:.2px;white-space:nowrap}
+.appbar .logo em{font-style:normal;color:var(--accent)}
+.appbar nav{display:flex;gap:2px;flex-wrap:wrap}
+.appbar nav a{padding:5px 11px;border-radius:7px;color:var(--muted);font-size:13px}
+.appbar nav a:hover{background:var(--panel2);color:var(--text)}
+.appbar nav a.on{background:var(--panel2);color:var(--text);font-weight:600}
+.appbar .ab-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.ab-user{color:var(--accent2);font-size:13px;font-weight:600}
+.ab-user .role{color:var(--muted);font-weight:400}
+.ab-out{color:var(--warn);border:1px solid var(--border);border-radius:7px;padding:4px 11px;font-size:13px}
+.ab-out:hover{border-color:var(--warn)}
+.imp-banner{display:none;align-items:center;gap:12px;padding:8px 18px;background:#3a2c10;border-bottom:1px solid var(--warn);color:var(--warn);font-size:13px}
+.imp-banner a{margin-left:auto;border:1px solid var(--warn);border-radius:6px;padding:2px 10px}
+main{max-width:1080px;margin:0 auto;padding:22px 18px 48px}
+.head-row{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+h1{margin:0;font-size:21px}
+.sub{color:var(--muted);margin:4px 0 18px}
+.team-filter{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:5px 9px;font-size:13px;max-width:280px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:14px 0 20px}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:13px 15px}
+.kpi .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+.kpi .v{font-size:23px;font-weight:700;margin-top:3px}
+.kpi .s{color:var(--muted);font-size:12px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:15px 16px;margin-bottom:18px}
+.panel h2{margin:0 0 10px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{color:var(--muted);text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px solid var(--border)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--panel2)}
+tr.clickable{cursor:pointer}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+td.num{text-align:right}
+.dim{color:var(--muted)}
+.mgr{color:var(--accent);font-size:11px}
+.pill{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:99px;border:1px solid var(--border);color:var(--muted)}
+.pill.zero{color:var(--warn)}
+.hosted{color:var(--accent2);font-size:11px}
+.self-note{background:var(--panel);border:1px dashed var(--border);border-radius:10px;padding:14px 16px;color:var(--muted);margin:14px 0}
+.err{color:#f2777a}
+.saved-pos{color:var(--saved)}
+/* Person detail modal */
+.det-ov{display:none;position:fixed;inset:0;background:rgba(5,7,10,.72);z-index:70;align-items:flex-start;justify-content:center;padding:40px 14px}
+.det-ov.show{display:flex}
+.det-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;max-width:900px;width:100%;padding:18px 20px;max-height:calc(100vh - 80px);overflow:auto}
+.det-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+.det-name{font-size:18px;font-weight:700}
+.det-who{color:var(--muted);font-size:12px;margin-top:2px}
+.det-close{margin-left:auto;background:none;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:3px 9px;cursor:pointer}
+.det-close:hover{color:var(--text)}
+.det-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px}
+.det-kpi{background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:9px 12px}
+.det-kpi .l{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px}
+.det-kpi .v{font-size:18px;font-weight:700;margin-top:2px}
+.det-note{color:var(--muted);font-size:12px;margin-top:10px}
+/* Pricing modal (shared across pages) */
+.pm-ov{display:none;position:fixed;inset:0;background:rgba(5,7,10,.72);z-index:60;align-items:flex-start;justify-content:center;padding:40px 14px}
+.pm-ov.show{display:flex}
+.pm-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;max-width:900px;width:100%;padding:14px 18px;max-height:calc(100vh - 80px);overflow:auto}
+.pm-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.pm-title{font-size:16px;font-weight:700}
+.pm-sub{color:var(--muted);font-size:12px}
+.pm-opts{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px}
+.pm-close{background:none;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:3px 9px;cursor:pointer}
+.pm-body table{font-size:12.5px}
+.pm-zero{color:var(--muted)}
+.pm-host{color:var(--accent2);font-size:10.5px;margin-left:6px;border:1px solid var(--border);border-radius:99px;padding:0 6px}
+.pm-list{color:var(--muted);font-size:11px}
 </style>
 </head>
 <body>
-<div id="banner">
-  <span id="bannerText"></span>
-  <button onclick="location.href='/admin/impersonate'">Exit view-as</button>
-</div>
-<header>
-  <div class="logo">Price<em>Tag</em></div>
+<header class="appbar">
+  <a class="logo" href="/dashboard">Price<em>Tag</em></a>
   <nav>
-    <a href="/dashboard" id="navDash">Dashboard</a>
-    <a href="/manager" class="on">My team</a>
-    <a href="/admin" id="navAdmin" class="hidden">Admin</a>
+    <a href="/dashboard">Usage</a>
+    <a href="/manager" class="on" title="Usage for everyone on your team">My team</a>
+    <a href="/me" id="tab-me" style="display:none">My account</a>
+    <a href="/routing" id="tab-routing" style="display:none">Routing</a>
+    <a href="/compression" id="tab-compression" style="display:none">Compression</a>
+    <a href="/admin" id="tab-admin" style="display:none">Admin</a>
   </nav>
-  <div class="who">
-    <button class="pm-open" onclick="openPricing()">Pricing</button>
-    <span id="whoName"></span><a href="/logout">Sign out</a>
+  <div class="ab-right">
+    <button class="ab-out" style="border-color:var(--accent);color:var(--accent);display:none" id="my-view-btn" title="See the dashboard as a regular user would">My view as user</button>
+    <button class="ab-out" style="color:var(--text)" onclick="openPricing()">Pricing</button>
+    <span class="ab-user" id="abUser"></span>
+    <a class="ab-out" href="/logout">Sign out</a>
   </div>
 </header>
+<div class="imp-banner" id="banner"><span id="bannerText"></span><a href="/admin/impersonate?as=" id="bannerClear">Back to myself</a></div>
 
-<!-- Model pricing modal: the same rate card on every page, openable anytime -->
-<div class="pricing-ov" id="pricing-ov" onclick="if(event.target===this)closePricing()">
-  <div class="pricing-card" role="dialog" aria-modal="true" aria-label="Model pricing">
+<!-- Model pricing modal (shared across pages) -->
+<div class="pm-ov" id="pricing-ov" onclick="if(event.target===this)closePricing()">
+  <div class="pm-card">
     <div class="pm-head">
       <span class="pm-title">Model pricing</span>
       <span class="pm-sub">$ per million tokens</span>
@@ -118,11 +123,12 @@ td.num,th.num{text-align:right}
 <main>
   <div class="head-row">
     <h1 id="scopeTitle">Team view</h1>
-    <div class="ranges" id="ranges">
-      <button data-r="24h">24h</button>
-      <button data-r="7d">7d</button>
-      <button data-r="30d">30d</button>
-      <button data-r="mtd" class="on" title="Month to date">MTD</button>
+    <select id="teamFilter" class="team-filter" title="Focus on one manager's branch of your team" onchange="drillTo(this.value)" style="display:none"></select>
+    <div class="ranges" id="ranges" style="margin-left:auto;display:flex;gap:2px">
+      <button data-r="24h" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:4px 10px;cursor:pointer;font-size:12.5px">24h</button>
+      <button data-r="7d" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:4px 10px;cursor:pointer;font-size:12.5px">7d</button>
+      <button data-r="30d" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:4px 10px;cursor:pointer;font-size:12.5px">30d</button>
+      <button data-r="mtd" class="on" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:4px 10px;cursor:pointer;font-size:12.5px" title="Month to date">MTD</button>
     </div>
   </div>
   <p class="sub" id="scopeSub">Loading…</p>
@@ -133,35 +139,51 @@ td.num,th.num{text-align:right}
     <div class="kpi"><div class="l">Requests</div><div class="v" id="kReqs">–</div></div>
     <div class="kpi"><div class="l">Members</div><div class="v" id="kPeople">–</div><div class="s" id="kPeopleS"></div></div>
   </div>
-  <div class="panel"><h2>Daily spend by member</h2><canvas id="tl" height="70"></canvas></div>
-  <div class="cols">
-    <div class="panel">
-      <h2>Team members</h2>
-      <div style="overflow-x:auto">
-      <table>
-        <thead><tr>
-          <th data-s="FullName">Person</th>
-          <th class="num" data-s="CostUSD">Spend</th>
-          <th class="num" data-s="TotalTokens">Tokens</th>
-          <th class="num" data-s="Requests">Requests</th>
-          <th data-s="LastUsed">Last used</th>
-        </tr></thead>
-        <tbody id="rows"></tbody>
-      </table>
-      </div>
-    </div>
-    <div class="panel">
-      <h2>Org</h2>
-      <div class="tree" id="tree"></div>
+  <div class="panel"><h2>Daily tokens by member</h2><canvas id="tl" height="70"></canvas></div>
+  <div class="panel">
+    <h2>Team members <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">— click a person for their per-model breakdown</span></h2>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr>
+        <th data-s="FullName">Person</th>
+        <th class="num" data-s="CostUSD">Spend</th>
+        <th class="num" data-s="TotalTokens">Tokens</th>
+        <th class="num" data-s="Requests">Requests</th>
+        <th data-s="LastUsed">Last used</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
     </div>
   </div>
 </main>
+
+<!-- Per-person drill-down: one member's spend broken down by model -->
+<div class="det-ov" id="det-ov" onclick="if(event.target===this)closeDetail()">
+  <div class="det-card" role="dialog" aria-modal="true" aria-label="Person usage detail">
+    <div class="det-head">
+      <div>
+        <div class="det-name" id="detName">–</div>
+        <div class="det-who" id="detWho"></div>
+      </div>
+      <button class="det-close" onclick="closeDetail()" aria-label="Close">✕</button>
+    </div>
+    <div class="det-kpis">
+      <div class="det-kpi"><div class="l">Spend</div><div class="v" id="dSpend">–</div></div>
+      <div class="det-kpi"><div class="l">Tokens</div><div class="v" id="dTokens">–</div></div>
+      <div class="det-kpi"><div class="l">Requests</div><div class="v" id="dReqs">–</div></div>
+      <div class="det-kpi"><div class="l">Saved · hosted</div><div class="v saved-pos" id="dSaved">–</div></div>
+      <div class="det-kpi"><div class="l">Models</div><div class="v" id="dModels">–</div></div>
+    </div>
+    <div class="det-body" id="detBody"><div class="pm-sub" style="padding:14px 0">Loading…</div></div>
+    <div class="det-note" id="detNote"></div>
+  </div>
+</div>
 <script>
 // 2 decimals here on purpose: this view shows per-person period totals and
 // team KPI tiles, never per-request rows, so sub-cent rounding is irrelevant.
 const fmt$=v=>'$'+Number(v||0).toLocaleString(undefined,{maximumFractionDigits:2});
 const fmtTok=v=>{v=Number(v||0);if(v>=1e9)return (v/1e9).toFixed(2)+'B';if(v>=1e6)return (v/1e6).toFixed(2)+'M';if(v>=1e3)return (v/1e3).toFixed(1)+'K';return ''+v};
-let range='mtd', rows=[], tlChart=null, sortKey='CostUSD', sortDir=-1, me={};
+let range='mtd', rows=[], tlChart=null, sortKey='CostUSD', sortDir=-1, me={}, drillSlug='';
 
 document.getElementById('ranges').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return;
@@ -175,13 +197,15 @@ document.querySelector('thead').addEventListener('click',e=>{
   renderRows();
 });
 
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
 function renderRows(){
   const tb=document.getElementById('rows');
   rows.sort((a,b)=>{
     const x=a[sortKey]??-1,y=b[sortKey]??-1;
     return (typeof x==='string'? x.localeCompare(y) : x-y)*sortDir;
   });
-  tb.innerHTML=rows.map(r=>`<tr>
+  tb.innerHTML=rows.map(r=>`<tr class="clickable" data-slug="${esc(r.slug)}"${r.no_identity?' style="opacity:.55"':''}>
     <td>${esc(r.full_name)}${r.is_manager?' <span class="mgr">· mgr</span>':''}${r.no_identity?' <span class="pill zero">no key yet</span>':''}</td>
     <td class="num">${r.username?fmt$(r.cost_usd):'<span class="dim">–</span>'}</td>
     <td class="num">${r.username?fmtTok(r.total_tokens):''}</td>
@@ -189,12 +213,41 @@ function renderRows(){
     <td class="dim">${r.last_used?r.last_used.slice(0,10):'never'}</td>
   </tr>`).join('')||'<tr><td colspan="5" class="dim">No usage yet — expected during week one.</td></tr>';
 }
-function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+// Drill into one manager's branch. The server re-checks that the root is
+// inside the caller's subtree, so a bad slug just yields a 403 -> error row.
+function drillTo(slug){
+  drillSlug=slug;
+  if(slug){
+    const m=rows0.find(r=>r.slug===slug);
+    document.getElementById('scopeTitle').textContent=(m?m.full_name:'Team')+'’s team';
+  } else {
+    document.getElementById('scopeTitle').textContent=defaultTitle();
+  }
+  buildFilter();
+  load();
+}
+function defaultTitle(){ return 'Team view' }
+let rows0=[]; // full (undrilled) roster, kept for filter labels/titles
+
+function buildFilter(){
+  const sel=document.getElementById('teamFilter');
+  const mgrs=rows0.filter(r=>r.is_manager&&r.slug!==drillRoot);
+  // Sub-managers are the drill targets; with none there is nothing to focus.
+  if(!mgrs.length&&!drillSlug){sel.style.display='none';return;}
+  const depth=r=>{let d=0,cur=r;const seen=new Set();while(cur.manager_slug&&!seen.has(cur.manager_slug)){seen.add(cur.manager_slug);const p=rows0.find(x=>x.slug===cur.manager_slug);if(!p)break;cur=p;d++;}return d;};
+  sel.innerHTML='<option value="">Whole team</option>'+mgrs.sort((a,b)=>depth(a)-depth(b)).map(r=>
+    '<option value="'+esc(r.slug)+'"'+(r.slug===drillSlug?' selected':'')+'>'+esc('　'.repeat(depth(r))+r.full_name)+'</option>').join('');
+  sel.style.display='';
+}
 
 async function load(){
   try{
-    rows=await (await fetch('/api/v1/org/usage?range='+range)).json();
-    if(!Array.isArray(rows))throw new Error(rows.error||'usage failed');
+    const url='/api/v1/org/usage?range='+range+(drillSlug?'&root='+encodeURIComponent(drillSlug):'');
+    const data=await (await fetch(url)).json();
+    if(!Array.isArray(data))throw new Error(data.error||'usage failed');
+    rows=data;
+    if(!drillSlug){rows0=data;drillRoot=scopeRootSlug;buildFilter();}
     renderRows();
     const spend=rows.reduce((s,r)=>s+r.cost_usd,0);
     const tok=rows.reduce((s,r)=>s+r.total_tokens,0);
@@ -208,16 +261,27 @@ async function load(){
     loadTimeline();
   }catch(e){document.getElementById('rows').innerHTML='<tr><td colspan="5" class="err">'+esc(e.message)+'</td></tr>';}
 }
+let drillRoot=''; // slug of the subtree currently shown (own slug for managers, '' for whole org)
+let scopeRootSlug='';
 
 async function loadTimeline(){
   // scoped via the shared endpoint: non-admin callers get their own user
-  // filter applied server-side, so the chart can never leak outside scope.
-  const buckets=await (await fetch('/api/v1/dashboard/timeline?range='+range+'&group_by=user')).json();
+  // filter applied server-side; when drilled into a manager's branch we pass
+  // that branch's usernames so the chart follows the table.
+  let url='/api/v1/dashboard/timeline?range='+range+'&group_by=user';
+  if(drillSlug){
+    const users=rows.map(r=>r.username).filter(Boolean);
+    if(!users.length){if(tlChart){tlChart.destroy();tlChart=null;}return;}
+    url+='&user='+encodeURIComponent(users.join(','));
+  }
+  const buckets=await (await fetch(url)).json();
+  const nameOf={};
+  rows.forEach(r=>{if(r.username)nameOf[r.username]=r.full_name||r.username;});
   const byDay={}, names=new Set();
   for(const b of buckets){const d=b.bucket.slice(0,10);byDay[d]=byDay[d]||{};byDay[d][b.series]=b.total_tokens;names.add(b.series);}
   const days=Object.keys(byDay).sort();
   const palette=['#4da0f8','#3dcc6e','#eba830','#a88cf8','#38d4c2','#e8554e','#8090a8'];
-  const ds=[...names].slice(0,7).map((n,i)=>({label:n,data:days.map(d=>byDay[d][n]||0),
+  const ds=[...names].slice(0,7).map((n,i)=>({label:nameOf[n]||n,data:days.map(d=>byDay[d][n]||0),
     borderColor:palette[i%7],backgroundColor:palette[i%7]+'22',tension:.3,fill:false,pointRadius:2,borderWidth:2}));
   if(tlChart)tlChart.destroy();
   tlChart=new Chart(document.getElementById('tl'),{type:'line',
@@ -227,20 +291,30 @@ async function loadTimeline(){
               y:{ticks:{color:'#8090a8',callback:v=>fmtTok(v)},grid:{color:'#1a2030'}}}}});
 }
 
-function renderTree(node,root){
-  const el=document.getElementById('tree');
-  const walk=n=>`<li><span class="node" data-slug="${esc(n.slug)}"><b>${esc(n.full_name)}</b>${n.is_manager?`<span class="cnt">${n.subtree_size}</span>`:''}</span>${n.children&&n.children.length?`<ul>${n.children.map(walk).join('')}</ul>`:''}</li>`;
-  el.innerHTML=`<ul>${walk(node)}</ul>`;
-}
-
 async function boot(){
   try{ me=await (await fetch('/api/v1/whoami')).json(); }catch(e){}
-  if(me.isSuperAdmin)document.getElementById('navAdmin').classList.remove('hidden');
-  document.getElementById('whoName').textContent=me.display_name||me.user||'';
+  // Header identity + role-gated tabs (same convention as every page).
+  const ab=document.getElementById('abUser');
+  ab.textContent=me.display_name||me.user||'';
+  if(me.isSuperAdmin||me.isAdmin){
+    const role=document.createElement('span');
+    role.className='role';
+    role.textContent=me.isSuperAdmin?' (super admin)':' (admin)';
+    ab.appendChild(role);
+  }
+  document.getElementById('tab-me').style.display='';
+  if(me.isSuperAdmin){
+    ['tab-routing','tab-compression','tab-admin'].forEach(id=>document.getElementById(id).style.display='');
+    const mvb=document.getElementById('my-view-btn');
+    mvb.href='/admin/impersonate?as='+encodeURIComponent(me.user);
+    mvb.style.display='';
+  }
   if(me.impersonating){
     document.getElementById('banner').style.display='flex';
     document.getElementById('bannerText').textContent=
       'Viewing as '+(me.display_name||me.user)+'. Real session: '+(me.real_user_display||me.real_user);
+    // No ?as= means "clear" server-side.
+    document.getElementById('bannerClear').href='/admin/impersonate';
   }
   const sc=await (await fetch('/api/v1/org/scope')).json();
   if(sc.scope==='self'){
@@ -248,13 +322,13 @@ async function boot(){
     document.getElementById('scopeSub').textContent='You are not listed as a manager in the directory — showing your own usage.';
     document.getElementById('selfNote').innerHTML=
       '<div class="self-note">You are seeing only your own numbers. If you manage people and expected the team view, ask an admin to add your reporting lines to the <b>People</b> directory — the manager view turns on automatically the moment people report to you.</div>';
-    document.querySelector('.cols').style.display='none';
     document.querySelectorAll('.kpis .kpi')[3].style.display='none';
   } else if(sc.scope==='manager'){
+    scopeRootSlug=sc.slug||'';
+    drillRoot=scopeRootSlug;
     document.getElementById('scopeSub').textContent=sc.scopeSize+' people in your tree · their spend and yours, this window';
   } else if(sc.scope==='admin'){
-    document.getElementById('scopeSub').textContent='Admin — whole organisation. Pick a subtree in the org panel.';
-    if(sc.roots&&sc.roots.length)loadTree(sc.roots[0]);
+    document.getElementById('scopeSub').textContent='Admin — whole organisation. Filter to any manager’s branch above.';
   }
   if(sc.scope!=='self')load();
   else loadSelf();
@@ -262,7 +336,7 @@ async function boot(){
 
 async function loadSelf(){
   const users=await (await fetch('/api/v1/dashboard/users?range='+range)).json();
-  rows=users.map(u=>({full_name:u.display_name||u.username,cost_usd:u.cost_usd,total_tokens:u.total_tokens,requests:u.requests,last_used:null,is_manager:false}));
+  rows=users.map(u=>({full_name:u.display_name||u.username,cost_usd:u.cost_usd,total_tokens:u.total_tokens,requests:u.requests,last_used:null,is_manager:false,no_identity:!u.requests}));
   renderRows();
   document.getElementById('kSpend').textContent=fmt$(rows[0]?.cost_usd);
   document.getElementById('kTokens').textContent=fmtTok(rows[0]?.total_tokens);
@@ -270,22 +344,57 @@ async function loadSelf(){
   loadTimeline();
 }
 
-async function loadTree(slug){
-  try{
-    const t=await (await fetch('/api/v1/org/tree?root='+encodeURIComponent(slug))).json();
-    if(t.slug)renderTree(t);
-  }catch(e){}
-}
-document.getElementById('tree').addEventListener('click',e=>{
-  const n=e.target.closest('.node'); if(!n)return;
-  const slug=n.dataset.slug;
-  document.getElementById('scopeTitle').textContent=n.querySelector('b').textContent+'’s team';
-  const q='/api/v1/org/usage?root='+encodeURIComponent(slug)+'&range='+range;
-  fetch(q).then(r=>r.json()).then(j=>{if(Array.isArray(j)){rows=j;renderRows();
-    document.getElementById('kSpend').textContent=fmt$(rows.reduce((s,r)=>s+r.cost_usd,0));
-    document.getElementById('kTokens').textContent=fmtTok(rows.reduce((s,r)=>s+r.total_tokens,0));
-    document.getElementById('kReqs').textContent=rows.reduce((s,r)=>s+r.requests,0).toLocaleString();}});
+// ── Person detail (per-model spend + hosted savings) ──────────────────────
+document.getElementById('rows').addEventListener('click',e=>{
+  const tr=e.target.closest('tr.clickable'); if(!tr||!tr.dataset.slug)return;
+  const r=rows.find(x=>x.slug===tr.dataset.slug);
+  if(r&&r.no_identity)return; // nobody to drill into yet
+  openDetail(tr.dataset.slug);
 });
+function closeDetail(){document.getElementById('det-ov').classList.remove('show');}
+async function openDetail(slug){
+  document.getElementById('det-ov').classList.add('show');
+  document.getElementById('detName').textContent='…';
+  document.getElementById('detWho').textContent='';
+  document.getElementById('detBody').innerHTML='<div class="pm-sub" style="padding:14px 0">Loading…</div>';
+  document.getElementById('detNote').textContent='';
+  ['dSpend','dTokens','dReqs','dSaved','dModels'].forEach(id=>document.getElementById(id).textContent='–');
+  try{
+    const d=await (await fetch('/api/v1/org/person?slug='+encodeURIComponent(slug)+'&range='+range)).json();
+    if(d.error)throw new Error(d.error);
+    document.getElementById('detName').textContent=d.fullName||d.slug;
+    document.getElementById('detWho').textContent=(d.usernames||[]).join(', ')||'no gateway identity';
+    const ms=d.models||[];
+    const spend=ms.reduce((s,m)=>s+(m.cost_usd||0),0);
+    const tok=ms.reduce((s,m)=>s+(m.total_tokens||0),0);
+    const req=ms.reduce((s,m)=>s+(m.requests||0),0);
+    const saved=ms.reduce((s,m)=>s+(m.saved_usd||0),0);
+    document.getElementById('dSpend').textContent=fmt$(spend);
+    document.getElementById('dTokens').textContent=fmtTok(tok);
+    document.getElementById('dReqs').textContent=req.toLocaleString();
+    document.getElementById('dSaved').textContent=fmt$(saved);
+    document.getElementById('dModels').textContent=ms.length;
+    if(!ms.length){
+      document.getElementById('detBody').innerHTML='<div class="pm-sub" style="padding:14px 0">No usage in this window.</div>';
+    }else{
+      document.getElementById('detBody').innerHTML='<table><thead><tr><th>Model</th><th class="num">Requests</th><th class="num">Prompt</th><th class="num">Completion</th><th class="num">Cached</th><th class="num">Total</th><th class="num">Cost</th><th class="num">Saved · hosted</th></tr></thead><tbody>'+
+        ms.map(m=>'<tr><td>'+esc(m.model)+(m.hosted?' <span class="hosted">hosted</span>':'')+'<div class="dim" style="font-size:11px">'+esc(m.provider||'')+(m.last_used?' · last '+m.last_used.slice(0,10):'')+'</div></td>'
+          +'<td class="num">'+(m.requests||0).toLocaleString()+'</td>'
+          +'<td class="num">'+fmtTok(m.prompt_tokens)+'</td>'
+          +'<td class="num">'+fmtTok(m.completion_tokens)+'</td>'
+          +'<td class="num">'+fmtTok(m.cached_tokens)+'</td>'
+          +'<td class="num">'+fmtTok(m.total_tokens)+'</td>'
+          +'<td class="num">'+fmt$(m.cost_usd)+'</td>'
+          +'<td class="num'+(m.saved_usd>0?' saved-pos':'')+'">'+(m.saved_usd>0?fmt$(m.saved_usd):'–')+'</td></tr>').join('')+'</tbody></table>';
+      const hostedSaved=ms.filter(m=>m.saved_usd>0).length;
+      if(hostedSaved){
+        document.getElementById('detNote').textContent='Saved · hosted estimates what the same hosted-traffic tokens would have cost at the reference vendor model’s rates, minus what was billed. Models with no savings are paid models (savings only shown for hosted traffic).';
+      }
+    }
+  }catch(e){
+    document.getElementById('detBody').innerHTML='<div class="pm-sub" style="padding:14px 0;color:#f2777a">Could not load detail ('+esc(e.message)+').</div>';
+  }
+}
 
 // ── Model pricing modal (shared rate card across all pages) ─────────
 function pmEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -304,11 +413,11 @@ function loadPricing(){
         var list=(m.list_input_cost_per_mtok||m.list_output_cost_per_mtok)?'<div class="pm-list">vendor list '+pmPrice(m.list_input_cost_per_mtok)+' / '+pmPrice(m.list_output_cost_per_mtok)+'</div>':'';
         return '<tr><td>'+pmEsc(m.model)+(m.hosted?'<span class="pm-host">hosted</span>':'')+'<div class="pm-list">'+pmEsc(m.provider)+list+'</div></td>'
           +'<td>'+pmPrice(m.input_cost_per_mtok)+'</td><td>'+pmPrice(m.output_cost_per_mtok)+'</td>'
-          +'<td>'+pmPrice(m.cache_read_cost_per_mtok)+'</td><td>'+pmPrice(m.cache_write_cost_per_mtok)+'</td></tr>';
+          +'<td>'+pmPrice(m.cache_read_cost_per_mtok)+'</td>'+pmPrice(m.cache_write_cost_per_mtok)+'</td></tr>';
       }).join('')+'</tbody></table>';
-  }).catch(function(e){body.innerHTML='<div class="pm-sub" style="padding:14px 0;color:var(--red)">Could not load pricing ('+pmEsc(e.message)+').</div>';});
+  }).catch(function(e){body.innerHTML='<div class="pm-sub" style="padding:14px 0;color:#f2777a">Could not load pricing ('+pmEsc(e.message)+').</div>';});
 }
-document.addEventListener('keydown',function(e){if(e.key==='Escape')closePricing();});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closePricing();closeDetail();}});
 
 boot();
 </script>
