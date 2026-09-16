@@ -45,8 +45,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 th{color:var(--muted);text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap}
 td{padding:7px 8px;border-bottom:1px solid var(--border)}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:var(--panel2)}
 tr.clickable{cursor:pointer}
+tr.clickable:hover td{background:var(--panel2)}
+tr.clickable:hover .person-name{color:var(--accent)}
+.person-cell{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.person-chev{color:var(--muted);opacity:.45;font-size:15px;flex:0 0 auto}
+tr.clickable:hover .person-chev{opacity:1;color:var(--accent)}
 .num{text-align:right;font-variant-numeric:tabular-nums}
 td.num{text-align:right}
 .dim{color:var(--muted)}
@@ -205,8 +209,8 @@ function renderRows(){
     const x=a[sortKey]??-1,y=b[sortKey]??-1;
     return (typeof x==='string'? x.localeCompare(y) : x-y)*sortDir;
   });
-  tb.innerHTML=rows.map(r=>`<tr class="clickable" data-slug="${esc(r.slug)}"${r.no_identity?' style="opacity:.55"':''}>
-    <td>${esc(r.full_name)}${r.is_manager?' <span class="mgr">· mgr</span>':''}${r.no_identity?' <span class="pill zero">no key yet</span>':''}</td>
+  tb.innerHTML=rows.map(r=>`<tr class="${r.no_identity?'':'clickable'}" data-slug="${esc(r.slug)}"${r.no_identity?' style="opacity:.55"':''}>
+    <td><div class="person-cell"><span><span class="person-name">${esc(r.full_name)}</span>${r.is_manager?' <span class="mgr">· mgr</span>':''}${r.no_identity?' <span class="pill zero">no key yet</span>':''}</span>${r.no_identity?'':'<span class="person-chev">›</span>'}</div></td>
     <td class="num">${r.username?fmt$(r.cost_usd):'<span class="dim">–</span>'}</td>
     <td class="num">${r.username?fmtTok(r.total_tokens):''}</td>
     <td class="num">${r.requests||''}</td>
