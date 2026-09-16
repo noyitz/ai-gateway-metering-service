@@ -92,13 +92,18 @@ func (c *Client) SearchAPIKeys(ctx context.Context, username string, groups []st
 	if err != nil {
 		return nil, err
 	}
+	// maas-api's auth middleware requires a non-empty X-MaaS-Group on every
+	// v1 call: it scopes the internal token it mints for the request and
+	// 500s (AUTH_FAILURE) without one. Fail locally with a message that
+	// names the real problem instead of shipping a doomed request.
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("maas-api search: no groups to scope the request — check the MaaSSubscription groups")
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-MaaS-Username", "admin")
 	req.Header.Set("X-MaaS-Tenant", c.tenant)
-	if len(groups) > 0 {
-		groupJSON, _ := json.Marshal(groups)
-		req.Header.Set("X-MaaS-Group", string(groupJSON))
-	}
+	groupJSON, _ := json.Marshal(groups)
+	req.Header.Set("X-MaaS-Group", string(groupJSON))
 	if token := saToken(); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -127,12 +132,14 @@ func (c *Client) RevokeAPIKey(ctx context.Context, keyID string, groups []string
 	if err != nil {
 		return err
 	}
+	// See SearchAPIKeys: the group header is mandatory on every v1 call.
+	if len(groups) == 0 {
+		return fmt.Errorf("maas-api revoke: no groups to scope the request — check the MaaSSubscription groups")
+	}
 	req.Header.Set("X-MaaS-Username", "admin")
 	req.Header.Set("X-MaaS-Tenant", c.tenant)
-	if len(groups) > 0 {
-		groupJSON, _ := json.Marshal(groups)
-		req.Header.Set("X-MaaS-Group", string(groupJSON))
-	}
+	groupJSON, _ := json.Marshal(groups)
+	req.Header.Set("X-MaaS-Group", string(groupJSON))
 	if token := saToken(); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

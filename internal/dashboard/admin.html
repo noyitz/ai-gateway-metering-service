@@ -118,6 +118,8 @@ body{background:var(--bg);color:var(--t);font-family:Inter,-apple-system,BlinkMa
 }
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .btn-grn{background:var(--grn);color:#fff}
+@keyframes invitePulse{0%,100%{box-shadow:none}30%{box-shadow:0 0 0 2px var(--grn)}}
+.card.invite-flash{animation:invitePulse 1.1s ease 2}
 .btn-grn:hover:not(:disabled){background:#45d676;box-shadow:0 4px 12px rgba(61,204,110,.3)}
 .btn-blu{background:var(--blu);color:#fff}
 .btn-blu:hover:not(:disabled){background:#5eadf9;box-shadow:0 4px 12px rgba(77,160,248,.3)}
@@ -595,13 +597,14 @@ td .tag{white-space:nowrap}
     <div class="ts" style="margin-bottom:10px">An invite is a one-time link: the person opens it and the gateway key is minted on their first visit. The key itself is shown once to the claimant and never stored here.</div>
     <div id="invite-created" style="display:none">
       <div class="key-display">
-        <div class="key-display-label">Invite link — shown once, share it now</div>
-        <div class="invite-url-box" id="invite-url"></div>
+        <div class="key-display-label">Invite created — paste this straight into Slack or email</div>
+        <div class="invite-url-box" id="invite-msg" style="white-space:pre-wrap;font-size:12px"></div>
       </div>
-      <button class="btn-copy" onclick="copyInviteURL()">Copy link</button>
+      <button class="btn-copy" onclick="copyInviteText()">Copy message</button>
+      <button class="btn btn-outline" style="margin-left:8px;padding:6px 14px;font-size:10px" onclick="copyInviteURL()">Copy link only</button>
     </div>
     <div class="picker-row">
-      <select id="inv-person"></select>
+      <select id="inv-person" onchange="clearInviteResult()"></select>
       <select id="inv-group"></select>
       <input type="text" class="tbl-input" id="inv-name" placeholder="key name (optional)" style="max-width:180px;width:auto">
       <button class="btn btn-grn" onclick="createInvite()">Create invite</button>
@@ -796,11 +799,11 @@ td .tag{white-space:nowrap}
 
     <div id="inviteUserSuccess" style="display:none">
       <div class="key-display">
-        <div class="key-display-label">Invite link</div>
-        <div class="key-display-value" id="inviteUserUrl" style="word-break:break-all;font-size:12px"></div>
-        <div class="key-display-warn">Send this link to the new person — it lets them claim their key.</div>
+        <div class="key-display-label">Paste this to the new person — it lets them claim their key</div>
+        <div class="invite-url-box" id="inviteUser-msg" style="white-space:pre-wrap;font-size:12px"></div>
       </div>
-      <button class="btn-copy" onclick="copyInviteUserURL()">Copy to Clipboard</button>
+      <button class="btn-copy" onclick="copyInviteText()">Copy message</button>
+      <button class="btn btn-outline" style="margin-left:8px;padding:6px 14px;font-size:10px" onclick="copyInviteURL()">Copy link only</button>
       <div class="modal-actions" style="margin-top:16px">
         <button class="btn btn-outline" onclick="closeInviteUserModal()" style="padding:7px 18px;font-size:11px">Done</button>
       </div>
@@ -907,7 +910,11 @@ function refreshTab(name, manual) {
     if (manual || !profilesDirty) loadProfiles();
   } else if (name === 'keys') {
     loadKeys();
-    populateInvitePickers();
+    loadValidGroups();
+    // The person picker reads the people cache, which starts empty on a
+    // cold page that lands here directly — fill it first (also covers the
+    // invite-success box needing the person's name).
+    loadPeople(function() { populateInvitePickers(); });
     loadInvites();
   } else if (name === 'platform') {
     loadPolicies();
@@ -1242,8 +1249,9 @@ function loadValidGroups() {
   fetchJSON('/api/v1/admin/org/valid-groups').then(function(r) {
     validGroups = (r && Array.isArray(r.groups)) ? r.groups : [];
     populatePeopleGroupFilter();
+    populateInvitePickers();
     renderPeople();
-  }).catch(function() { /* People table still works without the picker */ });
+  }).catch(function() { /* People/invite pickers fall back to usage-derived groups */ });
 }
 function populatePeopleGroupFilter() {
   var sel = document.getElementById('people-group-filter');
@@ -1476,29 +1484,75 @@ function loadKeys() {
 /* ================================================================
    Keys tab: Invitations
    ================================================================ */
+// A person picker that silently defaults to the first human in the
+// directory is a misdirected-invite machine (deep-link races used to land
+// on an alphabetical first, and Create would happily invite them). An
+// unset picker now means "nobody", and a deep-link slug is re-asserted on
+// every rebuild so refreshes can't clobber it out from under the click.
+var deepInviteSlug = '';
+var deepInviteGroup = '';
+
 function populateInvitePickers() {
   var psel = document.getElementById('inv-person');
-  if (!psel || !peopleAll.length) return;
+  if (!psel || !Array.isArray(peopleAll) || !peopleAll.length) return;
   var cur = psel.value;
-  psel.innerHTML = peopleAll.map(function(p) {
+  if (deepInviteSlug && peopleAll.some(function(p) { return p.slug === deepInviteSlug; })) cur = deepInviteSlug;
+  psel.innerHTML = '<option value="">— pick a person —</option>' + peopleAll.map(function(p) {
     return '<option value="' + esc(p.slug) + '">' + esc(p.full_name) + (p.username ? ' · has key' : '') + '</option>';
   }).join('');
-  if (cur) psel.value = cur;
+  psel.value = cur || '';
   var gsel = document.getElementById('inv-group');
-  gsel.innerHTML = knownGroups.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('') ||
-    '<option value="default">default</option>';
+  // Canonical subscription groups when we have them (same source the
+  // People tab uses); usage-derived knownGroups is the fallback, since a
+  // group that has traffic is definitely valid even if the CR read failed.
+  var names = validGroups.length ? validGroups : knownGroups;
+  // A deep-linked group must survive every rebuild until it lands —
+  // otherwise the first alphabetically-sorted CR group (usually ai-eng)
+  // silently poses as the choice for people who live in octo-eng.
+  if (deepInviteGroup && names.indexOf(deepInviteGroup) < 0) deepInviteGroup = '';
+  var curG = gsel.value || deepInviteGroup;
+  // Same placeholder discipline as the person picker and the modal: no
+  // silently-preselected group. Empty means "the service's default group"
+  // (DEFAULT_GROUP env), which claim resolves server-side.
+  gsel.innerHTML = '<option value="">-- select a group --</option>' +
+    names.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('');
+  if (curG) gsel.value = curG;
+  if (deepInviteGroup && gsel.value === deepInviteGroup) deepInviteGroup = '';
 }
 
-/* Deep-link from a people row: jump to the Keys tab with the person picked. */
+/* Deep-link from a people row: jump to the Keys tab with the person picked.
+   The slug is applied now (if the people cache is warm) and again once the
+   cache lands; deepInviteSlug makes every intermediate picker rebuild keep
+   re-selecting them, so no refresh can drop the selection. Cleared once the
+   select actually shows them — from then on it's the admin's choice. */
 function openInviteFor(slug) {
+  deepInviteSlug = slug;
   showTab('keys');
-  loadPeople(function() {
+  clearInviteResult(); // never arrive wearing the last invite's message
+  var apply = function() {
     populateInvitePickers();
-    document.getElementById('inv-person').value = slug;
-  });
+    var sel = document.getElementById('inv-person');
+    if (sel) sel.value = slug;
+    if (sel && sel.value === slug) {
+      deepInviteSlug = '';
+      // One-click intent: carry the person's own group into the picker —
+      // the admin reviews and presses Create, that's the whole job.
+      // (Create is never automatic; a human presses the button.)
+      var p = peopleAll.filter(function(x) { return x.slug === slug; })[0];
+      if (p && p.group_name) {
+        deepInviteGroup = p.group_name;
+        populateInvitePickers(); // re-asserts the group through any rebuild
+      }
+    }
+  };
+  if (Array.isArray(peopleAll) && peopleAll.length) apply();
+  else loadPeople(apply);
   loadInvites();
   var card = document.getElementById('invites-card');
   card.scrollIntoView({ behavior: 'smooth' });
+  card.classList.remove('invite-flash');
+  void card.offsetWidth; // restart the animation even on repeat clicks
+  card.classList.add('invite-flash');
 }
 
 function loadInvites() {
@@ -1525,24 +1579,54 @@ function loadInvites() {
   });
 }
 
+/* Both invite boxes (Keys tab + Invite-user modal) share one render: a
+   ready-to-paste message — claim link, expiry, what to do with it, and the
+   welcome-page pointer — so the admin sends one block instead of a bare URL
+   the claimant can't act on. */
+var lastInviteText = '';
+var lastInviteURL = '';
+
+function inviteMessage(name, url, ttlHours) {
+  var ttl = ttlHours ? ttlHours + 'h' : '72h';
+  return 'Hi ' + (name || 'there') + " — here's your one-time link to generate your gateway API key (expires in " + ttl + '):\n'
+    + url + '\n\n'
+    + "Open it, click \"Generate my key\", and copy the key somewhere safe — it's shown once and can't be recovered.\n"
+    + 'Setup recipes for Claude Code / OpenCode / Codex: ' + location.origin + '/welcome';
+}
+
+function setInviteResult(msgElId, personName, r) {
+  lastInviteURL = location.origin + r.invite_url;
+  lastInviteText = inviteMessage(personName, lastInviteURL, r.expires_in_hours);
+  document.getElementById(msgElId).textContent = lastInviteText;
+}
+
+function copyInviteText() { fallbackCopy(lastInviteText); }
+function copyInviteURL() { fallbackCopy(lastInviteURL); }
+
+// The success box only ever describes the invite just created. It must die
+// the moment the picker points at someone else — otherwise a deep-link from
+// People lands on a stale "Hi <previous person>" message and looks like the
+// new invite went to the wrong human (it didn't; the box just never left).
+function clearInviteResult() {
+  var box = document.getElementById('invite-created');
+  if (box) box.style.display = 'none';
+  lastInviteText = '';
+  lastInviteURL = '';
+}
+
 function createInvite() {
   var body = {
     person_slug: document.getElementById('inv-person').value,
-    group: document.getElementById('inv-group').value || 'default',
+    group: document.getElementById('inv-group').value,
     key_name: document.getElementById('inv-name').value
   };
   if (!body.person_slug) { showToast('Pick a person first', 'error'); return; }
   updateJSON('/api/v1/admin/keys/invites', 'POST', body).then(function(r) {
-    var box = document.getElementById('invite-created');
-    document.getElementById('invite-url').textContent = location.origin + r.invite_url;
-    box.style.display = '';
+    var p = peopleAll.filter(function(x) { return x.slug === body.person_slug; })[0];
+    setInviteResult('invite-msg', p ? p.full_name : '', r);
+    document.getElementById('invite-created').style.display = '';
     loadInvites();
   }).catch(function(e) { showToast(e.message, 'error'); });
-}
-
-function copyInviteURL() {
-  var el = document.getElementById('invite-url');
-  fallbackCopy(el.textContent);
 }
 
 function revokeInvite(id) {
@@ -1776,7 +1860,10 @@ function loadIdentities() {
     var html = '<div class="tbl-wrap"><table><thead><tr><th>Login</th><th>Person</th><th>Usage</th><th></th></tr></thead><tbody>';
     rows.forEach(function(ir) {
       var opts = peopleAll.map(function(p) {
-        return '<option value="' + esc(p.slug) + '"' + (p.slug === ir.slug ? ' selected' : '') + '>' + esc(p.full_name) + '</option>';
+        // API field is person_slug; reading ir.slug here meant NO option
+        // ever matched and every dropdown rendered the alphabetically-first
+        // person (display only — the links in the DB were always correct).
+        return '<option value="' + esc(p.slug) + '"' + (p.slug === ir.person_slug ? ' selected' : '') + '>' + esc(p.full_name) + '</option>';
       }).join('');
       html += '<tr><td class="mono">' + esc(ir.username) + '</td>' +
         '<td><select class="tbl-input" style="min-width:180px" onchange="relinkIdentity(\'' + esc(ir.username) + '\',this.value)">' + opts + '</select></td>' +
@@ -1790,7 +1877,9 @@ function loadIdentities() {
   });
 }
 function relinkIdentity(username, slug) {
-  updateJSON('/api/v1/admin/identities', 'PUT', { username: username, person_slug: slug })
+  // POST links/re-links (the handler has no PUT); a PUT here 405'd and the
+  // catch-reload made a real failure look like a UI hiccup.
+  updateJSON('/api/v1/admin/identities', 'POST', { username: username, person_slug: slug })
     .then(function() { showToast(username + ' → ' + slug, 'success'); loadIdentities(); loadPeople(); })
     .catch(function(e) { showToast(e.message, 'error'); loadIdentities(); });
 }
@@ -2085,7 +2174,7 @@ function submitInviteUser() {
       person_slug: created.slug, group: group, key_name: first + '-' + last
     });
   }).then(function(r) {
-    document.getElementById('inviteUserUrl').textContent = location.origin + r.invite_url;
+    setInviteResult('inviteUser-msg', person.full_name, r);
     document.getElementById('inviteUserForm').style.display = 'none';
     document.getElementById('inviteUserSuccess').style.display = '';
     showToast('Invited', 'success');
@@ -2095,11 +2184,6 @@ function submitInviteUser() {
     btn.disabled = false;
     btn.textContent = 'Invite';
   });
-}
-
-function copyInviteUserURL() {
-  var el = document.getElementById('inviteUserUrl');
-  fallbackCopy(el.textContent);
 }
 
 function fallbackCopy(text) {

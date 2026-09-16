@@ -653,6 +653,17 @@ func (s *Store) UpdatePerson(ctx context.Context, slug string, actor string, fie
 				args = append(args, SlugNorm(fmt.Sprint(val)))
 				i++
 			}
+		} else if col == "email" {
+			// Clearing an email must store NULL, not '': the column is
+			// UNIQUE and NULLs never collide — storing '' would let the
+			// first clear pass and every later one fail with a duplicate.
+			if v, ok := val.(string); ok && v == "" {
+				sets = append(sets, "email = NULL")
+			} else {
+				sets = append(sets, fmt.Sprintf("email = $%d", i))
+				args = append(args, val)
+				i++
+			}
 		} else {
 			sets = append(sets, fmt.Sprintf("%s = $%d", col, i))
 			args = append(args, val)
@@ -685,19 +696,33 @@ func (s *Store) CreatePerson(ctx context.Context, p Person, actor string) (Perso
 	if p.Slug == "" {
 		return Person{}, fmt.Errorf("name required")
 	}
-	email := p.Email
-	if email == "" {
-		email = "\x00" // sentinel replaced by NULL below
+	// An absent email must be SQL NULL, not '': the UNIQUE index uses NULL
+	// semantics (people without emails never collide). Passing nil as the
+	// parameter is the direct encoding — the previous chr(0) sentinel trick
+	// is not an option anyway: PostgreSQL rejects chr(0) outright ("null
+	// character not permitted"), which failed every insert on PG 16.
+	var email any
+	if p.Email != "" {
+		email = p.Email
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO people (slug, full_name, first_name, last_name, title, location, email, employment_type, group_name, source)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, chr(0)), CASE WHEN $8 = '' THEN 'employee' ELSE $8 END, $9, 'manual')`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 = '' THEN 'employee' ELSE $8 END, $9, 'manual')`,
 		p.Slug, p.FullName, p.FirstName, p.LastName, p.Title, p.Location, email, p.EmploymentType, p.GroupName)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
 			return Person{}, fmt.Errorf("a person with slug %s already exists", p.Slug)
 		}
 		return Person{}, err
+	}
+	// A manual person with an email is pre-linked to that login: MaaS
+	// usernames ARE emails, and an invite claim refuses to mint without a
+	// linked identity — leaving it unlinked would burn the single-use
+	// invite on every manual add. Mirrors what roster import does.
+	if p.Email != "" {
+		if err := s.LinkIdentity(ctx, p.Email, p.Slug, actor); err != nil {
+			return Person{}, fmt.Errorf("person created but identity link failed: %w", err)
+		}
 	}
 	_ = s.Audit(ctx, actor, "person.create", p.Slug, nil)
 	return s.GetPerson(ctx, p.Slug)
@@ -1105,6 +1130,16 @@ func (s *Store) ClaimInvite(ctx context.Context, token string) (inviteID int64, 
 
 func (s *Store) SetInviteKey(ctx context.Context, inviteID int64, keyID string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE key_invites SET key_id = $2 WHERE id = $1`, inviteID, keyID)
+	return err
+}
+
+// ReleaseInviteClaim un-consumes a claim whose mint failed downstream
+// (maas-api down, network blip), so a transient outage does not burn the
+// single-use link. Guarded on key_id IS NULL: an invite that recorded a
+// minted key stays claimed forever.
+func (s *Store) ReleaseInviteClaim(ctx context.Context, inviteID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE key_invites SET claimed_at = NULL WHERE id = $1 AND key_id IS NULL`, inviteID)
 	return err
 }
 
