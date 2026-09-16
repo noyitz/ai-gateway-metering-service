@@ -235,7 +235,7 @@ function renderTree(node,root){
 
 async function boot(){
   try{ me=await (await fetch('/api/v1/whoami')).json(); }catch(e){}
-  if(me.isAdmin)document.getElementById('navAdmin').classList.remove('hidden');
+  if(me.isSuperAdmin)document.getElementById('navAdmin').classList.remove('hidden');
   document.getElementById('whoName').textContent=me.display_name||me.user||'';
   if(me.impersonating){
     document.getElementById('banner').style.display='flex';

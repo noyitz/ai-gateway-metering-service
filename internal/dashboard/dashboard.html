@@ -112,12 +112,12 @@ tr.clickable{cursor:pointer}
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
   <div style="display:flex;gap:4px">
     <a href="/dashboard" style="background:var(--blue);color:#fff;border:1px solid var(--blue);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Usage</a>
-    <a href="/routing" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
-    <a href="/compression" style="background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
-    <a href="/admin" class="admin-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Admin</a>
+    <a href="/routing" class="superadmin-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Routing</a>
+    <a href="/compression" class="superadmin-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Compression</a>
+    <a href="/admin" class="superadmin-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:8px 20px;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;letter-spacing:.3px">Admin</a>
   </div>
   <div style="display:flex;align-items:center;gap:12px">
-    <a href="#" id="my-view-btn" class="admin-only" data-show="inline" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600" title="See the dashboard as a regular user would">My view as user</a>
+    <a href="#" id="my-view-btn" class="superadmin-only" data-show="inline" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600" title="See the dashboard as a regular user would">My view as user</a>
     <span id="userInfo" style="font-size:11px;color:var(--text2)"></span>
     <a href="/logout" class="auth-only" style="display:none;background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:5px 12px;border-radius:5px;font-size:10px;text-decoration:none;font-weight:600;letter-spacing:.3px">Logout</a>
   </div>
@@ -288,7 +288,8 @@ tr.clickable{cursor:pointer}
 
 <script>
 let range='mtd', groupFilter='', userFilter=[], modelFilter='', tlGroupBy='model';
-let isAdmin=false;
+let isAdmin=false;        // org-wide Usage view (all users)
+let isSuperAdmin=false;   // operator tools: Routing/Compression/Admin nav + "view as"
 let modelMetric='tokens', userPieMetric='cost';
 let savingsRef='claude-opus-4-8';
 let tokenChart=null, userCostChart=null, tlChart=null, savingsChart=null;
@@ -436,7 +437,7 @@ function renderUsers(data){
     let cls='';
     if(currentSort===c.key)cls=currentOrder==='asc'?'sorted-asc':'sorted-desc';
     return `<th class="${cls}" onclick="sortBy('${c.key}')">${c.label}</th>`;
-  }).join('')+(isAdmin?'<th style="width:80px;cursor:default"></th>':'');
+  }).join('')+(isSuperAdmin?'<th style="width:80px;cursor:default"></th>':'');
 
   const tbody=document.getElementById('users-tbody');
   const len=data.length;
@@ -456,9 +457,9 @@ function renderUsers(data){
       <td class="num">${fmtN(u.total_tokens)}</td>
       <td class="num">${fmtC(u.cost_usd)}</td>
       <td class="num">${fmtC(u.saved_usd||0)}</td>
-      ${isAdmin?`<td><a href="/admin/impersonate?as=${encodeURIComponent(u.username)}" onclick="event.stopPropagation()" title="Open this user's personal view" style="color:var(--blue);font-size:11px;text-decoration:none;white-space:nowrap">view as &#8594;</a></td>`:''}
+      ${isSuperAdmin?`<td><a href="/admin/impersonate?as=${encodeURIComponent(u.username)}" onclick="event.stopPropagation()" title="Open this user's personal view" style="color:var(--blue);font-size:11px;text-decoration:none;white-space:nowrap">view as &#8594;</a></td>`:''}
     </tr>`;
-    if(isExpanded)row+=`<tr id="expand-${u.username}"><td colspan="${isAdmin?10:9}" style="padding:0"><div class="expand-loading" id="expand-content-${u.username}">Loading...</div></td></tr>`;
+    if(isExpanded)row+=`<tr id="expand-${u.username}"><td colspan="${isSuperAdmin?10:9}" style="padding:0"><div class="expand-loading" id="expand-content-${u.username}">Loading...</div></td></tr>`;
     return row;
   }).join('');
 
@@ -927,12 +928,18 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
     } else banner.style.display='none';
     var mvb=document.getElementById('my-view-btn');
     if(mvb)mvb.href='/admin/impersonate?as='+encodeURIComponent(d.user);
-    isAdmin=d.isAdmin;
-    if(d.isAdmin){
+    isAdmin=!!d.isAdmin;
+    isSuperAdmin=!!d.isSuperAdmin;
+    // Admins keep the org-wide usage view (.admin-only widgets); only
+    // super-admins surface the operator nav (.superadmin-only).
+    if(isAdmin){
       document.querySelectorAll('.admin-only').forEach(function(el){el.style.display=el.dataset.show||'';});
     }
+    if(isSuperAdmin){
+      document.querySelectorAll('.superadmin-only').forEach(function(el){el.style.display=el.dataset.show||'';});
+    }
     // Re-render once the role is known so per-row "view as" links appear.
-    if(isAdmin)refresh();
+    if(isSuperAdmin)refresh();
     if(!d.isAdmin&&!userFilter.length){
       userFilter=[d.user];updateUserFilterLabel();renderUserChecklist();refresh();
     }

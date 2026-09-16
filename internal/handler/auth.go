@@ -186,25 +186,27 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
 
-// HandleImpersonate lets an admin open another user's view. With ?as=USER the
-// target is stored in the signed session and the browser is sent to that
-// user's account page; without it any active impersonation is cleared and the
-// browser returns to the dashboard. The admin check uses the real session
-// identity (not the swapped header), so it still works mid-impersonation.
+// HandleImpersonate lets a super-admin open another user's view. With
+// ?as=USER the target is stored in the signed session and the browser is
+// sent to that user's account page; without it any active impersonation is
+// cleared and the browser returns to the dashboard. The check uses the real
+// session identity (not the swapped header), so it still works
+// mid-impersonation. "View as" is an operator tool — regular admins get the
+// org-wide usage view instead, not another person's personal page.
 func (h *AuthHandler) HandleImpersonate(w http.ResponseWriter, r *http.Request) {
 	session := h.readCookie(r)
 	if session == nil {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
-	isAdmin := false
-	for _, admin := range h.cfg.AdminUsers {
+	isSuperAdmin := false
+	for _, admin := range h.cfg.SuperAdminUsers {
 		if session.Username == admin {
-			isAdmin = true
+			isSuperAdmin = true
 			break
 		}
 	}
-	if !isAdmin {
+	if !isSuperAdmin {
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
 	}
@@ -261,9 +263,10 @@ func (h *AuthHandler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 		// so every downstream handler (per-user scoping, IsAdmin) behaves
 		// exactly as it would for that user. The real identity is preserved
 		// in realUserHeader for the UI banner and the impersonate-clear
-		// endpoint. Non-admins can never set this — only HandleImpersonate
-		// writes the claim, and the cookie is HMAC-signed.
-		if session.As != "" && IsAdmin(h.cfg, r) {
+		// endpoint. Only super-admins can hold or activate this claim —
+		// HandleImpersonate writes it for super-admins only, and the cookie
+		// is HMAC-signed, so a signed-out admin cannot forge one.
+		if session.As != "" && IsSuperAdmin(h.cfg, r) {
 			r.Header.Set(realUserHeader, session.Username)
 			r.Header.Set(h.cfg.UserHeader, session.As)
 		}

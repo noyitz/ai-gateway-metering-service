@@ -198,27 +198,31 @@ func main() {
 	// are the same numbers every request is billed at, no user data.
 	mux.HandleFunc("/api/v1/pricing", auth(handler.NewPricingRefreshHandler(store).HandleList))
 
-	// Admin pages — session + admin required
-	mux.HandleFunc("/admin", auth(handler.RequireAdmin(cfg, adminHandler.ServeAdmin)))
-	mux.HandleFunc("/routing", auth(adminHandler.ServeRouting))
-	mux.HandleFunc("/admin2", auth(adminHandler.ServeRouting))
-	mux.HandleFunc("/compression", auth(adminHandler.ServeCompression))
-	// Admin APIs are gated by RequireAdmin (auth() alone is not enough —
+	// Operator pages (admin console, routing, compression) are SUPER-ADMIN
+	// only. Regular admins get the org-wide Usage view on /dashboard and
+	// nothing else — most of them only ever want to look at usage, and the
+	// pages below mutate platform state. Gated server-side, not just in the
+	// nav, so deep links and direct API calls are refused too.
+	mux.HandleFunc("/admin", auth(handler.RequireSuperAdmin(cfg, adminHandler.ServeAdmin)))
+	mux.HandleFunc("/routing", auth(handler.RequireSuperAdmin(cfg, adminHandler.ServeRouting)))
+	mux.HandleFunc("/admin2", auth(handler.RequireSuperAdmin(cfg, adminHandler.ServeRouting)))
+	mux.HandleFunc("/compression", auth(handler.RequireSuperAdmin(cfg, adminHandler.ServeCompression)))
+	// Admin APIs are gated by RequireSuperAdmin (auth() alone is not enough —
 	// otherwise any signed-in user could change weights/config).
-	mux.HandleFunc("/api/v1/admin/providers", auth(handler.RequireAdmin(cfg, adminHandler.HandleProviders)))
-	mux.HandleFunc("/api/v1/admin/models", auth(handler.RequireAdmin(cfg, adminHandler.HandleModels)))
-	mux.HandleFunc("/api/v1/admin/models/", auth(handler.RequireAdmin(cfg, adminHandler.HandleUpdateWeights)))
-	mux.HandleFunc("/api/v1/admin/config", auth(handler.RequireAdmin(cfg, adminHandler.HandleConfig)))
-	mux.HandleFunc("/api/v1/admin/models/provider/", auth(handler.RequireAdmin(cfg, adminHandler.HandleUpdateProvider)))
-	mux.HandleFunc("/api/v1/admin/users", auth(handler.RequireAdmin(cfg, profilesHandler.HandleProfiles)))
-	mux.HandleFunc("/api/v1/admin/pricing/refresh", auth(handler.NewPricingRefreshHandler(store).HandleRefresh))
+	mux.HandleFunc("/api/v1/admin/providers", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleProviders)))
+	mux.HandleFunc("/api/v1/admin/models", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleModels)))
+	mux.HandleFunc("/api/v1/admin/models/", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleUpdateWeights)))
+	mux.HandleFunc("/api/v1/admin/config", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleConfig)))
+	mux.HandleFunc("/api/v1/admin/models/provider/", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleUpdateProvider)))
+	mux.HandleFunc("/api/v1/admin/users", auth(handler.RequireSuperAdmin(cfg, profilesHandler.HandleProfiles)))
+	mux.HandleFunc("/api/v1/admin/pricing/refresh", auth(handler.RequireSuperAdmin(cfg, handler.NewPricingRefreshHandler(store).HandleRefresh)))
 	// OpenShift users/groups/entitlements management (redesigned admin page).
 	// Display-name profiles stay on /api/v1/admin/users above.
-	mux.HandleFunc("/api/v1/admin/openshift-users", auth(handler.RequireAdmin(cfg, adminHandler.HandleUsers)))
-	mux.HandleFunc("/api/v1/admin/group-member", auth(handler.RequireAdmin(cfg, adminHandler.HandleGroupMember)))
-	mux.HandleFunc("/api/v1/admin/auth-policies", auth(handler.RequireAdmin(cfg, adminHandler.HandleAuthPolicies)))
-	mux.HandleFunc("/api/v1/admin/subscriptions", auth(handler.RequireAdmin(cfg, adminHandler.HandleSubscriptions)))
-	mux.HandleFunc("/api/v1/admin/org/valid-groups", auth(handler.RequireAdmin(cfg, adminHandler.HandleValidGroups)))
+	mux.HandleFunc("/api/v1/admin/openshift-users", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleUsers)))
+	mux.HandleFunc("/api/v1/admin/group-member", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleGroupMember)))
+	mux.HandleFunc("/api/v1/admin/auth-policies", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleAuthPolicies)))
+	mux.HandleFunc("/api/v1/admin/subscriptions", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleSubscriptions)))
+	mux.HandleFunc("/api/v1/admin/org/valid-groups", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleValidGroups)))
 	// Group + key APIs are reachable by any signed-in user: the redesigned
 	// user dashboard lists its own group membership and manages the caller's
 	// own keys. The handlers scope non-admins to their own identity, so a
@@ -241,12 +245,13 @@ func main() {
 	mux.HandleFunc("/api/v1/org/tree", auth(orgHandler.HandleOrgTree))
 	mux.HandleFunc("/api/v1/org/usage", auth(orgHandler.HandleOrgUsage))
 
-	// Directory administration — admin only.
-	mux.HandleFunc("/api/v1/admin/people", auth(handler.RequireAdmin(cfg, orgHandler.HandlePeople)))
-	mux.HandleFunc("/api/v1/admin/people/", auth(handler.RequireAdmin(cfg, orgHandler.HandlePerson)))
-	mux.HandleFunc("/api/v1/admin/identities", auth(handler.RequireAdmin(cfg, orgHandler.HandleIdentities)))
-	mux.HandleFunc("/api/v1/admin/org/import", auth(handler.RequireAdmin(cfg, orgHandler.HandleImport)))
-	mux.HandleFunc("/api/v1/admin/keys/invites", auth(handler.RequireAdmin(cfg, orgHandler.HandleInvites)))
+	// Directory administration — super-admin only (backs the console's
+	// People & Org and Keys tabs).
+	mux.HandleFunc("/api/v1/admin/people", auth(handler.RequireSuperAdmin(cfg, orgHandler.HandlePeople)))
+	mux.HandleFunc("/api/v1/admin/people/", auth(handler.RequireSuperAdmin(cfg, orgHandler.HandlePerson)))
+	mux.HandleFunc("/api/v1/admin/identities", auth(handler.RequireSuperAdmin(cfg, orgHandler.HandleIdentities)))
+	mux.HandleFunc("/api/v1/admin/org/import", auth(handler.RequireSuperAdmin(cfg, orgHandler.HandleImport)))
+	mux.HandleFunc("/api/v1/admin/keys/invites", auth(handler.RequireSuperAdmin(cfg, orgHandler.HandleInvites)))
 
 	// Key invite claim — unauthenticated by design: the single-use, expiring
 	// token in the URL is the credential (only its SHA-256 is stored, and

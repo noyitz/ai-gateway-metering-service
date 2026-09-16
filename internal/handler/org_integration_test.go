@@ -234,3 +234,66 @@ func TestClaimMintFailureReleasesInvite(t *testing.T) {
 		t.Fatalf(`mint group %q, want ["fallback-grp"]`, rec.group)
 	}
 }
+
+// The invite's group is the person's directory group, always. A "group"
+// field in the request body is ignored (a mis-clicked dropdown once stamped
+// an ai-eng key onto a global-eng person, and the gateway honours the key's
+// group — a wrong choice there is a wrong grant); a person with no group is
+// refused with instructions to fix the directory record first.
+func TestInviteGroupDerivesFromPerson(t *testing.T) {
+	store, ctx := openClaimTestStore(t)
+	var fail atomic.Bool
+	var rec mintRecord
+	srv := stubMaasAPI(t, &fail, &rec)
+	h := NewOrgHandler(store, config.Config{AdminUsers: []string{"boss"}}, maasapi.NewClient(srv.URL, "t"))
+
+	// Person WITH a group: an override attempt in the body must not win.
+	p, err := store.CreatePerson(ctx, storage.Person{
+		FullName: "Shane Utt", FirstName: "Shane", LastName: "Utt",
+		Email: "sutt@x.com", GroupName: "global-eng",
+	}, "boss")
+	if err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/keys/invites",
+		strings.NewReader(`{"person_slug":"`+p.Slug+`","group":"ai-eng"}`))
+	r.Header.Set("X-Forwarded-User", "boss")
+	h.HandleInvites(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("create invite: code=%d body=%s", w.Code, w.Body.String())
+	}
+	var out struct {
+		InviteURL string `json:"invite_url"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	iv, err := store.InviteByTokenHash(ctx, strings.TrimPrefix(out.InviteURL, "/invite/"))
+	if err != nil {
+		t.Fatalf("invite lookup: %v", err)
+	}
+	if iv.GroupName != "global-eng" {
+		t.Fatalf("invite stamped %q, want the person's own global-eng", iv.GroupName)
+	}
+
+	// Person with NO group: refused, and the message names the fix.
+	p2, err := store.CreatePerson(ctx, storage.Person{FullName: "No Group", Email: "ng@x.com"}, "boss")
+	if err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	w = httptest.NewRecorder()
+	h.HandleInvites(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/keys/invites",
+		strings.NewReader(`{"person_slug":"`+p2.Slug+`"}`)))
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "group") {
+		t.Fatalf("no-group person: code=%d body=%s, want 400 naming the group", w.Code, w.Body.String())
+	}
+
+	// Unknown slug: 404, not a silently-empty invite.
+	w = httptest.NewRecorder()
+	h.HandleInvites(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/keys/invites",
+		strings.NewReader(`{"person_slug":"not-in-directory"}`)))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("unknown slug: code=%d, want 404", w.Code)
+	}
+}
