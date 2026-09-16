@@ -419,7 +419,7 @@ codex --profile pricetag</pre></div>
   <p class="cap" style="margin:18px 0 10px">And the hosted Qwen — a second provider pointed at the unified route, which serves <span class="mono">/v1/responses</span> for it too:</p>
   <div class="codebox hasname"><div class="fname">~/.codex/config.toml — add</div><button class="copy">copy</button><pre>[<span class="k">model_providers.qwen</span>]
 name        = <span class="s">"PriceTag hosted"</span>
-base_url    = <span class="s">"{{UNIFIED_URL}}"</span>
+base_url    = <span class="s">"{{UNIFIED_URL}}/v1"</span>
 wire_api    = <span class="s">"responses"</span>
 http_headers = { <span class="k">"x-api-key"</span> = <span class="s">"pk-your-key"</span> }  <span class="c"># the unified route wants the key here, not as a bearer token</span>
 
