@@ -37,8 +37,17 @@ type Config struct {
 	UserHeader   string
 	GroupsHeader string
 
-	// AdminUsers may reach the admin console and the routing pages.
+	// AdminUsers may see the org-wide Usage view (they see everyone's
+	// usage on the dashboard, not just their own). They do NOT get the
+	// Admin console, Routing, or Compression pages — those are
+	// SuperAdmin-only. Most admins only ever want the usage page.
 	AdminUsers []string
+
+	// SuperAdminUsers may reach the admin console, the routing pages, the
+	// compression page, and every admin-gated API. Membership in this list
+	// implies AdminUsers. The narrow blast radius is deliberate: only the
+	// gateway operators themselves should mutate platform state.
+	SuperAdminUsers []string
 
 	// AllowUnauthenticatedAdmin grants admin access when no identity
 	// header is present. Convenient for local development, unsafe once
@@ -153,6 +162,10 @@ func Load() Config {
 		UserHeader:        envDefault("AUTH_USER_HEADER", "X-Forwarded-User"),
 		GroupsHeader:      envDefault("AUTH_GROUPS_HEADER", "X-Forwarded-Groups"),
 		AdminUsers:        envList("ADMIN_USERS"),
+		// The gateway operators. Set via the SUPERADMIN_USERS deployment
+		// env var (comma/space separated); empty means no one holds the
+		// super-admin surfaces, so the deployment must set it explicitly.
+		SuperAdminUsers: envList("SUPERADMIN_USERS"),
 		// Default false: since the org/manager feature this service decides
 		// who may see whose spend, so an anonymous caller is nobody. Set
 		// ALLOW_UNAUTHENTICATED_ADMIN=true deliberately for local

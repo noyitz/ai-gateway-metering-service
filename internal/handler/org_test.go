@@ -87,3 +87,74 @@ func TestActor_ImpersonationAttribution(t *testing.T) {
 		t.Errorf("caller must be the swapped identity for scope math, got %q", c)
 	}
 }
+
+// The three-way split the role feature depends on: super-admin implies
+// admin (so the operators can still see the usage page their console links
+// to), but admin never implies super-admin (the many admins who only want
+// usage must not reach the console, routing, or compression).
+func TestSuperAdminImpliesAdmin(t *testing.T) {
+	cfg := config.Config{
+		UserHeader:      "X-Forwarded-User",
+		AdminUsers:      []string{"plainadmin"},
+		SuperAdminUsers: []string{"operator"},
+	}
+	mk := func(user string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		if user != "" {
+			r.Header.Set(cfg.UserHeader, user)
+		}
+		return r
+	}
+	op := mk("operator")
+	if !IsSuperAdmin(cfg, op) {
+		t.Error("listed operator must be super-admin")
+	}
+	if !IsAdmin(cfg, op) {
+		t.Error("super-admin must imply admin (usage view stays reachable)")
+	}
+	pa := mk("plainadmin")
+	if IsSuperAdmin(cfg, pa) {
+		t.Error("a plain admin must NOT be super-admin")
+	}
+	if !IsAdmin(cfg, pa) {
+		t.Error("plain admin must still be admin")
+	}
+	if IsAdmin(cfg, mk("")) || IsSuperAdmin(cfg, mk("")) {
+		t.Error("anonymous caller is neither admin nor super-admin")
+	}
+}
+
+// RequireSuperAdmin sends a plain admin (who can see usage) to the usage
+// dashboard, and a non-admin to their own account — the fallback matches
+// what each caller is actually allowed to look at.
+func TestRequireSuperAdmin_Fallbacks(t *testing.T) {
+	cfg := config.Config{
+		UserHeader:      "X-Forwarded-User",
+		AdminUsers:      []string{"plainadmin"},
+		SuperAdminUsers: []string{"operator"},
+	}
+	plainAdminLoc := func(user string) string {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/routing", nil)
+		r.Header.Set(cfg.UserHeader, user)
+		RequireSuperAdmin(cfg, func(http.ResponseWriter, *http.Request) {
+			t.Fatalf("%s must not reach super-admin handler", user)
+		})(w, r)
+		return w.Header().Get("Location")
+	}
+	if loc := plainAdminLoc("plainadmin"); loc != "/dashboard" {
+		t.Errorf("plain admin redirected to %q, want /dashboard", loc)
+	}
+	if loc := plainAdminLoc("someone"); loc != "/me" {
+		t.Errorf("non-admin redirected to %q, want /me", loc)
+	}
+	// Super-admin passes through.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/routing", nil)
+	r.Header.Set(cfg.UserHeader, "operator")
+	reached := false
+	RequireSuperAdmin(cfg, func(http.ResponseWriter, *http.Request) { reached = true })(w, r)
+	if !reached {
+		t.Error("operator must reach the super-admin handler")
+	}
+}

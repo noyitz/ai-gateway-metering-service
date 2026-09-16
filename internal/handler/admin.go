@@ -26,15 +26,40 @@ func NewAdminHandler(k8sClient *k8s.Client, maasClient *maasapi.Client, cfg conf
 	return &AdminHandler{k8sClient: k8sClient, maasClient: maasClient, cfg: cfg}
 }
 
-// IsAdmin reports whether the caller may reach the operator views. Identity
-// comes from the header an authenticating proxy sets in front of this
-// service; the service performs no authentication of its own.
+// IsAdmin reports whether the caller may see the org-wide Usage view — the
+// full user table and user filter on the dashboard. Identity comes from the
+// header an authenticating proxy sets in front of this service; the service
+// performs no authentication of its own. Admins do NOT get the admin console
+// or the Routing/Compression pages — see IsSuperAdmin for those.
 func IsAdmin(cfg config.Config, r *http.Request) bool {
 	user := r.Header.Get(cfg.UserHeader)
 	if user == "" {
 		return cfg.AllowUnauthenticatedAdmin
 	}
 	for _, admin := range cfg.AdminUsers {
+		if user == admin {
+			return true
+		}
+	}
+	// Super-adminship implies admin: whoever can administer the platform
+	// can obviously see the usage page the console links to.
+	for _, admin := range cfg.SuperAdminUsers {
+		if user == admin {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSuperAdmin reports whether the caller may reach the admin console,
+// Routing, Compression, and every admin-gated API. Most "admins" only ever
+// want the usage page; mutating platform state stays with the operators.
+func IsSuperAdmin(cfg config.Config, r *http.Request) bool {
+	user := r.Header.Get(cfg.UserHeader)
+	if user == "" {
+		return cfg.AllowUnauthenticatedAdmin
+	}
+	for _, admin := range cfg.SuperAdminUsers {
 		if user == admin {
 			return true
 		}
@@ -49,6 +74,24 @@ func RequireAdmin(cfg config.Config, next http.HandlerFunc) http.HandlerFunc {
 		if !IsAdmin(cfg, r) {
 			slog.Debug("admin access denied", "path", r.URL.Path)
 			http.Redirect(w, r, "/me", http.StatusFound)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// RequireSuperAdmin gates the operator-only surface (admin console, routing,
+// compression, admin APIs). An admin who is not a super-admin lands on the
+// usage dashboard — the one page they should be looking at anyway.
+func RequireSuperAdmin(cfg config.Config, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !IsSuperAdmin(cfg, r) {
+			slog.Debug("super-admin access denied", "path", r.URL.Path)
+			if IsAdmin(cfg, r) {
+				http.Redirect(w, r, "/dashboard", http.StatusFound)
+			} else {
+				http.Redirect(w, r, "/me", http.StatusFound)
+			}
 			return
 		}
 		next(w, r)

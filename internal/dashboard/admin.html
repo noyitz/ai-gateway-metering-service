@@ -604,8 +604,9 @@ td .tag{white-space:nowrap}
       <button class="btn btn-outline" style="margin-left:8px;padding:6px 14px;font-size:10px" onclick="copyInviteURL()">Copy link only</button>
     </div>
     <div class="picker-row">
-      <select id="inv-person" onchange="clearInviteResult()"></select>
-      <select id="inv-group"></select>
+      <select id="inv-person" onchange="onInvitePersonChange()"></select>
+      <span class="ts" style="font-size:11px;align-self:center">group:</span>
+      <span id="inv-group-chip" class="badge badge-blu" style="align-self:center" title="Always the person's own directory group">—</span>
       <input type="text" class="tbl-input" id="inv-name" placeholder="key name (optional)" style="max-width:180px;width:auto">
       <button class="btn btn-grn" onclick="createInvite()">Create invite</button>
     </div>
@@ -731,13 +732,11 @@ td .tag{white-space:nowrap}
     <div id="createKeyForm">
       <div class="field">
         <label>Username</label>
-        <input type="text" id="ck-username" placeholder="e.g. alice">
+        <input type="text" id="ck-username" placeholder="e.g. alice@example.com" oninput="renderCkGroup()">
       </div>
       <div class="field">
-        <label>Group</label>
-        <select id="ck-group">
-          <option value="">-- select a group --</option>
-        </select>
+        <label>Group <span style="color:#8b949e;font-weight:400">(from the directory — not editable here)</span></label>
+        <div id="ck-group-display" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--t2)">— shows once the username matches a directory person —</div>
       </div>
       <div class="field">
         <label>Key Name</label>
@@ -782,7 +781,7 @@ td .tag{white-space:nowrap}
       </div>
       <div class="field">
         <label>Email</label>
-        <input type="text" id="au-email" placeholder="e.g. achen@redhat.com">
+        <input type="text" id="au-email" placeholder="e.g. achen@example.com">
       </div>
       <div class="field">
         <label>Group</label>
@@ -1141,7 +1140,6 @@ function loadGroups() {
 
     var groupNames = Object.keys(groupMap).sort();
     knownGroups = groupNames;
-    populateGroupDropdown();
 
     document.getElementById('groups-count').textContent = '(' + groupNames.length + ')';
 
@@ -1196,7 +1194,6 @@ function loadGroups() {
     var groupMap = buildGroups();
     var groupNames = Object.keys(groupMap).sort();
     knownGroups = groupNames;
-    populateGroupDropdown();
     document.getElementById('groups-count').textContent = '(' + groupNames.length + ')';
 
     var html = '<div class="groups-row">';
@@ -1281,17 +1278,42 @@ function sortPeopleBy(key) {
   renderPeople();
 }
 
-function populateGroupDropdown() {
-  var sel = document.getElementById('ck-group');
-  var current = sel.value;
-  sel.innerHTML = '<option value="">-- select a group --</option>';
-  knownGroups.forEach(function(g) {
-    var opt = document.createElement('option');
-    opt.value = g;
-    opt.textContent = g;
-    sel.appendChild(opt);
+/* Directory lookup for the Create-Key modal: the key's group is the
+   person's group, so there is no picker — type a username (login or
+   email) and the group shows itself, straight from their record. */
+function personByLogin(login) {
+  login = (login || '').trim().toLowerCase();
+  if (!login) return null;
+  var hit = (Array.isArray(peopleAll) ? peopleAll : []).filter(function(p) {
+    if (p.email && p.email.toLowerCase() === login) return true;
+    if (p.username && p.username.toLowerCase() === login) return true;
+    if (Array.isArray(p.aliases)) {
+      for (var i = 0; i < p.aliases.length; i++) {
+        if ((p.aliases[i] || '').toLowerCase() === login) return true;
+      }
+    }
+    return false;
   });
-  if (current) sel.value = current;
+  return hit.length ? hit[0] : null;
+}
+function renderCkGroup() {
+  var el = document.getElementById('ck-group-display');
+  if (!el) return;
+  var p = personByLogin(document.getElementById('ck-username').value);
+  if (!p) {
+    el.textContent = '— not in the directory — add them in People & Org first —';
+    el.style.color = 'var(--t2)';
+  } else if (!p.group_name) {
+    el.textContent = (p.full_name || p.slug) + ' has no group — set it in People & Org first';
+    el.style.color = '#d29922';
+  } else {
+    el.textContent = p.group_name + ' · ' + p.full_name;
+    el.style.color = '';
+  }
+}
+function ckGroupValue() {
+  var p = personByLogin(document.getElementById('ck-username').value);
+  return p && p.group_name ? p.group_name : '';
 }
 
 /* ================================================================
@@ -1334,7 +1356,7 @@ function renderProfiles(byName, keys, keysNote) {
   document.getElementById('profiles-count').textContent = named ? '(' + named + ' named)' : '';
 
   var html = '<div style="display:flex;gap:8px;margin:0 16px 10px;flex-wrap:wrap">'
-    + '<input class="tbl-input" id="new-user" placeholder="user@redhat.com" style="flex:1.2;min-width:150px">'
+    + '<input class="tbl-input" id="new-user" placeholder="user@example.com" style="flex:1.2;min-width:150px">'
     + '<input class="tbl-input" id="new-first" placeholder="First name" style="flex:1;min-width:110px">'
     + '<input class="tbl-input" id="new-last" placeholder="Last name" style="flex:1;min-width:110px">'
     + '<button class="btn" onclick="addProfileRow()">Add</button>'
@@ -1492,8 +1514,43 @@ function loadKeys() {
 // on an alphabetical first, and Create would happily invite them). An
 // unset picker now means "nobody", and a deep-link slug is re-asserted on
 // every rebuild so refreshes can't clobber it out from under the click.
+//
+// There is deliberately no group picker: an invite carries exactly the
+// selected person's directory group, and the server enforces that too. A
+// dropdown once let one mis-clicked selection stamp an ai-eng key onto a
+// global-eng person — the gateway honours the key's group, so the wrong
+// choice there was a wrong grant, not a cosmetic slip.
 var deepInviteSlug = '';
-var deepInviteGroup = '';
+
+function personBySlug(slug) {
+  var hit = (Array.isArray(peopleAll) ? peopleAll : []).filter(function(p) { return p.slug === slug; });
+  return hit.length ? hit[0] : null;
+}
+
+// The chip shows what the server will stamp: the person's group. A person
+// with no group means Create will 400 with the same instruction we show
+// here — set it in People & Org first.
+function renderInviteGroup() {
+  var chip = document.getElementById('inv-group-chip');
+  if (!chip) return;
+  var sel = document.getElementById('inv-person');
+  var p = sel && sel.value ? personBySlug(sel.value) : null;
+  if (!p) {
+    chip.textContent = '—';
+    chip.title = 'Pick a person — the invite takes their directory group';
+  } else if (p.group_name) {
+    chip.textContent = p.group_name;
+    chip.title = "from " + p.full_name + "'s directory record";
+  } else {
+    chip.textContent = 'no group';
+    chip.title = p.full_name + ' has no group — set one in People & Org first';
+  }
+}
+
+function onInvitePersonChange() {
+  clearInviteResult();
+  renderInviteGroup();
+}
 
 function populateInvitePickers() {
   var psel = document.getElementById('inv-person');
@@ -1504,34 +1561,16 @@ function populateInvitePickers() {
     return '<option value="' + esc(p.slug) + '">' + esc(p.full_name) + (p.username ? ' · has key' : '') + '</option>';
   }).join('');
   psel.value = cur || '';
-  var gsel = document.getElementById('inv-group');
-  // Canonical subscription groups when we have them (same source the
-  // People tab uses); usage-derived knownGroups is the fallback, since a
-  // group that has traffic is definitely valid even if the CR read failed.
-  var names = validGroups.length ? validGroups : knownGroups;
-  // A deep-linked group must survive every rebuild until it lands —
-  // otherwise the first alphabetically-sorted CR group (usually ai-eng)
-  // silently poses as the choice for people who live in octo-eng.
-  if (deepInviteGroup && names.indexOf(deepInviteGroup) < 0) deepInviteGroup = '';
-  // The deep-linked group WINS over whatever the picker held from the last
-  // invite — same precedence the person picker already uses. The old
-  // leftover-first order silently issued an ai-eng invite to a global-eng
-  // person: the deep-link set the intent, a stale selection overrode it.
-  var curG = deepInviteGroup || gsel.value;
-  // Same placeholder discipline as the person picker and the modal: no
-  // silently-preselected group. Empty means "the service's default group"
-  // (DEFAULT_GROUP env), which claim resolves server-side.
-  gsel.innerHTML = '<option value="">-- select a group --</option>' +
-    names.map(function(g) { return '<option value="' + esc(g) + '">' + esc(g) + '</option>'; }).join('');
-  if (curG) gsel.value = curG;
-  if (deepInviteGroup && gsel.value === deepInviteGroup) deepInviteGroup = '';
+  renderInviteGroup();
 }
 
 /* Deep-link from a people row: jump to the Keys tab with the person picked.
    The slug is applied now (if the people cache is warm) and again once the
    cache lands; deepInviteSlug makes every intermediate picker rebuild keep
    re-selecting them, so no refresh can drop the selection. Cleared once the
-   select actually shows them — from then on it's the admin's choice. */
+   select actually shows them — from then on it's the admin's choice. The
+   group chip follows the person automatically — there is nothing else to
+   carry, and nothing to get wrong. */
 function openInviteFor(slug) {
   deepInviteSlug = slug;
   showTab('keys');
@@ -1542,14 +1581,7 @@ function openInviteFor(slug) {
     if (sel) sel.value = slug;
     if (sel && sel.value === slug) {
       deepInviteSlug = '';
-      // One-click intent: carry the person's own group into the picker —
-      // the admin reviews and presses Create, that's the whole job.
-      // (Create is never automatic; a human presses the button.)
-      var p = peopleAll.filter(function(x) { return x.slug === slug; })[0];
-      if (p && p.group_name) {
-        deepInviteGroup = p.group_name;
-        populateInvitePickers(); // re-asserts the group through any rebuild
-      }
+      renderInviteGroup();
     }
   };
   if (Array.isArray(peopleAll) && peopleAll.length) apply();
@@ -1625,9 +1657,9 @@ function clearInviteResult() {
 }
 
 function createInvite() {
+  // No group in the body — the server stamps the person's directory group.
   var body = {
     person_slug: document.getElementById('inv-person').value,
-    group: document.getElementById('inv-group').value,
     key_name: document.getElementById('inv-name').value
   };
   if (!body.person_slug) { showToast('Pick a person first', 'error'); return; }
@@ -2046,12 +2078,13 @@ function openCreateKeyModal() {
   document.getElementById('createKeyForm').style.display = '';
   document.getElementById('createKeySuccess').style.display = 'none';
   document.getElementById('ck-username').value = '';
-  document.getElementById('ck-group').value = '';
   document.getElementById('ck-name').value = '';
   document.getElementById('createKeyError').innerHTML = '';
   document.getElementById('createKeyBtn').disabled = false;
   document.getElementById('createKeyBtn').textContent = 'Create';
-  populateGroupDropdown();
+  renderCkGroup();
+  // The group comes from the directory, so the people cache must be warm.
+  if (!Array.isArray(peopleAll) || !peopleAll.length) loadPeople(renderCkGroup);
   document.getElementById('createKeyModal').classList.add('open');
   setTimeout(function() { document.getElementById('ck-username').focus(); }, 100);
 }
@@ -2063,7 +2096,7 @@ function closeCreateKeyModal() {
 
 function submitCreateKey() {
   var username = document.getElementById('ck-username').value.trim();
-  var group = document.getElementById('ck-group').value.trim();
+  var group = ckGroupValue(); // always the person's directory group
   var keyName = document.getElementById('ck-name').value.trim();
   var errEl = document.getElementById('createKeyError');
 
@@ -2072,7 +2105,7 @@ function submitCreateKey() {
     return;
   }
   if (!group) {
-    errEl.innerHTML = '<div class="err-msg" style="margin-top:8px;text-align:left">Group is required.</div>';
+    errEl.innerHTML = '<div class="err-msg" style="margin-top:8px;text-align:left">No group for this username — keys take their group from the person, so they must exist in People & Org with a group set.</div>';
     return;
   }
   if (!keyName) {

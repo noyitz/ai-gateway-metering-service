@@ -423,9 +423,12 @@ http_headers = { <span class="k">"x-api-key"</span> = <span class="s">"pk-your-k
 
 [<span class="k">profiles.qwen</span>]
 model          = <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>
-model_provider = <span class="s">"qwen"</span></pre></div>
+model_provider = <span class="s">"qwen"</span>
+<span class="c"># Codex has no built-in metadata for this model id; without this it warns</span>
+<span class="c"># "Model metadata not found" and falls back to a tiny window. 262144 = 256K.</span>
+model_context_window = 262144</pre></div>
   <div class="codebox"><button class="copy">copy</button><pre>codex --profile qwen</pre></div>
-  <div class="callout good"><span class="glyph">✓</span><p>One catch: Codex only shows its own built-in models in the <span class="mono">/model</span> picker, so pin the hosted model id in the profile as above — it works, it just won't appear in the list.</p></div>
+  <div class="callout good"><span class="glyph">✓</span><p>One catch: Codex only shows its own built-in models in the <span class="mono">/model</span> picker, so pin the hosted model id in the profile as above — it works, it just won't appear in the list. The <span class="mono">model_context_window</span> line is what silences the "Model metadata not found" warning on start.</p></div>
 </section>
 
 <!-- ============ OPENCODE ============ -->

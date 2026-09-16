@@ -396,8 +396,9 @@ func (h *OrgHandler) HandleImport(w http.ResponseWriter, r *http.Request) {
 
 // --- Admin: invites ---
 
-// HandleInvites: GET list; POST {"person_slug","group","key_name"} creates
-// an invite and returns its URL EXACTLY ONCE.
+// HandleInvites: GET list; POST {"person_slug","key_name"} creates an invite
+// for that person, stamped with their directory group (no group input is
+// accepted), and returns its URL EXACTLY ONCE.
 func (h *OrgHandler) HandleInvites(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -417,7 +418,6 @@ func (h *OrgHandler) HandleInvites(w http.ResponseWriter, r *http.Request) {
 		}
 		var body struct {
 			PersonSlug string `json:"person_slug"`
-			Group      string `json:"group"`
 			KeyName    string `json:"key_name"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.PersonSlug == "" {
@@ -425,10 +425,25 @@ func (h *OrgHandler) HandleInvites(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slug := storage.SlugNorm(body.PersonSlug)
+		// The invite's group IS the person's directory group — always. The
+		// old group dropdown let one mis-clicked selection stamp a key for
+		// a group the person is not in (an ai-eng invite went out to a
+		// global-eng person), and the gateway honours the key's group, not
+		// the person's. There is no override anymore: fix the person, not
+		// the invite.
+		person, err := h.store.GetPerson(r.Context(), slug)
+		if err != nil {
+			http.Error(w, "person not found — add them in People & Org first", http.StatusNotFound)
+			return
+		}
+		if person.GroupName == "" {
+			http.Error(w, person.FullName+" has no group set — set it in People & Org first", http.StatusBadRequest)
+			return
+		}
 		if body.KeyName == "" {
 			body.KeyName = "invite " + time.Now().UTC().Format("2006-01-02")
 		}
-		token, id, err := h.store.CreateInvite(r.Context(), slug, body.Group, body.KeyName, actor(r, h.cfg), h.inviteTTL)
+		token, id, err := h.store.CreateInvite(r.Context(), slug, person.GroupName, body.KeyName, actor(r, h.cfg), h.inviteTTL)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

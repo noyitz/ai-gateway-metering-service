@@ -169,6 +169,7 @@ func (h *KeysHandler) HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 		"user":              user,
 		"groups":            groups,
 		"isAdmin":           IsAdmin(h.cfg, r),
+		"isSuperAdmin":      IsSuperAdmin(h.cfg, r),
 		"keyServiceEnabled": h.cfg.KeyService.Enabled(),
 		"impersonating":     impersonating,
 		"real_user":         "",
