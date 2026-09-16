@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // DefaultMonthlyTokenQuota is the per-user monthly token allowance applied
@@ -214,13 +215,20 @@ func envDefault(key, fallback string) string {
 	return fallback
 }
 
+// envList parses a user/identity list from an env var. Entries may be
+// separated by commas, whitespace, or any mix of the two — the deployment
+// manifests use both (ADMIN_USERS is comma-separated, SUPERADMIN_USERS is
+// space-separated), and a list that only splits on commas silently collapses
+// the space-separated form into one bogus entry that never matches a caller.
 func envList(key string) []string {
 	raw := os.Getenv(key)
 	if raw == "" {
 		return nil
 	}
-	parts := strings.Split(raw, ",")
-	result := make([]string, 0, len(parts))
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+	var result []string
 	for _, p := range parts {
 		if trimmed := strings.TrimSpace(p); trimmed != "" {
 			result = append(result, trimmed)
