@@ -137,6 +137,13 @@ PostgreSQL 14+. Schema is auto-migrated on startup:
 - `usage_events` — per-request token usage records
 - `model_pricing` — per-model cost rates (auto-synced from LiteLLM on startup)
 
+On the dogfood cluster this runs as a 3-instance CloudNativePG cluster
+with continuous WAL archiving + daily base backups to IBM COS (PITR
+capable). Architecture diagrams, the DSN secret plumbing, backup layers,
+and the full 2026-09-16 cutover record (including what went wrong and
+how it was verified clean): **[docs/db-design.md](docs/db-design.md)**.
+Day-to-day ops: [docs/db-backup.md](docs/db-backup.md).
+
 ## Related
 
 - [Praxis](https://github.com/praxis-proxy/praxis) — the proxy this service was built against
