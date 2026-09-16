@@ -382,11 +382,13 @@ claude</pre></div>
       <h3>Add the hosted model to the picker</h3>
       <p>Claude Code's model filter only keeps <em>claude/anthropic</em> ids, so discovery alone never shows the hosted Qwen. Pin it explicitly (needs Claude Code ≥ 2.1.242):</p>
       <div class="codebox hasname"><div class="fname">~/.claude/settings.json — add</div><button class="copy">copy</button><pre>{
-  <span class="k">"modelPicker"</span>: [
-    { <span class="k">"model"</span>: <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>,
-      <span class="k">"label"</span>: <span class="s">"Qwen 3.8 Flash Next"</span>,
-      <span class="k">"description"</span>: <span class="s">"Hosted vLLM via PriceTag — $0.15/$0.47 per MTok"</span> }
-  ],
+  <span class="k">"modelPicker"</span>: {
+    <span class="k">"options"</span>: [
+      { <span class="k">"model"</span>: <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>,
+        <span class="k">"label"</span>: <span class="s">"Qwen 3.8 Flash Next"</span>,
+        <span class="k">"description"</span>: <span class="s">"Hosted vLLM via PriceTag — $0.15/$0.47 per MTok"</span> }
+    ]
+  },
   <span class="k">"modelSettings"</span>: {
     <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>: { <span class="k">"effortLevel"</span>: <span class="s">"medium"</span> }
   }
