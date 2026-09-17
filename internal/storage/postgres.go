@@ -413,7 +413,7 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 		limit = 100
 	}
 
-	query := hostedSavingsWithSQL() + fmt.Sprintf(`
+	query := hostedSavingsWithSQL(7) + fmt.Sprintf(`
 		SELECT e.username,
 			%s,
 			COALESCE(e.group_name, ''),
@@ -488,13 +488,18 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 //	             gets the observed ratio applied (rounded, per row).
 //
 // Positional params: $1 since, $2 until, $3 group, $4 user, $5 model,
-// $7 reference model ($6 is left to the caller — the user-table LIMIT).
-func hostedSavingsWithSQL() string {
+// refParamNum reference model — $7 for GetDashboardUsers (whose $6 is the
+// user-table LIMIT), $6 for GetHostedSavings (which has no LIMIT). A
+// placeholder number that never appears in the query text at all makes
+// Postgres refuse the query outright ("could not determine data type of
+// parameter"), which is why this can't just always say $7.
+func hostedSavingsWithSQL(refParamNum int) string {
+	ref := fmt.Sprintf("$%d", refParamNum)
 	return fmt.Sprintf(`
 		WITH r_ref AS (
 			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
 			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
-			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND e.model = $7 AND (%s) > 0
+			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND e.model = `+ref+` AND (%s) > 0
 			  AND NOT (`+hostedProviderCond+`)
 		),
 		r_all AS (
@@ -511,7 +516,7 @@ func hostedSavingsWithSQL() string {
 		pr AS (
 			SELECT COALESCE(MAX(input_cost_per_mtok), 0) as i, COALESCE(MAX(output_cost_per_mtok), 0) as o,
 			       COALESCE(MAX(cache_read_cost_per_mtok), 0) as cr, COALESCE(MAX(cache_write_cost_per_mtok), 0) as cw
-			FROM model_pricing WHERE model = $7
+			FROM model_pricing WHERE model = `+ref+`
 		),
 		fm AS (
 			SELECT e.username, e.model,
@@ -553,13 +558,13 @@ func (s *Store) GetHostedSavings(ctx context.Context, since, until time.Time, gr
 	if refModel == "" {
 		refModel = "claude-opus-4-8"
 	}
-	query := hostedSavingsWithSQL() + `,
+	query := hostedSavingsWithSQL(6) + `,
 		sa AS (SELECT COALESCE(SUM(saved), 0) as saved FROM sv),
 		ra AS (SELECT COALESCE(bool_or(cached = 0 AND cwrite = 0 AND prompt > 0 AND (SELECT r FROM rat) > 0), false) as applied
 		       FROM fm WHERE (hosted OR cost = 0) AND tot > 0)
 		SELECT COALESCE(ROUND((SELECT saved FROM sa)::numeric, 2), 0)::float8,
 		       (SELECT r FROM rat), (SELECT applied FROM ra)`
-	err = s.db.QueryRowContext(ctx, query, since, until, group, user, model, 0, refModel).Scan(&saved, &ratio, &ratioApplied)
+	err = s.db.QueryRowContext(ctx, query, since, until, group, user, model, refModel).Scan(&saved, &ratio, &ratioApplied)
 	return saved, ratio, ratioApplied, err
 }
 
