@@ -432,3 +432,49 @@ func TestQuotaDenialCounters(t *testing.T) {
 		t.Fatalf("admin breakdown: %+v, want alice(2) first", byUser)
 	}
 }
+
+// TestQuotaDenialFeedRows checks the Recent-Activity weaving: denial rows
+// come back in the RecentEvent shape with status 429, the month tally, the
+// directory group resolved, and stale-month ledgers excluded.
+func TestQuotaDenialFeedRows(t *testing.T) {
+	s, ctx := openTestStore(t)
+	seedQuotaRoster(t, s, ctx)
+
+	if err := s.RecordQuotaDenial(ctx, "alice", "claude-x"); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	if err := s.RecordQuotaDenial(ctx, "bob", "qwen-y"); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	quotaExec(t, s, ctx, `INSERT INTO quota_denials (username, month, model, count) VALUES ('alice','2020-01','old-m',99)`)
+
+	feed, err := s.RecentQuotaDenials(ctx, 20)
+	if err != nil {
+		t.Fatalf("feed: %v", err)
+	}
+	if len(feed) != 2 {
+		t.Fatalf("feed rows: got %d, want 2 (stale month excluded): %+v", len(feed), feed)
+	}
+	// Most recent first — both just written, order by count/model for determinism.
+	byUser := map[string]RecentEvent{}
+	for _, e := range feed {
+		byUser[e.Username] = e
+	}
+	a, ok := byUser["alice"]
+	if !ok {
+		t.Fatalf("alice missing from feed")
+	}
+	if a.StatusCode == nil || *a.StatusCode != 429 || a.Denials != 1 {
+		t.Fatalf("alice feed row: status %+v denials %d, want 429/1", a.StatusCode, a.Denials)
+	}
+	if a.GroupName != "eng" {
+		t.Fatalf("alice group: got %q, want eng (directory join)", a.GroupName)
+	}
+	if a.Model != "claude-x" || a.CostUSD != 0 || a.TotalTokens != 0 {
+		t.Fatalf("alice feed row: model %q cost %v tokens %d, want claude-x/0/0", a.Model, a.CostUSD, a.TotalTokens)
+	}
+	// bob has no group in the fixture — must come back empty, not fail.
+	if b, ok := byUser["bob"]; !ok || b.GroupName != "" {
+		t.Fatalf("bob feed row: %+v, want present with empty group", byUser["bob"])
+	}
+}
