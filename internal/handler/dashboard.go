@@ -46,6 +46,16 @@ func (h *DashboardHandler) HandleOverview(w http.ResponseWriter, r *http.Request
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	// "Saved · Hosted Models" KPI rides along server-side: the same CTE the
+	// user table uses, so the card is the column's sum by construction.
+	// A savings-query failure leaves the fields at zero rather than failing
+	// the whole overview — cost/token KPIs still render.
+	saved, ratio, applied, serr := h.store.GetHostedSavings(r.Context(), since, until, group, user, model, r.URL.Query().Get("ref"))
+	if serr != nil {
+		slog.Error("hosted savings query failed", "error", serr)
+	} else {
+		result.SavedUSD, result.SavingsRatio, result.RatioApplied = saved, ratio, applied
+	}
 	writeJSON(w, result)
 }
 

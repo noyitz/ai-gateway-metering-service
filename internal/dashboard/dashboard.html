@@ -312,6 +312,10 @@ let savingsRef='claude-opus-4-8';
 let tokenChart=null, userCostChart=null, tlChart=null, savingsChart=null;
 let currentSort='total_tokens', currentOrder='desc';
 let cachedGroups=[], cachedModels=[], cachedUsers=[];
+// Overview payload of the current refresh; it carries the server-computed
+// "Saved · Hosted Models" KPI (the sum of the user table's saved_usd
+// column), which is what the card shows — no client-side re-derivation.
+let cachedOverview=null;
 // Range-only (unfiltered) model stats, kept for the observed cache-ratio
 // basis in renderSavings so per-user/group filters don't zero it out.
 let catalogModels=[];
@@ -343,7 +347,7 @@ async function refresh(){
   // unfiltered "catalog" fetches so selecting a filter never shrinks
   // the list of things you can still pick.
   const [ov,gr,us,mo,tl,rc,rosterCat,modelCat]=await Promise.all([
-    api('/api/v1/dashboard/overview?'+filters),
+    api('/api/v1/dashboard/overview?'+filters+'&ref='+encodeURIComponent(savingsRef)),
     api('/api/v1/dashboard/groups?'+filters),
     api('/api/v1/dashboard/users?'+filters+'&sort='+currentSort+'&order='+currentOrder+'&ref='+encodeURIComponent(savingsRef)),
     api('/api/v1/dashboard/models?'+filters),
@@ -352,6 +356,7 @@ async function refresh(){
     api('/api/v1/dashboard/users?'+rangeOnly+'&limit=200'),
     api('/api/v1/dashboard/models?'+rangeOnly)
   ]);
+  cachedOverview=ov;
   cachedGroups=gr;
   cachedModels=modelFilter?mo.filter(function(m){return m.model===modelFilter}):mo;
   // Unfiltered (range-only) model stats: used as the basis for the observed
@@ -607,79 +612,34 @@ function isHostedModel(m){return m.hosted===true||HOSTED_PROVIDERS.indexOf(m.pro
 // Savings are the DIFFERENCE: what the hosted traffic would have cost on the
 // selected paid reference model, minus what it was actually billed, floored
 // at $0 per model. The reference is user-selectable and always shown, so the
-// number is never a hidden assumption. The pie splits the same window into
-// hosted vs vendor-API tokens. Server computes the user-table column with
-// identical arithmetic.
+// number is never a hidden assumption. The card shows the SERVER's number
+// (overview.saved_usd — the user table's saved_usd column summed by the very
+// same query), never a client-side re-derivation: a per-model loop cannot
+// reproduce per-user floors and cache-ratio decisions, and pretending it can
+// is how the card once showed $770 while the table showed $2,400. The pie
+// splits the same window into hosted vs vendor-API tokens (raw counts).
 function renderSavings(){
   populateSavingsRef();
-  // Prefer the seeded model_pricing rates served on the models API (same
-  // source the server uses for the per-user savings column); fall back to
-  // the JS map for models absent from the catalog or without seeded rates.
-  var ref=MODEL_PRICING_JS[savingsRef]||{i:5,o:25,cr:0.5,cw:0};
-  var refRow=((typeof catalogModels!=='undefined'&&catalogModels)||[]).find(function(m){return m.model===savingsRef;});
-  if(refRow&&(refRow.input_price_per_mtok||0)>0){
-    ref={i:refRow.input_price_per_mtok,o:refRow.output_price_per_mtok||0,cr:refRow.cache_read_price_per_mtok||0,cw:refRow.cache_write_price_per_mtok||0};
-  }
-  // Cache-aware pricing. prompt_tokens is the FULL input, decomposed into
-  // new + cached reads + cache writes (cached_input_tokens and
-  // cache_creation_tokens are subsets of it), so each tier must be priced
-  // once: new @ i, cached @ cr, cache-write @ cw.
-  // Hosted models served over the OpenAI dialect (vLLM chat/responses) carry
-  // no cache telemetry at all — their cached/cw columns read 0 and would be
-  // priced 100% at the full input rate. Real interactive agent traffic on the
-  // vendor models is overwhelmingly cache reads, so when a hosted model
-  // reports no cache at all we estimate the split from the observed cache
-  // ratio of vendor traffic (the selected reference model's own ratio first,
-  // all vendor models as fallback) and label the assumption on the KPI.
-  function paidCacheRatio(modelName){
-    var cached=0,prompt=0;
-    // Basis is the UNFILTERED model catalog, vendor traffic only: with a
-    // user/group filter that contains no vendor traffic (e.g. a hosted-only
-    // user), the filtered set has no cache ratio to observe, and hosted
-    // models — which never report cache — would drag the estimate to 0.
-    var basis=(typeof catalogModels!=='undefined'&&catalogModels&&catalogModels.length)?catalogModels:(cachedModels||[]);
-    basis.forEach(function(m){
-      if((m.cost_usd||0)<=0||isHostedModel(m))return;
-      if(modelName&&m.model!==modelName)return;
-      cached+=m.cached_input_tokens||0;
-      prompt+=m.prompt_tokens||0;
-    });
-    return prompt>0&&cached>0?cached/prompt:0;
-  }
-  var assumedRatio=paidCacheRatio(savingsRef)||paidCacheRatio(null);
-  var ratioApplied=false;
-  // Sum over the FILTERED set (the card must follow the user/group filter);
-  // only the assumed cache ratio comes from the unfiltered catalog above.
-  // The server computes the user-table column with the same arithmetic
-  // (same ratio basis, same reference rates), so filtered-KPI(user X) equals
-  // X's row in the column and the unfiltered card equals the column's sum.
-  var totalSaved=0, hostedTokens=0, totalTokens=0;
+  // The KPI number and its cache assumption come from the server
+  // (overview.saved_usd): the exact sum of the user table's saved_usd
+  // column, same reference model, same per-user×model floors. The card
+  // can't drift from the table because they are the same query.
+  var ov=cachedOverview||{};
+  var totalSaved=(typeof ov.saved_usd==='number')?ov.saved_usd:null;
+  var kpi=document.getElementById('kpi-savings');
+  if(kpi&&totalSaved!==null)kpi.textContent=fmtC(totalSaved);
+  var note=document.getElementById('kpi-savings-note');
+  if(note)note.textContent=ov.savings_ratio_applied?Math.round((ov.savings_ratio||0)*100)+'% input est. cached':'';
+  // The pie still splits the filtered window's TOKENS (hosted vs vendor)
+  // client-side — a token count needs no pricing arithmetic to agree.
+  var hostedTokens=0, totalTokens=0;
   (cachedModels||[]).forEach(function(m){
     var tot=m.total_tokens||0;
     totalTokens+=tot;
     if(!isHostedModel(m)||tot<=0)return;
     hostedTokens+=tot;
-    var prompt=m.prompt_tokens||0, completion=m.completion_tokens||0;
-    var cached=m.cached_input_tokens||0, cacheWrite=m.cache_creation_tokens||0;
-    if(cached===0&&cacheWrite===0&&prompt>0&&assumedRatio>0){
-      cached=Math.round(prompt*assumedRatio);
-      ratioApplied=true;
-    }
-    var newInput=Math.max(prompt-cached-cacheWrite,0);
-    var counterfactual=newInput*ref.i/1e6
-      +completion*ref.o/1e6
-      +cached*ref.cr/1e6
-      +cacheWrite*ref.cw/1e6;
-    // Net saving: the reference price minus what the hosted rate already
-    // billed. Floored at 0 per model so one model can never cancel another's
-    // saving (mirrors the server's GREATEST(...,0)).
-    totalSaved+=Math.max(counterfactual-(m.cost_usd||0),0);
   });
   var vendorTokens=Math.max(totalTokens-hostedTokens,0);
-
-  var kpi=document.getElementById('kpi-savings');if(kpi)kpi.textContent=fmtC(totalSaved);
-  var note=document.getElementById('kpi-savings-note');
-  if(note)note.textContent=ratioApplied?Math.round(assumedRatio*100)+'% input est. cached':'';
 
   if(savingsChart)savingsChart.destroy();
   var canvas=document.getElementById('savings-chart');
