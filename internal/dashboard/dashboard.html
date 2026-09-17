@@ -599,7 +599,11 @@ function populateSavingsRef(){
 // detected by price -- only by provider. The cost==0 catch-all stays for any
 // future deliberately-unpriced model.
 var HOSTED_PROVIDERS=['vllm','qwen'];
-function isHostedModel(m){return HOSTED_PROVIDERS.indexOf(m.provider||'')>=0||(m.cost_usd||0)===0;}
+// Server's hostedProviderCond verdict first: the metered provider label
+// (qwen-flash) drifts from the seeded pricing provider (vllm), so the
+// HOSTED_PROVIDERS list alone silently zeroed the Hosted pie. The rest is
+// fallback for responses from an older server.
+function isHostedModel(m){return m.hosted===true||HOSTED_PROVIDERS.indexOf(m.provider||'')>=0||(m.cost_usd||0)===0;}
 // Savings are the DIFFERENCE: what the hosted traffic would have cost on the
 // selected paid reference model, minus what it was actually billed, floored
 // at $0 per model. The reference is user-selectable and always shown, so the

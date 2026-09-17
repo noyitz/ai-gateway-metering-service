@@ -144,9 +144,13 @@ const listCostUSDExpr = `GREATEST(e.prompt_tokens - COALESCE(e.cached_input_toke
 // hostedProviderCond marks self-hosted models — everything served over our
 // own vLLM routes plus the legacy "qwen" alias row. Hosted traffic is
 // identified by provider, not by price: it bills at OpenRouter parity now,
-// so a $0 check would miss it. Requires usage_events aliased as `e` and
-// model_pricing as `p`.
-const hostedProviderCond = `COALESCE(p.provider,'') IN ('vllm','qwen')`
+// so a $0 check would miss it. The metered side of the test (e.provider
+// LIKE 'qwen-%') covers the live route labels (qwen-flash) so hosted traffic
+// is still hosted even for a model variant missing its seeded pricing row.
+// Requires usage_events aliased as `e` and model_pricing as `p`.
+// Every query that splices this in goes through fmt.Sprintf, so the LIKE
+// wildcard percent is doubled.
+const hostedProviderCond = `COALESCE(p.provider,'') IN ('vllm','qwen') OR COALESCE(e.provider,'') LIKE 'qwen-%%'`
 
 // displayNameExpr resolves a user's "First Last" from user_profiles, or
 // NULL when the profile is missing or has no names — callers fall back to
@@ -304,6 +308,12 @@ type ModelSummary struct {
 	CachedInputTokens   int64   `json:"cached_input_tokens"`
 	CacheCreationTokens int64   `json:"cache_creation_tokens"`
 	CostUSD             float64 `json:"cost_usd"`
+	// Hosted is the server's verdict (hostedProviderCond) that this model's
+	// traffic ran on our own routes. The metered Provider field is the route
+	// label — e.g. qwen-flash — which drifts from the seeded pricing provider
+	// (vllm), so anything that needs "is this hosted?" must trust this flag,
+	// not Provider. (The Hosted-vs-Vendor pie learned this the hard way.)
+	Hosted bool `json:"hosted"`
 	// Seeded per-model rates ($/Mtok) from model_pricing. The dashboard's
 	// savings KPI uses these instead of its hardcoded JS map so the card and
 	// the server-computed per-user savings column share one price source.
@@ -523,6 +533,7 @@ func (s *Store) GetDashboardModels(ctx context.Context, since, until time.Time, 
 			COALESCE(SUM(e.cached_input_tokens),0),
 			COALESCE(SUM(e.cache_creation_tokens),0),
 			COALESCE(ROUND(SUM(%s)::numeric, 2), 0),
+			bool_or(`+hostedProviderCond+`),
 			COALESCE(MAX(p.input_cost_per_mtok), 0),
 			COALESCE(MAX(p.output_cost_per_mtok), 0),
 			COALESCE(MAX(p.cache_read_cost_per_mtok), 0),
@@ -541,7 +552,7 @@ func (s *Store) GetDashboardModels(ctx context.Context, since, until time.Time, 
 	for rows.Next() {
 		var m ModelSummary
 		if err := rows.Scan(&m.Model, &m.Provider, &m.Requests, &m.TotalTokens, &m.PromptTokens, &m.CompletionTokens, &m.CachedInputTokens, &m.CacheCreationTokens, &m.CostUSD,
-			&m.InputPrice, &m.OutputPrice, &m.CacheReadPrice, &m.CacheWritePrice); err != nil {
+			&m.Hosted, &m.InputPrice, &m.OutputPrice, &m.CacheReadPrice, &m.CacheWritePrice); err != nil {
 			return nil, err
 		}
 		result = append(result, m)
