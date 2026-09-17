@@ -740,12 +740,11 @@ type RecentEvent struct {
 	CacheCreationTokens int     `json:"cache_creation_tokens"`
 	CostUSD             float64 `json:"cost_usd"`
 	UserAgent           string  `json:"user_agent"`
-	// StatusCode is the upstream HTTP status; nil (JSON null) when unknown.
+	// StatusCode is the HTTP status on the row; nil (JSON null) when unknown.
+	// Quota blocks are recorded here too — RecordQuotaDenial inserts a real
+	// usage_events row with status 429, so denials flow through this feed like
+	// any other error row.
 	StatusCode *int `json:"status_code"`
-	// Denials marks a synthesized feed row from the quota-denials ledger:
-	// the month's blocked-request tally for this (username, model), stamped
-	// at the newest block. Zero on real usage rows.
-	Denials int `json:"denials,omitempty"`
 }
 
 func (s *Store) GetRecentEvents(ctx context.Context, limit int, group, user, model string) ([]RecentEvent, error) {

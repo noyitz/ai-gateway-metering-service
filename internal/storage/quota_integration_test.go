@@ -377,19 +377,20 @@ func TestQuotaAuditTrail(t *testing.T) {
 	}
 }
 
-// TestQuotaDenialCounters covers the blocked-request ledger: repeated
-// denials upsert (not multiply-insert) per (username, month, model), a
-// stale month row never counts toward this month, the person view
-// aggregates across every login of one identity, and the admin totals sort
-// the most-blocked first.
-func TestQuotaDenialCounters(t *testing.T) {
+// TestQuotaDenialRows covers blocked-request records: each denial is one
+// usage_events row (retries are separate rows with their own timestamps),
+// the month tally ignores prior-month rows and upstream 429s (which carry a
+// real provider), the person view aggregates across every login of one
+// identity, the admin totals sort the most-blocked first, and the rows flow
+// through the Recent Activity feed like any other error row.
+func TestQuotaDenialRows(t *testing.T) {
 	s, ctx := openTestStore(t)
 	seedQuotaRoster(t, s, ctx)
 	quotaExec(t, s, ctx, `INSERT INTO person_identities (username, person_slug) VALUES ('alice_alt','alice')`)
 
 	// alice blocked twice on one model, once on another, once via her
-	// second login: four this-month denials for the person, two ledger
-	// usernames carrying them (3 + 1).
+	// second login: four this-month denial rows for the person, across two
+	// ledger usernames (3 + 1).
 	for i := 0; i < 2; i++ {
 		if err := s.RecordQuotaDenial(ctx, "alice", "claude-x"); err != nil {
 			t.Fatalf("record: %v", err)
@@ -401,20 +402,30 @@ func TestQuotaDenialCounters(t *testing.T) {
 	if err := s.RecordQuotaDenial(ctx, "alice_alt", "claude-x"); err != nil {
 		t.Fatalf("record: %v", err)
 	}
-	// A prior-month row must not leak into this month's numbers.
-	quotaExec(t, s, ctx, `INSERT INTO quota_denials (username, month, model, count) VALUES ('alice','2020-01','claude-x',99)`)
 
+	// Each record is its own row: deny-prefixed event id, provider gateway,
+	// status 429, zero spend, group resolved from the directory.
 	var n int
-	if err := s.db.QueryRowContext(ctx, `SELECT count FROM quota_denials WHERE username='alice' AND model='claude-x' AND month<>$1`, "2020-01").Scan(&n); err != nil || n != 2 {
-		t.Fatalf("upsert count: got %d err %v, want 2", n, err)
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM usage_events WHERE username='alice' AND provider='gateway' AND status_code=429`).Scan(&n); err != nil || n != 3 {
+		t.Fatalf("denial rows: got %d err %v, want 3", n, err)
 	}
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM usage_events WHERE username='alice' AND event_id LIKE 'deny-%' AND model='claude-x' AND group_name='eng' AND total_tokens=0 AND source='metering-quota'`).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("deny- rows: got %d err %v, want 2", n, err)
+	}
+
+	// A prior-month denial row and an upstream 429 (real provider — theirs,
+	// not our refusal) must not leak into this month's gateway tallies.
+	quotaExec(t, s, ctx, `INSERT INTO usage_events (event_id, username, model, provider, status_code, timestamp)
+		VALUES ('deny-old','alice','claude-x','gateway',429, NOW() - INTERVAL '13 months')`)
+	quotaExec(t, s, ctx, `INSERT INTO usage_events (event_id, username, model, provider, status_code)
+		VALUES ('up429','alice','claude-x','anthropic',429)`)
 
 	v, err := s.GetQuotaView(ctx, "alice", false)
 	if err != nil {
 		t.Fatalf("view: %v", err)
 	}
 	if v.DenialsThisMonth != 4 {
-		t.Fatalf("view denials: got %d, want 4 (cross-login, current month only)", v.DenialsThisMonth)
+		t.Fatalf("view denials: got %d, want 4 (cross-login, current month, gateway-only)", v.DenialsThisMonth)
 	}
 	// bob was never blocked.
 	if vb, err := s.GetQuotaView(ctx, "bob", false); err != nil || vb.DenialsThisMonth != 0 {
@@ -426,55 +437,37 @@ func TestQuotaDenialCounters(t *testing.T) {
 		t.Fatalf("totals: %v", err)
 	}
 	if total != 4 {
-		t.Fatalf("admin total: got %d, want 4 (stale month excluded)", total)
+		t.Fatalf("admin total: got %d, want 4 (stale month and upstream 429 excluded)", total)
 	}
 	if len(byUser) != 2 || byUser[0].Username != "alice" || byUser[0].Count != 3 {
-		t.Fatalf("admin breakdown: %+v, want alice(2) first", byUser)
+		t.Fatalf("admin breakdown: %+v, want alice(3) first", byUser)
 	}
-}
 
-// TestQuotaDenialFeedRows checks the Recent-Activity weaving: denial rows
-// come back in the RecentEvent shape with status 429, the month tally, the
-// directory group resolved, and stale-month ledgers excluded.
-func TestQuotaDenialFeedRows(t *testing.T) {
-	s, ctx := openTestStore(t)
-	seedQuotaRoster(t, s, ctx)
-
-	if err := s.RecordQuotaDenial(ctx, "alice", "claude-x"); err != nil {
-		t.Fatalf("record: %v", err)
-	}
-	if err := s.RecordQuotaDenial(ctx, "bob", "qwen-y"); err != nil {
-		t.Fatalf("record: %v", err)
-	}
-	quotaExec(t, s, ctx, `INSERT INTO quota_denials (username, month, model, count) VALUES ('alice','2020-01','old-m',99)`)
-
-	feed, err := s.RecentQuotaDenials(ctx, 20)
+	// The feed shows each block as its own row, no synthesis needed.
+	feed, err := s.GetRecentEvents(ctx, 50, "", "", "")
 	if err != nil {
 		t.Fatalf("feed: %v", err)
 	}
-	if len(feed) != 2 {
-		t.Fatalf("feed rows: got %d, want 2 (stale month excluded): %+v", len(feed), feed)
-	}
-	// Most recent first — both just written, order by count/model for determinism.
-	byUser := map[string]RecentEvent{}
+	var blockRows int
 	for _, e := range feed {
-		byUser[e.Username] = e
+		if e.StatusCode == nil || *e.StatusCode != 429 || e.Provider != "gateway" {
+			continue // upstream 429s are ordinary events, not our refusals
+		}
+		// The feed has no time window (it is LIMIT-bounded), so the
+		// 13-months-old row written above shows up too — ignore it here;
+		// its exclusion from the MONTH tallies is already asserted.
+		if time.Since(e.Timestamp) > time.Hour {
+			continue
+		}
+		blockRows++
+		if e.Username != "bob" && e.GroupName != "eng" {
+			t.Fatalf("block feed row %s: group %q, want eng (directory-resolved)", e.Username, e.GroupName)
+		}
+		if e.CostUSD != 0 || e.TotalTokens != 0 {
+			t.Fatalf("block feed row %s: cost %v tokens %d, want 0/0", e.Username, e.CostUSD, e.TotalTokens)
+		}
 	}
-	a, ok := byUser["alice"]
-	if !ok {
-		t.Fatalf("alice missing from feed")
-	}
-	if a.StatusCode == nil || *a.StatusCode != 429 || a.Denials != 1 {
-		t.Fatalf("alice feed row: status %+v denials %d, want 429/1", a.StatusCode, a.Denials)
-	}
-	if a.GroupName != "eng" {
-		t.Fatalf("alice group: got %q, want eng (directory join)", a.GroupName)
-	}
-	if a.Model != "claude-x" || a.CostUSD != 0 || a.TotalTokens != 0 {
-		t.Fatalf("alice feed row: model %q cost %v tokens %d, want claude-x/0/0", a.Model, a.CostUSD, a.TotalTokens)
-	}
-	// bob has no group in the fixture — must come back empty, not fail.
-	if b, ok := byUser["bob"]; !ok || b.GroupName != "" {
-		t.Fatalf("bob feed row: %+v, want present with empty group", byUser["bob"])
+	if blockRows != 4 {
+		t.Fatalf("block feed rows: got %d, want 4 (each block its own row, both logins)", blockRows)
 	}
 }

@@ -111,22 +111,11 @@ var quotaMigrations = []string{
 	// every gateway request inside its 5s subrequest budget; the best
 	// existing index was username-only with a timestamp recheck.
 	`CREATE INDEX IF NOT EXISTS idx_usage_events_user_ts ON usage_events (username, timestamp)`,
-	// Blocked-request counters. The gateway's blocking entitlement call is a
-	// per-request event whose 200 hasAccess:false answer deterministically
-	// becomes the client-visible 429 (fail-open means NO 429 is sent when we
-	// are unreachable), so counting our own denials equals the gateway's 429
-	// count by construction — no gateway-side report-back needed. Aggregated
-	// per (ledger username, calendar month, model) so denied retries cost one
-	// cheap upsert, not a row each; month keying makes history expire by
-	// lookup, like grants.
-	`CREATE TABLE IF NOT EXISTS quota_denials (
-		username TEXT NOT NULL,
-		month TEXT NOT NULL,
-		model TEXT NOT NULL DEFAULT '',
-		count INT NOT NULL DEFAULT 1,
-		last_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		PRIMARY KEY (username, month, model)
-	)`,
+	// Blocked requests live in usage_events themselves — one row per denial,
+	// exactly like the 4xx rows the gateway's usage report carries (see
+	// RecordQuotaDenial). The earlier aggregated quota_denials counter table
+	// is retired: fresh installs never create it, existing databases drop it.
+	`DROP TABLE IF EXISTS quota_denials`,
 }
 
 func (s *Store) migrateQuota(ctx context.Context) error {
@@ -621,72 +610,38 @@ func (s *Store) ListQuotaRequests(ctx context.Context, approverSlug string, all 
 
 // --- Denial counters (who has been 429'd, and how often) ---
 
-// RecordQuotaDenial counts one entitlement answer of hasAccess:false.
-// Callers must never block on it: it runs off the request path (the answer
-// has already been written to the gateway), and its failure costs only a
-// missing data point, never a wrong entitlement.
+// RecordQuotaDenial writes one blocked request into usage_events — the
+// same ledger the gateway's usage report lands in, so a 429 reads like any
+// other error row (404s included): exact timestamp, zero tokens, zero cost,
+// every retry its own line. provider='gateway' marks it as OUR refusal
+// (an upstream 429 arrives via the normal event report with a real
+// provider). Callers must never block on it: it runs off the request path
+// (the answer has already been written to the gateway), and its failure
+// costs only a missing data point, never a wrong entitlement.
 func (s *Store) RecordQuotaDenial(ctx context.Context, username, model string) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO quota_denials (username, month, model)
-		VALUES ($1, to_char(date_trunc('month', NOW()), 'YYYY-MM'), $2)
-		ON CONFLICT (username, month, model)
-		DO UPDATE SET count = quota_denials.count + 1, last_at = NOW()`,
+		INSERT INTO usage_events (event_id, username, model, provider, group_name, status_code, source)
+		VALUES ('deny-' || gen_random_uuid()::text, $1, $2, 'gateway',
+			(SELECT p.group_name FROM person_identities pi
+			 JOIN people p ON p.slug = pi.person_slug
+			 WHERE pi.username = $1 LIMIT 1),
+			429, 'metering-quota')`,
 		username, model)
 	return err
 }
 
-// sumQuotaDenials totals this month's blocked requests across a person's
+// sumQuotaDenials counts this month's gateway refusals across a person's
 // logins (denials are keyed by the ledger username the gateway used, which
-// is only one of several identities for multi-login people).
+// is only one of several identities for multi-login people). Covered by
+// idx_usage_events_user_ts like the spend query itself.
 func (s *Store) sumQuotaDenials(ctx context.Context, logins []string) int {
 	var n int
 	_ = s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(count), 0) FROM quota_denials
-		WHERE username = ANY($1) AND month = to_char(date_trunc('month', NOW()), 'YYYY-MM')`,
+		SELECT count(*) FROM usage_events
+		WHERE username = ANY($1) AND provider = 'gateway' AND status_code = 429
+		  AND timestamp >= date_trunc('month', NOW())`,
 		logins).Scan(&n)
 	return n
-}
-
-// RecentQuotaDenials returns feed-shaped rows for the dashboard's Recent
-// Activity list: one row per (username, model) with blocks this month,
-// stamped at the newest block and carrying the month's tally. They share
-// the RecentEvent shape so the live feed renders them as 429 rows beside
-// real usage; group comes from the directory (denials have no event group),
-// tokens/cost are honestly zero — a blocked request spent nothing.
-func (s *Store) RecentQuotaDenials(ctx context.Context, limit int) ([]RecentEvent, error) {
-	if limit <= 0 || limit > 50 {
-		limit = 20
-	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT d.last_at, d.username,
-			NULLIF(TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')), ''),
-			COALESCE(p.group_name, ''), d.model, d.count
-		FROM quota_denials d
-		LEFT JOIN person_identities pi ON pi.username = d.username
-		LEFT JOIN people p ON p.slug = pi.person_slug
-		WHERE d.month = to_char(date_trunc('month', NOW()), 'YYYY-MM')
-		ORDER BY d.last_at DESC
-		LIMIT $1`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []RecentEvent
-	for rows.Next() {
-		var e RecentEvent
-		var displayName sql.NullString
-		var count int
-		if err := rows.Scan(&e.Timestamp, &e.Username, &displayName, &e.GroupName, &e.Model, &count); err != nil {
-			return nil, err
-		}
-		e.DisplayName = displayName.String
-		st := 429
-		e.StatusCode = &st
-		e.Denials = count
-		e.Provider = "gateway"
-		out = append(out, e)
-	}
-	return out, rows.Err()
 }
 
 // QuotaDenialStat is one username's blocked-request tally for the admin view.
@@ -697,18 +652,21 @@ type QuotaDenialStat struct {
 }
 
 // QuotaDenialTotals: this month's blocked-request total plus the per-user
-// breakdown (newest activity per user, most-blocked first).
+// breakdown (newest activity per user, most-blocked first), read straight
+// from the usage ledger (gateway refusals carry provider='gateway').
 func (s *Store) QuotaDenialTotals(ctx context.Context) (int, []QuotaDenialStat, error) {
 	var total int
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(count), 0) FROM quota_denials
-		WHERE month = to_char(date_trunc('month', NOW()), 'YYYY-MM')`).Scan(&total); err != nil {
+		SELECT count(*) FROM usage_events
+		WHERE provider = 'gateway' AND status_code = 429
+		  AND timestamp >= date_trunc('month', NOW())`).Scan(&total); err != nil {
 		return 0, nil, err
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT username, SUM(count), MAX(last_at) FROM quota_denials
-		WHERE month = to_char(date_trunc('month', NOW()), 'YYYY-MM')
-		GROUP BY username ORDER BY SUM(count) DESC LIMIT 50`)
+		SELECT username, count(*), MAX(timestamp) FROM usage_events
+		WHERE provider = 'gateway' AND status_code = 429
+		  AND timestamp >= date_trunc('month', NOW())
+		GROUP BY username ORDER BY count(*) DESC LIMIT 50`)
 	if err != nil {
 		return 0, nil, err
 	}
