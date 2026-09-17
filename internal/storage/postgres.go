@@ -518,7 +518,12 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 // parameter"), which is why this can't just always say $7.
 func hostedSavingsWithSQL(refParamNum int) string {
 	ref := fmt.Sprintf("$%d", refParamNum)
-	const cacheNoiseThreshold = 0.01 // 1% of prompt tokens; see model_cache comment
+	// Inlined as a literal (not a %v verb) so it can never land in the
+	// wrong Sprintf slot the way a positional argument can — Sprintf
+	// matches args to verbs in the order the verbs appear in the format
+	// string, not in argument-list order, and this function already has
+	// several %s verbs ahead of where the threshold is used.
+	const cacheNoiseThresholdSQL = "0.01" // 1% of prompt tokens; see model_cache comment
 	return fmt.Sprintf(`
 		WITH r_ref AS (
 			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
@@ -545,7 +550,7 @@ func hostedSavingsWithSQL(refParamNum int) string {
 		model_cache AS (
 			SELECT e.model,
 			       (SUM(COALESCE(e.cached_input_tokens, 0) + COALESCE(e.cache_creation_tokens, 0))::float
-			         / NULLIF(SUM(e.prompt_tokens), 0)) > %v AS has_cache
+			         / NULLIF(SUM(e.prompt_tokens), 0)) > `+cacheNoiseThresholdSQL+` AS has_cache
 			FROM usage_events e
 			WHERE e.timestamp >= $1 AND e.timestamp < $2
 			GROUP BY e.model
@@ -579,7 +584,7 @@ func hostedSavingsWithSQL(refParamNum int) string {
 			FROM fm CROSS JOIN pr CROSS JOIN rat
 			WHERE (fm.hosted OR fm.cost = 0) AND fm.tot > 0
 			GROUP BY fm.username
-		)`, cacheNoiseThreshold, costUSDExpr, costUSDExpr, costUSDExpr)
+		)`, costUSDExpr, costUSDExpr, costUSDExpr)
 }
 
 // GetHostedSavings returns the org-wide "Saved · Hosted Models" KPI: the
