@@ -166,7 +166,8 @@ func (h *OrgHandler) HandleScope(w http.ResponseWriter, r *http.Request) {
 }
 
 // scopeRoot resolves which subtree a ?root= request may read. Admins may
-// name any slug (defaulting to the org's first root). A manager may name
+// name any slug; with no root they see the whole organisation (empty slug).
+// A manager may name
 // their own slug or any slug INSIDE their subtree — that is the manager of
 // managers drill-down: focusing the team view on one subordinate manager's
 // branch. Anyone outside the tree gets a 403; people with no directory entry
@@ -176,15 +177,11 @@ func (h *OrgHandler) scopeRoot(w http.ResponseWriter, r *http.Request) (string, 
 	me := caller(r, h.cfg)
 	reqRoot := storage.SlugNorm(r.URL.Query().Get("root"))
 	if IsAdmin(h.cfg, r) {
-		if reqRoot != "" {
-			return reqRoot, true
-		}
-		roots, err := h.store.RootSlugs(r.Context())
-		if err != nil || len(roots) == 0 {
-			http.Error(w, "directory empty — import the roster first", http.StatusNotFound)
-			return "", false
-		}
-		return roots[0], true
+		// No explicit root means the WHOLE organisation — the empty
+		// string, which the store spells as "every root". It used to
+		// silently mean "the alphabetically-first root's branch", so
+		// the manager page showed admins an unrelated person's team.
+		return reqRoot, true
 	}
 	_, _, slug, err := h.store.ScopeUsernames(r.Context(), me)
 	if err != nil || slug == "" {

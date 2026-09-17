@@ -231,7 +231,7 @@ function drillTo(slug){
   buildFilter();
   load();
 }
-function defaultTitle(){ return 'Team view' }
+function defaultTitle(){ return adminScope ? 'Org view' : 'Team view' }
 let rows0=[]; // full (undrilled) roster, kept for filter labels/titles
 
 function buildFilter(){
@@ -240,7 +240,7 @@ function buildFilter(){
   // Sub-managers are the drill targets; with none there is nothing to focus.
   if(!mgrs.length&&!drillSlug){sel.style.display='none';return;}
   const depth=r=>{let d=0,cur=r;const seen=new Set();while(cur.manager_slug&&!seen.has(cur.manager_slug)){seen.add(cur.manager_slug);const p=rows0.find(x=>x.slug===cur.manager_slug);if(!p)break;cur=p;d++;}return d;};
-  sel.innerHTML='<option value="">Whole team</option>'+mgrs.sort((a,b)=>depth(a)-depth(b)).map(r=>
+  sel.innerHTML='<option value="">'+(adminScope?'Whole organisation':'Whole team')+'</option>'+mgrs.sort((a,b)=>depth(a)-depth(b)).map(r=>
     '<option value="'+esc(r.slug)+'"'+(r.slug===drillSlug?' selected':'')+'>'+esc('　'.repeat(depth(r))+r.full_name)+'</option>').join('');
   sel.style.display='';
 }
@@ -267,6 +267,7 @@ async function load(){
 }
 let drillRoot=''; // slug of the subtree currently shown (own slug for managers, '' for whole org)
 let scopeRootSlug='';
+let adminScope=false; // admins see the whole organisation, not a manager's branch
 
 async function loadTimeline(){
   // scoped via the shared endpoint: non-admin callers get their own user
@@ -332,7 +333,9 @@ async function boot(){
     drillRoot=scopeRootSlug;
     document.getElementById('scopeSub').textContent=sc.scopeSize+' people in your tree · their spend and yours, this window';
   } else if(sc.scope==='admin'){
-    document.getElementById('scopeSub').textContent='Admin — whole organisation. Filter to any manager’s branch above.';
+    adminScope=true;
+    document.getElementById('scopeTitle').textContent='Org view';
+    document.getElementById('scopeSub').textContent='Admin — everyone in the organisation, one table. Filter to any manager’s branch above.';
   }
   if(sc.scope!=='self')load();
   else loadSelf();
