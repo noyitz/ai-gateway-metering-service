@@ -142,7 +142,6 @@ body{background:var(--bg);color:var(--t);font-family:'Inter',-apple-system,sans-
   <nav>
     <a href="/dashboard">Usage</a>
     <a href="/manager" id="tab-team" style="display:none" title="Usage for everyone on your team">My team</a>
-    <a href="/me" id="tab-me" style="display:none">My account</a>
     <a href="/routing" class="on" id="tab-routing">Routing</a>
     <a href="/compression" id="tab-compression" style="display:none">Compression</a>
     <a href="/admin" id="tab-admin" style="display:none">Admin</a>
@@ -408,7 +407,6 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
   }
   ab.style.display='';
   document.getElementById('abOut').style.display='';
-  document.getElementById('tab-me').style.display='';
   if(d.isManager||d.isAdmin)document.getElementById('tab-team').style.display='';
   document.getElementById('tab-compression').style.display='';
   document.getElementById('tab-admin').style.display='';

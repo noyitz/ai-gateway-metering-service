@@ -178,7 +178,11 @@ func main() {
 
 	// User pages — session required. /whoami backs both the legacy pages and
 	// the redesigned user dashboard (name, groups, admin flag, impersonation).
-	mux.HandleFunc("/me", auth(adminHandler.ServeMyAccount))
+	// The legacy "My account" page is retired — its tab is gone from every
+	// page and old bookmarks redirect to the main dashboard instead of 404.
+	mux.HandleFunc("/me", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/", http.StatusMovedPermanently)
+	})
 	mux.HandleFunc("/me/keys", auth(keysHandler.HandleKeys))
 	mux.HandleFunc("/me/keys/", auth(keysHandler.HandleKeys))
 	mux.HandleFunc("/me/whoami", auth(keysHandler.HandleWhoAmI))

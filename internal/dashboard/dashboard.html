@@ -134,7 +134,6 @@ tr.clickable{cursor:pointer}
   <nav>
     <a href="/dashboard" class="on">Usage</a>
     <a href="/manager" id="tab-team" style="display:none" title="Usage for everyone on your team">My team</a>
-    <a href="/me" id="tab-me" style="display:none">My account</a>
     <a href="/routing" id="tab-routing" style="display:none">Routing</a>
     <a href="/compression" id="tab-compression" style="display:none">Compression</a>
     <a href="/admin" id="tab-admin" style="display:none">Admin</a>
@@ -940,7 +939,6 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
     ab.innerHTML=pmEsc(d.display_name||d.user)+(d.isSuperAdmin?' <span class="role">(super admin)</span>':d.isAdmin?' <span class="role">(admin)</span>':'');
     ab.style.display='';
     document.getElementById('abOut').style.display='';
-    document.getElementById('tab-me').style.display='';
     // A manager (anyone with reports) or an admin gets the "My team" tab —
     // the /manager page lists every team member, even those with no usage
     // yet, which the scoped Usage view can't show (it only lists activity).
