@@ -474,18 +474,41 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 //	             ratio toward 0.
 //	pr           reference model rates from model_pricing (aggregated so
 //	             the CTE always yields exactly one row).
+//	model_cache  per-MODEL cache fraction across the whole window,
+//	             unfiltered by group/user/model (same convention as
+//	             r_ref/r_all) — whether a model reports cache telemetry AT
+//	             ALL is a property of the model/route, not of any one
+//	             user's traffic through it. Below cacheNoiseThreshold the
+//	             model is treated as reporting NO cache telemetry, full
+//	             stop, even for the rare user×model pair whose own sum
+//	             happens to be nonzero. This is deliberate: one stray
+//	             8,800-cached-token event out of 875M prompt tokens on
+//	             Inferact/Qwen3.8-Flash-Next-NVFP4 (every one of that
+//	             model's other ~9,800 events across 17 users reports
+//	             exactly 0) used to flip the estimate off for that ONE
+//	             user only, pricing their traffic at the full input rate
+//	             while everyone else on the identical model got the 95%
+//	             cache assumption — a few noise tokens costing that user
+//	             ~$1,850 of counterfactual savings relative to a peer with
+//	             materially identical usage. Deciding per model instead of
+//	             per user×model closes that gap. Models that genuinely
+//	             report cache (Qwen3.8-27B-FP8 at 51%, qwen38-flash-next
+//	             at 83%) sit far above the threshold and keep using their
+//	             real, literal numbers.
 //	fm           per-user-per-model totals over the active filters, plus
 //	             a `hosted` flag (provider vllm / qwen seed or the qwen-*
-//	             route label). A model also counts as hosted when its
-//	             metered cost is 0 with real tokens.
+//	             route label) and the model's hasCache verdict. A model
+//	             also counts as hosted when its metered cost is 0 with
+//	             real tokens.
 //	sv           per-user savings: for each hosted model, what its traffic
 //	             would have cost on the reference rates minus what it was
 //	             actually billed (hosted models bill at OpenRouter parity,
 //	             not $0), floored at 0 per user×model so one model can
 //	             never cancel another's saving. Cache-aware: cache-write
 //	             tokens are deducted from the fresh-input term so each
-//	             tier is priced once; a hosted row with no cache telemetry
-//	             gets the observed ratio applied (rounded, per row).
+//	             tier is priced once; a hosted row on a model with no real
+//	             cache telemetry gets the observed ratio applied, no
+//	             matter what that row's own literal cached count reads.
 //
 // Positional params: $1 since, $2 until, $3 group, $4 user, $5 model,
 // refParamNum reference model — $7 for GetDashboardUsers (whose $6 is the
@@ -495,6 +518,7 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 // parameter"), which is why this can't just always say $7.
 func hostedSavingsWithSQL(refParamNum int) string {
 	ref := fmt.Sprintf("$%d", refParamNum)
+	const cacheNoiseThreshold = 0.01 // 1% of prompt tokens; see model_cache comment
 	return fmt.Sprintf(`
 		WITH r_ref AS (
 			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
@@ -518,24 +542,34 @@ func hostedSavingsWithSQL(refParamNum int) string {
 			       COALESCE(MAX(cache_read_cost_per_mtok), 0) as cr, COALESCE(MAX(cache_write_cost_per_mtok), 0) as cw
 			FROM model_pricing WHERE model = `+ref+`
 		),
+		model_cache AS (
+			SELECT e.model,
+			       (SUM(COALESCE(e.cached_input_tokens, 0) + COALESCE(e.cache_creation_tokens, 0))::float
+			         / NULLIF(SUM(e.prompt_tokens), 0)) > %v AS has_cache
+			FROM usage_events e
+			WHERE e.timestamp >= $1 AND e.timestamp < $2
+			GROUP BY e.model
+		),
 		fm AS (
 			SELECT e.username, e.model,
 				SUM(e.prompt_tokens) as prompt, SUM(e.completion_tokens) as completion,
 				SUM(COALESCE(e.cached_input_tokens, 0)) as cached, SUM(COALESCE(e.cache_creation_tokens, 0)) as cwrite,
 				SUM(e.total_tokens) as tot, SUM(%s) as cost,
-				bool_or(`+hostedProviderCond+`) as hosted
+				bool_or(`+hostedProviderCond+`) as hosted,
+				COALESCE(bool_and(COALESCE(mc.has_cache, false)), false) as model_has_cache
 			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+			LEFT JOIN model_cache mc ON mc.model = e.model
 			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 			GROUP BY e.username, e.model
 		),
 		sv AS (
 			SELECT fm.username, SUM(GREATEST(
 				(GREATEST(fm.prompt
-					- CASE WHEN fm.cached = 0 AND fm.cwrite = 0 AND fm.prompt > 0 AND rat.r > 0
+					- CASE WHEN NOT fm.model_has_cache AND fm.prompt > 0 AND rat.r > 0
 					       THEN LEAST(ROUND(fm.prompt * rat.r), fm.prompt)
 					       ELSE fm.cached END
 					- fm.cwrite, 0) * pr.i
-				+ CASE WHEN fm.cached = 0 AND fm.cwrite = 0 AND fm.prompt > 0 AND rat.r > 0
+				+ CASE WHEN NOT fm.model_has_cache AND fm.prompt > 0 AND rat.r > 0
 				       THEN LEAST(ROUND(fm.prompt * rat.r), fm.prompt)
 				       ELSE fm.cached END * pr.cr
 				+ fm.cwrite * pr.cw
@@ -545,7 +579,7 @@ func hostedSavingsWithSQL(refParamNum int) string {
 			FROM fm CROSS JOIN pr CROSS JOIN rat
 			WHERE (fm.hosted OR fm.cost = 0) AND fm.tot > 0
 			GROUP BY fm.username
-		)`, costUSDExpr, costUSDExpr, costUSDExpr)
+		)`, cacheNoiseThreshold, costUSDExpr, costUSDExpr, costUSDExpr)
 }
 
 // GetHostedSavings returns the org-wide "Saved · Hosted Models" KPI: the
