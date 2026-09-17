@@ -105,7 +105,7 @@ func main() {
 	}
 
 	eventsHandler := handler.NewEventsHandler(store)
-	entitlementsHandler := handler.NewEntitlementsHandler(store)
+	entitlementsHandler := handler.NewEntitlementsHandler(store, cfg)
 	dashboardHandler := handler.NewDashboardHandler(store, cfg)
 
 	// Kubernetes adapter — optional. It stays disabled until model/provider
@@ -145,6 +145,7 @@ func main() {
 	keysHandler := handler.NewKeysHandler(k8sClient, cfg, store)
 	profilesHandler := handler.NewProfilesHandler(store)
 	orgHandler := handler.NewOrgHandler(store, cfg, maasClient)
+	quotaHandler := handler.NewQuotaHandler(store, cfg)
 	auth := authHandler.RequireAuth
 
 	mux := http.NewServeMux()
@@ -253,6 +254,16 @@ func main() {
 	mux.HandleFunc("/api/v1/org/tree", auth(orgHandler.HandleOrgTree))
 	mux.HandleFunc("/api/v1/org/usage", auth(orgHandler.HandleOrgUsage))
 	mux.HandleFunc("/api/v1/org/person", auth(orgHandler.HandleOrgPerson))
+
+	// Monthly dollar quotas. The admin endpoints carry their own super-admin
+	// check that answers fetch() with a 403 instead of RequireSuperAdmin's
+	// redirect; /me and /org endpoints scope internally like the org APIs.
+	mux.HandleFunc("/api/v1/admin/quota/policy", auth(quotaHandler.HandleAdminPolicy))
+	mux.HandleFunc("/api/v1/admin/quota/overrides", auth(quotaHandler.HandleAdminOverrides))
+	mux.HandleFunc("/api/v1/me/quota", auth(quotaHandler.HandleMe))
+	mux.HandleFunc("/api/v1/me/quota/request", auth(quotaHandler.HandleMeRequest))
+	mux.HandleFunc("/api/v1/org/quota-requests", auth(quotaHandler.HandleOrgRequests))
+	mux.HandleFunc("/api/v1/org/quota-requests/", auth(quotaHandler.HandleOrgRequestAction))
 
 	// Directory administration — super-admin only (backs the console's
 	// People & Org and Keys tabs).

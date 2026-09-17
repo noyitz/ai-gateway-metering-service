@@ -550,6 +550,7 @@ td .tag{white-space:nowrap}
   <button class="vtab" id="vtab-keys" onclick="showTab('keys')">Keys<span class="tcount" id="badge-keys" style="display:none"></span></button>
   <button class="vtab" id="vtab-people" onclick="showTab('people')">Users<span class="tcount" id="badge-people" style="display:none"></span></button>
   <button class="vtab" id="vtab-platform" onclick="showTab('platform')">Platform<span class="tcount" id="badge-platform" style="display:none"></span></button>
+  <button class="vtab" id="vtab-quotas" onclick="showTab('quotas')">Quotas<span class="tcount" id="badge-quotas" style="display:none"></span></button>
   <div class="vtab-tools">
     <span id="last-updated"></span>
     <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="refreshTab(activeTab,true)">Refresh</button>
@@ -716,6 +717,36 @@ td .tag{white-space:nowrap}
           <div class="loading"><div class="spinner"></div>Loading subscriptions...</div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB: Quotas ============ -->
+<div class="tab-panel" id="tab-quotas">
+
+  <div class="card">
+    <div class="card-hdr">
+      <div>
+        <span class="card-title">Monthly Budget Policy</span>
+        <span class="card-count" id="quota-policy-meta"></span>
+      </div>
+    </div>
+    <div id="quota-policy-body">
+      <div class="loading"><div class="spinner"></div>Loading policy...</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr">
+      <div>
+        <span class="card-title">Overrides</span>
+        <span class="card-count" id="quota-overrides-count"></span>
+      </div>
+      <button class="btn btn-outline" style="padding:5px 12px;font-size:10px" onclick="loadQuotaPolicy();loadQuotaOverrides()">Refresh</button>
+    </div>
+    <div class="ts" style="margin:0 16px 8px">Per-person limits key on the directory slug (covers every login of that person); per-group limits key on the group name. Resolution: person → group → default. Adding an existing scope+principal updates it; deleting one falls back to the next level, never to unlimited.</div>
+    <div id="quota-overrides-body">
+      <div class="loading"><div class="spinner"></div>Loading overrides...</div>
     </div>
   </div>
 </div>
@@ -890,7 +921,7 @@ function resolveModelName(crdName) {
 /* ================================================================
    Tabs — one panel visible, lazy load on first open, deep-linkable
    ================================================================ */
-var TABS = ['users', 'keys', 'people', 'platform'];
+var TABS = ['users', 'keys', 'people', 'platform', 'quotas'];
 
 function showTab(name, pushHash) {
   if (TABS.indexOf(name) < 0) name = 'users';
@@ -927,6 +958,12 @@ function refreshTab(name, manual) {
     loadPeople();
     loadValidGroups();
     loadRoles();
+  } else if (name === 'quotas') {
+    loadQuotaPolicy();
+    loadQuotaOverrides();
+    // principal pickers read these caches; cold-page loads land here first
+    loadPeople(function() { fillQuotaPickers(); });
+    loadValidGroups();
   }
   if (manual) touchUpdated();
 }
@@ -946,6 +983,154 @@ function setTabBadge(tab, n, alert) {
   } else {
     b.style.display = 'none';
   }
+}
+
+/* ================================================================
+   Quotas tab — monthly $ budgets (policy + per-user/group overrides).
+   The enforcement toggle is the kill switch for gateway 429s, so it
+   saves through the confirm dialog and never silently on checkbox
+   click. Calendar month follows the DB clock (UTC), same window the
+   legacy token quota uses — the copy says so in the user's terms.
+   ================================================================ */
+var quotaPolicy = null;
+
+function loadQuotaPolicy() {
+  fetchJSON('/api/v1/admin/quota/policy').then(function(p) {
+    quotaPolicy = p;
+    renderQuotaPolicy();
+  }).catch(function(err) {
+    document.getElementById('quota-policy-body').innerHTML = '<div class="err-msg">Policy: ' + esc(err.message) + '</div>';
+  });
+}
+
+function renderQuotaPolicy() {
+  if (!quotaPolicy) return;
+  var enforced = !!quotaPolicy.enforced;
+  document.getElementById('quota-policy-meta').textContent =
+    'last change ' + new Date(quotaPolicy.updated_at).toLocaleString('en-US', { hour12: false }) +
+    (quotaPolicy.updated_by ? ' by ' + quotaPolicy.updated_by : '');
+  document.getElementById('quota-policy-body').innerHTML =
+    '<div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;padding:14px 16px">' +
+      '<div>' +
+        '<label style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:6px">Default monthly limit (USD)</label>' +
+        '<div style="display:flex;gap:10px;align-items:center">' +
+          '<input type="number" id="quota-default" min="1" step="1" value="' + esc(quotaPolicy.default_monthly_usd) + '" style="width:120px">' +
+          '<button class="btn btn-grn" style="padding:7px 18px;font-size:11px" onclick="saveQuotaLimit()">Save</button>' +
+        '</div>' +
+        '<div class="ts" style="margin-top:8px">Everyone without an override gets this.</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:260px">' +
+        '<label style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:6px">Gateway enforcement</label>' +
+        '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+          '<label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--t1);cursor:pointer">' +
+            '<input type="checkbox" id="quota-enforced" ' + (enforced ? 'checked' : '') + ' style="width:auto">' +
+            'Block over-limit requests with 429' +
+          '</label>' +
+          '<button class="btn ' + (enforced ? 'btn-red' : 'btn-grn') + '" style="padding:7px 18px;font-size:11px" onclick="saveQuotaEnforce()">' +
+            (enforced ? 'Turn off' : 'Turn on') + '</button>' +
+          '<span class="badge ' + (enforced ? 'badge-grn' : 'badge-gray') + '" style="font-size:9px">' +
+            (enforced ? 'ENFORCING' : 'OFF — tracking only') + '</span>' +
+        '</div>' +
+        '<div class="ts" style="margin-top:8px">Limits cover the calendar month (UTC). When on, a user at or over their limit is denied at the gateway from their next request; over-limit users request more from their dashboard and their manager approves. While this service is unreachable the gateway admits traffic (fail-open) — enforcement pauses, it never blocks on an outage.</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function saveQuotaLimit() {
+  var v = parseFloat(document.getElementById('quota-default').value);
+  if (!(v > 0)) { showToast('Enter a positive monthly limit', 'error'); return; }
+  updateJSON('/api/v1/admin/quota/policy', 'PATCH', { default_monthly_usd: v }).then(function() {
+    showToast('Default limit saved', 'success');
+    loadQuotaPolicy();
+  }).catch(function(err) { showToast('Save failed: ' + err.message, 'error'); });
+}
+
+function saveQuotaEnforce() {
+  var want = document.getElementById('quota-enforced').checked;
+  if (quotaPolicy && !!quotaPolicy.enforced === want) { showToast('Enforcement unchanged', 'error'); return; }
+  if (!want) { applyQuotaEnforce(false); return; }
+  if (!confirm('Turn on gateway enforcement? Anyone at or over their monthly limit — including approvals still pending — gets 429 on their next request.')) {
+    renderQuotaPolicy(); // snap the checkbox back to server truth
+    return;
+  }
+  applyQuotaEnforce(true);
+}
+
+function applyQuotaEnforce(want) {
+  updateJSON('/api/v1/admin/quota/policy', 'PATCH', { enforced: want }).then(function() {
+    showToast(want ? 'Quotas enforced at the gateway' : 'Gateway enforcement off — spend still tracked', 'success');
+    loadQuotaPolicy();
+    loadQuotaOverrides();
+  }).catch(function(err) { showToast('Failed: ' + err.message, 'error'); loadQuotaPolicy(); });
+}
+
+function fillQuotaPickers() {
+  var opts = {};
+  (peopleAll || []).forEach(function(p) { opts[p.slug] = true; });
+  (validGroups || []).forEach(function(g) { if (g) opts[g] = true; });
+  var dl = document.getElementById('quota-principals');
+  if (!dl) return;
+  dl.innerHTML = Object.keys(opts).sort().map(function(k) { return '<option value="' + esc(k) + '">'; }).join('');
+}
+
+function loadQuotaOverrides() {
+  fetchJSON('/api/v1/admin/quota/overrides').then(function(list) {
+    renderQuotaOverrides(Array.isArray(list) ? list : []);
+  }).catch(function(err) {
+    document.getElementById('quota-overrides-body').innerHTML = '<div class="err-msg">Overrides: ' + esc(err.message) + '</div>';
+  });
+}
+
+function renderQuotaOverrides(list) {
+  document.getElementById('quota-overrides-count').textContent = list.length ? list.length + '' : '';
+  var html = '<div class="tbl-wrap"><table><thead><tr>' +
+    '<th>Scope</th><th>Principal</th><th>$/month</th><th>Updated</th><th></th>' +
+    '</tr></thead><tbody>';
+  list.forEach(function(o) {
+    html += '<tr>' +
+      '<td><span class="badge ' + (o.scope === 'user' ? 'badge-blu' : 'badge-org') + '">' + esc(o.scope) + '</span></td>' +
+      '<td>' + esc(o.principal) + '</td>' +
+      '<td>$' + esc(o.monthly_usd) + '</td>' +
+      '<td>' + esc(o.updated_by || '—') + ' · ' + new Date(o.updated_at).toLocaleDateString('en-US') + '</td>' +
+      '<td style="text-align:right"><button class="btn btn-red" style="padding:3px 10px;font-size:9px" onclick="deleteQuotaOverride(\'' + esc(o.scope) + '\',\'' + esc(o.principal) + '\')">Delete</button></td>' +
+      '</tr>';
+  });
+  if (!list.length) html += '<tr><td colspan="5" class="loading">No overrides — everyone is on the default limit.</td></tr>';
+  html += '</tbody></table></div>' +
+    '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--border)">' +
+      '<div><label style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:6px">Scope</label>' +
+        '<select id="qo-scope" style="padding:7px 10px"><option value="user">user (slug)</option><option value="group">group</option></select></div>' +
+      '<div><label style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:6px">Principal</label>' +
+        '<input type="text" id="qo-principal" list="quota-principals" placeholder="slug or group name" style="width:200px"></div>' +
+      '<div><label style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:6px">$/month</label>' +
+        '<input type="number" id="qo-usd" min="1" step="1" style="width:110px"></div>' +
+      '<button class="btn btn-grn" style="padding:7px 18px;font-size:11px" onclick="saveQuotaOverride()">Add / update</button>' +
+      '<datalist id="quota-principals"></datalist>' +
+    '</div>';
+  document.getElementById('quota-overrides-body').innerHTML = html;
+  fillQuotaPickers();
+}
+
+function saveQuotaOverride() {
+  var scope = document.getElementById('qo-scope').value;
+  var principal = document.getElementById('qo-principal').value.trim();
+  var usd = parseFloat(document.getElementById('qo-usd').value);
+  if (!principal) { showToast('Principal is required', 'error'); return; }
+  if (!(usd > 0)) { showToast('Enter a positive monthly limit', 'error'); return; }
+  updateJSON('/api/v1/admin/quota/overrides', 'PUT', { scope: scope, principal: principal, monthly_usd: usd }).then(function() {
+    showToast('Override saved', 'success');
+    document.getElementById('qo-principal').value = '';
+    document.getElementById('qo-usd').value = '';
+    loadQuotaOverrides();
+  }).catch(function(err) { showToast('Save failed: ' + err.message, 'error'); });
+}
+
+function deleteQuotaOverride(scope, principal) {
+  if (!confirm('Remove the ' + scope + ' override for ' + principal + '? They fall back to the group/default limit.')) return;
+  updateJSON('/api/v1/admin/quota/overrides?scope=' + encodeURIComponent(scope) + '&principal=' + encodeURIComponent(principal), 'DELETE').then(function() {
+    showToast('Override removed', 'success');
+    loadQuotaOverrides();
+  }).catch(function(err) { showToast('Delete failed: ' + err.message, 'error'); });
 }
 
 /* ================================================================
@@ -973,7 +1158,7 @@ refreshTimer = setInterval(function() {
   if (document.querySelector('.modal-overlay.open, .confirm-overlay.open')) return;
   var ae = document.activeElement;
   if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
-  if (activeTab === 'people') return; // inline edits everywhere; manual Refresh there
+  if (activeTab === 'people' || activeTab === 'quotas') return; // inline edits everywhere; manual Refresh there
   refreshTab(activeTab, false);
 }, REFRESH_INTERVAL);
 

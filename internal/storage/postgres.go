@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -32,11 +33,23 @@ type UsageEvent struct {
 	StatusCode *int
 }
 
+// UsageStats is the entitlement endpoint's response body. The gateway's
+// external_metering filter parses ONLY hasAccess (serde ignores every other
+// field), so the quota fields below are additive: safe for the deployed
+// filters, useful for the dashboard. A denial is a 429 in the gateway with a
+// fixed plaintext body — this JSON never reaches the client.
 type UsageStats struct {
 	HasAccess bool    `json:"hasAccess"`
 	Balance   float64 `json:"balance"`
 	Usage     float64 `json:"usage"`
 	Overage   float64 `json:"overage"`
+
+	// Dollar quota (see quota.go). QuotaUSD is the effective monthly limit
+	// including grants; SpendUSD the month-to-date spend on the same basis
+	// the dashboard shows. MonthEnds is when the month's budget resets.
+	QuotaUSD  float64 `json:"quotaUsd"`
+	SpendUSD  float64 `json:"spendUsd"`
+	MonthEnds string  `json:"monthEnds"`
 }
 
 type Store struct {
@@ -44,9 +57,14 @@ type Store struct {
 
 	// tokenQuota is the per-user monthly token budget enforced by the
 	// entitlement endpoint. A value <= 0 means unlimited: the service
-	// reports usage but does not gate access. Real quota enforcement
-	// belongs in the gateway (see praxis-proxy/ai#121), not here.
+	// reports usage but does not gate access. It stays as an outer safety
+	// net alongside the dollar quota in quota.go.
 	tokenQuota int64
+
+	// quotaCache memoises the entitlement decision per person for
+	// quotaCacheTTL; see QuotaDecisionCached. Guarded by quotaMu.
+	quotaMu    sync.Mutex
+	quotaCache map[string]quotaCacheEntry
 }
 
 func New(databaseURL string, tokenQuota int64) (*Store, error) {
@@ -215,7 +233,15 @@ func (s *Store) GetTeamUsage(ctx context.Context, groupName string) ([]TeamUserU
 	return result, nil
 }
 
-func (s *Store) GetMonthlyUsage(ctx context.Context, username, model string) (UsageStats, error) {
+// GetMonthlyUsage backs the gateway's blocking entitlement subrequest.
+// hasAccess is the AND of two independent gates: the legacy token budget
+// (a 10B-token outer safety net; tokenQuota <= 0 disables it) and the
+// dollar quota from quota.go (inert while the policy's enforced flag is
+// false, and never applied to exempt callers — super-admins). Errors
+// propagate as a 5xx, which the gateway treats as metering unavailability
+// and admits the request (fail_open) — so a metering outage disables
+// enforcement rather than blocking traffic. That is the accepted tradeoff.
+func (s *Store) GetMonthlyUsage(ctx context.Context, username, model string, exempt bool) (UsageStats, error) {
 	var used int64
 	row := s.db.QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(total_tokens), 0) FROM usage_events
@@ -226,7 +252,17 @@ func (s *Store) GetMonthlyUsage(ctx context.Context, username, model string) (Us
 		return UsageStats{}, err
 	}
 
-	return computeUsageStats(used, s.tokenQuota), nil
+	stats := computeUsageStats(used, s.tokenQuota)
+
+	decision, err := s.QuotaDecisionCached(ctx, username, exempt)
+	if err != nil {
+		return UsageStats{}, err
+	}
+	stats.QuotaUSD = decision.LimitUSD
+	stats.SpendUSD = decision.SpentUSD
+	stats.MonthEnds = decision.MonthEnds.UTC().Format(time.RFC3339)
+	stats.HasAccess = stats.HasAccess && decision.Allowed()
+	return stats, nil
 }
 
 // computeUsageStats derives entitlement stats from token usage and a quota.
@@ -833,6 +869,10 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 	}
 	if err := s.migrateOrg(ctx); err != nil {
+		return err
+	}
+	// Last: the quota tables FK to people.
+	if err := s.migrateQuota(ctx); err != nil {
 		return err
 	}
 	slog.Info("database migrations complete")

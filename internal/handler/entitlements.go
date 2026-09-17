@@ -6,15 +6,17 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/noyitz/ai-gateway-metering-service/internal/config"
 	"github.com/noyitz/ai-gateway-metering-service/internal/storage"
 )
 
 type EntitlementsHandler struct {
 	store *storage.Store
+	cfg   config.Config
 }
 
-func NewEntitlementsHandler(store *storage.Store) *EntitlementsHandler {
-	return &EntitlementsHandler{store: store}
+func NewEntitlementsHandler(store *storage.Store, cfg config.Config) *EntitlementsHandler {
+	return &EntitlementsHandler{store: store, cfg: cfg}
 }
 
 func (h *EntitlementsHandler) HandleEntitlement(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +40,11 @@ func (h *EntitlementsHandler) HandleEntitlement(w http.ResponseWriter, r *http.R
 
 	model := r.URL.Query().Get("model")
 
-	stats, err := h.store.GetMonthlyUsage(r.Context(), username, model)
+	// Operators never gate themselves: a quota misfire must not lock the
+	// people who can fix it out of their own dogfood keys.
+	exempt := IsSuperAdminUsername(h.cfg, username)
+
+	stats, err := h.store.GetMonthlyUsage(r.Context(), username, model, exempt)
 	if err != nil {
 		slog.Error("failed to get usage", "error", err, "user", username)
 		http.Error(w, "internal error", http.StatusInternalServerError)

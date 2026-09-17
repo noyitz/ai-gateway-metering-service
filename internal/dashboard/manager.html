@@ -60,6 +60,20 @@ td.num{text-align:right}
 .hosted{color:var(--accent2);font-size:11px}
 .self-note{background:var(--panel);border:1px dashed var(--border);border-radius:10px;padding:14px 16px;color:var(--muted);margin:14px 0}
 .err{color:#f2777a}
+/* Quota gauges + approval inbox */
+.over{color:#f2777a}
+.gauge{display:inline-block;position:relative;height:6px;background:var(--panel2);border:1px solid var(--border);border-radius:4px;margin-top:4px;width:130px}
+.gauge i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--accent2)}
+.gauge.warn i{background:var(--warn)}
+.gauge.over i{background:#e8554e}
+.chip-over{display:inline-block;font-size:10px;padding:0 6px;border-radius:99px;border:1px solid #e8554e;color:#f2777a;margin-left:6px}
+.appr{background:none;border:1px solid var(--border);color:var(--text);border-radius:7px;padding:3px 10px;cursor:pointer;font-size:12px}
+.appr.ok{border-color:var(--accent2);color:var(--accent2)}
+.appr.no{border-color:#e8554e;color:#f2777a}
+.appr:hover{background:var(--panel2)}
+.appr-row{display:flex;align-items:flex-start;gap:12px;padding:9px 4px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.appr-row:last-child{border-bottom:none}
+.appr-act{margin-left:auto;display:flex;gap:6px;align-items:center}
 .saved-pos{color:var(--saved)}
 /* Person detail modal */
 .det-ov{display:none;position:fixed;inset:0;background:rgba(5,7,10,.72);z-index:70;align-items:flex-start;justify-content:center;padding:40px 14px}
@@ -141,6 +155,11 @@ td.num{text-align:right}
     <div class="kpi"><div class="l">Tokens</div><div class="v" id="kTokens">–</div><div class="s">prompt + completion</div></div>
     <div class="kpi"><div class="l">Requests</div><div class="v" id="kReqs">–</div></div>
     <div class="kpi"><div class="l">Members</div><div class="v" id="kPeople">–</div><div class="s" id="kPeopleS"></div></div>
+    <div class="kpi"><div class="l" id="kBudgetL">Team budget</div><div class="v" id="kBudget">–</div><div class="s" id="kBudgetS"></div></div>
+  </div>
+  <div class="panel" id="approvals" style="display:none">
+    <h2>Approval requests <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">— over-limit budget asks from your team</span></h2>
+    <div id="apprBody"></div>
   </div>
   <div class="panel"><h2>Daily tokens by member</h2><canvas id="tl" height="70"></canvas></div>
   <div class="panel">
@@ -153,6 +172,7 @@ td.num{text-align:right}
         <th class="num" data-s="TotalTokens">Tokens</th>
         <th class="num" data-s="Requests">Requests</th>
         <th data-s="LastUsed">Last used</th>
+        <th class="num" data-s="quota_spent_usd" title="Month-to-date spend against the monthly limit (the limit's window is always the calendar month, whatever range is selected)">Budget</th>
       </tr></thead>
       <tbody id="rows"></tbody>
     </table>
@@ -214,7 +234,20 @@ function renderRows(){
     <td class="num">${r.username?fmtTok(r.total_tokens):''}</td>
     <td class="num">${r.requests||''}</td>
     <td class="dim">${r.last_used?r.last_used.slice(0,10):'never'}</td>
-  </tr>`).join('')||'<tr><td colspan="5" class="dim">No usage yet — expected during week one.</td></tr>';
+    <td class="num">${budgetCell(r)}</td>
+  </tr>`).join('')||'<tr><td colspan="6" class="dim">No usage yet — expected during week one.</td></tr>';
+}
+
+// Month-to-date vs the monthly limit, as a bar plus the two numbers. The
+// numbers arrive from the server (quota_spent_usd / quota_usd, calendar
+// month regardless of the selected range); width caps at 100%.
+function budgetCell(r){
+  if(!r.quota_usd)return '<span class="dim">–</span>';
+  const pct=Math.min(100,100*(r.quota_spent_usd||0)/r.quota_usd);
+  const cls=r.over_limit?'over':(pct>=80?'warn':'');
+  return `<div style="display:inline-flex;flex-direction:column;align-items:flex-end">
+    <span${r.over_limit?' class="over"':''}>${fmt$(r.quota_spent_usd)} / ${fmt$(r.quota_usd)}${r.over_limit?'<span class="chip-over">over</span>':''}</span>
+    <span class="gauge ${cls}"><i style="width:${pct}%"></i></span></div>`;
 }
 
 // Drill into one manager's branch. The server re-checks that the root is
@@ -262,8 +295,23 @@ async function load(){
     document.getElementById('kReqs').textContent=req.toLocaleString();
     document.getElementById('kPeople').textContent=rows.length;
     document.getElementById('kPeopleS').textContent=active+' with usage this window';
+    // Team budget: both sums cover the calendar month (quota_spent_usd is
+    // deliberately month-to-date on the server, whatever range is shown).
+    const lim=rows.reduce((s,r)=>s+(r.quota_usd||0),0);
+    const mtd=rows.reduce((s,r)=>s+(r.quota_spent_usd||0),0);
+    const over=rows.filter(r=>r.over_limit).length;
+    setKBudget(mtd,lim,over);
     loadTimeline();
-  }catch(e){document.getElementById('rows').innerHTML='<tr><td colspan="5" class="err">'+esc(e.message)+'</td></tr>';}
+  }catch(e){document.getElementById('rows').innerHTML='<tr><td colspan="6" class="err">'+esc(e.message)+'</td></tr>';}
+}
+
+function setKBudget(spent,limit,over){
+  const v=document.getElementById('kBudget'),s=document.getElementById('kBudgetS');
+  if(!limit){v.textContent='–';s.textContent='';s.style.color='';return;}
+  v.textContent=fmt$(spent);
+  v.style.color=over?'#f2777a':'';
+  s.textContent='of '+fmt$(limit)+' this month'+(over?' · '+over+' over limit':'');
+  s.style.color=over?'#f2777a':'';
 }
 let drillRoot=''; // slug of the subtree currently shown (own slug for managers, '' for whole org)
 let scopeRootSlug='';
@@ -327,6 +375,9 @@ async function boot(){
     document.getElementById('selfNote').innerHTML=
       '<div class="self-note">You are seeing only your own numbers. If you manage people and expected the team view, ask an admin to add your reporting lines to the <b>People</b> directory — the manager view turns on automatically the moment people report to you.</div>';
     document.querySelectorAll('.kpis .kpi')[3].style.display='none';
+    // No team, but a budget of one: paint the tile from the caller's own quota.
+    document.getElementById('kBudgetL').textContent='My budget';
+    if(me.quota)setKBudget(me.quota.spent_usd,me.quota.limit_usd,me.quota.spent_usd>=me.quota.limit_usd);
   } else if(sc.scope==='manager'){
     scopeRootSlug=sc.personSlug||'';
 
@@ -339,9 +390,69 @@ async function boot(){
     adminScope=true;
     document.getElementById('scopeTitle').textContent='Org view';
     document.getElementById('scopeSub').textContent='Super admin — everyone in the organisation, one table. Filter to any manager’s branch above.';
+    document.getElementById('kBudgetL').textContent='Org budget';
   }
+  loadInbox();
   if(sc.scope!=='self')load();
   else loadSelf();
+}
+
+// ── Approval inbox (one hop: requests filed by your direct reports) ──────
+let inboxById={};
+async function loadInbox(){
+  try{
+    const list=await (await fetch('/api/v1/org/quota-requests?state=pending')).json();
+    if(!Array.isArray(list))return;
+    inboxById={};list.forEach(q=>{inboxById[q.id]=q;});
+    const panel=document.getElementById('approvals');
+    if(!list.length){panel.style.display='none';return;}
+    panel.style.display='';
+    document.getElementById('apprBody').innerHTML=list.map(q=>{
+      const age=esc(new Date(q.created_at).toLocaleDateString('en-US'));
+      const stale=!q.is_current_month;
+      const act=stale
+        ?'<span class="dim">from a past month — they can cancel it and re-file</span>'
+        :`<button class="appr ok" onclick="approveReq(${q.id})">Approve</button>
+          <button class="appr no" onclick="rejectReq(${q.id})">Reject</button>`;
+      return `<div class="appr-row">
+        <div>
+          <b>${esc(q.person_name)}</b> <span class="dim">${esc(q.username||'')} · asked ${fmt$(q.asked_usd)} for ${esc(q.month)} · ${age}</span>
+          <div class="dim" style="font-size:12.5px;margin-top:2px">${esc(q.reason||'(no reason given)')}</div>
+        </div>
+        <div class="appr-act">${act}</div>
+      </div>`;
+    }).join('');
+  }catch(e){/* inbox is an extra; a failure here must not break the page */}
+}
+async function decideReq(id,path,body,okMsg){
+  // Handlers answer with plain-text reasons on 4xx, text on success.
+  let r;
+  try{
+    r=await (await fetch('/api/v1/org/quota-requests/'+id+'/'+path,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}));
+  }catch(e){alert('Could not reach the server: '+e.message);return;}
+  if(!r.ok){
+    alert('Could not record the decision: '+((await r.text()).trim()||('HTTP '+r.status)));
+    loadInbox(); // someone else may have decided it already
+    return;
+  }
+  alert(okMsg);
+  loadInbox();load();
+}
+function approveReq(id){
+  const q=inboxById[id];if(!q)return;
+  const v=prompt('Approve extra budget for '+q.person_name+' (they asked '+fmt$(q.asked_usd)+').\nThe grant covers the rest of this calendar month. You can approve as asked or type a different amount:',q.asked_usd);
+  if(v===null)return;
+  const amt=parseFloat(v);
+  if(!(amt>0)){alert('Enter a positive amount');return;}
+  decideReq(id,'approve',{approved_usd:amt},'Approved '+fmt$(amt)+' for '+q.person_name+'.');
+}
+function rejectReq(id){
+  const q=inboxById[id];if(!q)return;
+  const c=prompt('Reject '+q.person_name+'’s '+fmt$(q.asked_usd)+' request?\nYour reason is shown to them on their dashboard:');
+  if(c===null)return;
+  if(!c.trim()){alert('A reason is required — the requester sees it');return;}
+  decideReq(id,'reject',{comment:c.trim()},'Rejected.');
 }
 
 async function loadSelf(){
