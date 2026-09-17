@@ -159,7 +159,9 @@ h2 .no{font:600 13px "IBM Plex Mono",monospace; color:var(--faint); margin-right
 .codebox{position:relative; margin:0 0 14px}
 .codebox:last-child{margin-bottom:0}
 .codebox .fname{
-  font:500 11px "IBM Plex Mono",monospace; letter-spacing:.08em; text-transform:uppercase;
+  /* Filesystem paths verbatim — no uppercasing: the on-disk name is
+     settings.json, config.toml, opencode.json. */
+  font:500 11px "IBM Plex Mono",monospace;
   color:var(--faint); margin-bottom:6px;
 }
 pre{
