@@ -943,10 +943,12 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
     ab.innerHTML=pmEsc(d.display_name||d.user)+(d.isSuperAdmin?' <span class="role">(super admin)</span>':d.isAdmin?' <span class="role">(admin)</span>':'');
     ab.style.display='';
     document.getElementById('abOut').style.display='';
-    // A manager (anyone with reports) or an admin gets the "My team" tab —
-    // the /manager page lists every team member, even those with no usage
-    // yet, which the scoped Usage view can't show (it only lists activity).
-    if(d.isManager||isAdmin)document.getElementById('tab-team').style.display='';
+    // "My team" shows for people who actually have a team to look at:
+    // managers (anyone with reports — admins included, they see their own
+    // branch there) and super-admins, who alone see the whole organisation
+    // under it. A plain admin gets NO team tab: their all-visibility view
+    // is this Usage page, not a team view.
+    if(d.isSuperAdmin||d.isManager)document.getElementById('tab-team').style.display='';
     if(isSuperAdmin){
       ['tab-routing','tab-compression','tab-admin'].forEach(function(id){document.getElementById(id).style.display='';});
       var mvb=document.getElementById('my-view-btn');
@@ -969,13 +971,11 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
     }
     // Re-render once the role is known so per-row "view as" links appear.
     if(isSuperAdmin)refresh();
-    // Pin plain members to their own rows so the first frame isn't a
-    // fleet-wide flash. Managers are excluded: the server already scopes
-    // them to their subtree, and pinning them to themselves hid their
-    // team's activity entirely — a manager with no personal traffic loaded
-    // an all-zero Usage page (it looked broken until Clear All widened the
-    // scope back out).
-    if(!d.isAdmin&&!d.isManager&&!userFilter.length){
+    // Pin every non-admin to their own rows so the first frame isn't a
+    // fleet-wide flash. Managers are pinned too now — the Usage page shows
+    // a person their own spend only, managers included (the server scopes
+    // them identically); team spend lives on the My-team page.
+    if(!d.isAdmin&&!userFilter.length){
       userFilter=[d.user];updateUserFilterLabel();renderUserChecklist();refresh();
     }
   }

@@ -242,7 +242,8 @@ func main() {
 	mux.HandleFunc("/admin/impersonate", auth(authHandler.HandleImpersonate))
 
 	// Manager view — session required; the page adapts to the caller's
-	// scope (plain user sees self, manager sees subtree, admin sees all).
+	// scope (plain user sees self, manager sees subtree — admins included,
+	// a manager-admin sees their own branch — super-admin sees all).
 	mux.HandleFunc("/manager", auth(orgHandler.ServeManager))
 
 	// Org APIs reachable by any signed-in user; every handler enforces the
