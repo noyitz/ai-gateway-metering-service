@@ -851,11 +851,16 @@ type OrgTreeNode struct {
 
 // OrgTree returns the subtree rooted at slug, fully materialized. Depth is
 // capped defensively even though the cycle trigger should make that
-// unreachable.
+// unreachable. An empty rootSlug returns the whole forest — every root plus
+// orphans — hung under a synthetic "Organisation" node so callers always
+// receive one tree.
 func (s *Store) OrgTree(ctx context.Context, rootSlug string) (*OrgTreeNode, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		WITH RECURSIVE subtree(slug, depth) AS (
-			SELECT $1, 0
+			SELECT p.slug, 0 FROM people p
+			WHERE p.slug = $1
+			   OR ($1 = '' AND (p.manager_slug IS NULL
+			                    OR NOT EXISTS (SELECT 1 FROM people q WHERE q.slug = p.manager_slug)))
 			UNION ALL
 			SELECT p.slug, st.depth + 1 FROM people p JOIN subtree st ON p.manager_slug = st.slug
 			WHERE st.depth < 50
@@ -895,9 +900,15 @@ func (s *Store) OrgTree(ctx context.Context, rootSlug string) (*OrgTreeNode, err
 		}
 	}
 	var root *OrgTreeNode
+	var tops []*OrgTreeNode // whole-forest mode: the real roots (and orphans)
 	for _, r := range rowsOut {
 		n := nodes[r.slug]
-		if r.slug == rootSlug {
+		if rootSlug == "" {
+			if r.depth == 0 {
+				tops = append(tops, n)
+				continue
+			}
+		} else if r.slug == rootSlug {
 			root = n
 			continue
 		}
@@ -909,7 +920,13 @@ func (s *Store) OrgTree(ctx context.Context, rootSlug string) (*OrgTreeNode, err
 			parent.Children = append(parent.Children, n)
 		}
 	}
-	if root == nil {
+	if rootSlug == "" {
+		// Synthetic forest root: one tree shape for callers either way.
+		// It is a drawing artifact, not a person, so size() below will
+		// subtract it from the subtree count.
+		root = &OrgTreeNode{Slug: "", FullName: "Organisation", IsManager: true, Reports: len(tops)}
+		root.Children = tops
+	} else if root == nil {
 		return nil, sql.ErrNoRows
 	}
 	// bottom-up subtree sizes
@@ -923,6 +940,9 @@ func (s *Store) OrgTree(ctx context.Context, rootSlug string) (*OrgTreeNode, err
 		return total
 	}
 	size(root)
+	if rootSlug == "" {
+		root.SubtreeSize-- // don't count the synthetic node as a person
+	}
 	return root, nil
 }
 
@@ -943,12 +963,18 @@ type OrgUsageRow struct {
 }
 
 // GetOrgUsage rolls usage up per person for the whole subtree under rootSlug
-// over a window. It reuses costUSDExpr — one cost model, shared with every
-// other dashboard number — and reads usage_events without writing anything.
+// over a window. An empty rootSlug means the whole organisation: every root
+// (manager_slug IS NULL) plus orphans whose manager is not in the directory,
+// so nobody silently vanishes from the org-wide view. It reuses costUSDExpr —
+// one cost model, shared with every other dashboard number — and reads
+// usage_events without writing anything.
 func (s *Store) GetOrgUsage(ctx context.Context, rootSlug string, since, until time.Time) ([]OrgUsageRow, error) {
 	query := fmt.Sprintf(`
 		WITH RECURSIVE subtree(slug) AS (
-			SELECT $1
+			SELECT p.slug FROM people p
+			WHERE p.slug = $1
+			   OR ($1 = '' AND (p.manager_slug IS NULL
+			                    OR NOT EXISTS (SELECT 1 FROM people q WHERE q.slug = p.manager_slug)))
 			UNION ALL
 			SELECT p.slug FROM people p JOIN subtree st ON p.manager_slug = st.slug
 		),

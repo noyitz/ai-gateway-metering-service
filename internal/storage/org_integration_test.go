@@ -386,6 +386,35 @@ func TestOrgInvites(t *testing.T) {
 	}
 }
 
+// The admin default: root = "" spans the WHOLE organisation — every root
+// branch, not the alphabetically-first root's subtree. The old handler
+// silently picked roots[0], so admins landed on an unrelated person's team.
+func TestOrgUsageWholeOrg(t *testing.T) {
+	s, ctx := openTestStore(t)
+	seedFixture(t, s, ctx)
+	if _, err := s.ImportPeople(ctx, []ImportPerson{{Slug: "svc", FullName: "Svc Bot"}}, "svc.xlsx", "tester", false); err != nil {
+		t.Fatalf("seed second root: %v", err)
+	}
+	rows, err := s.GetOrgUsage(ctx, "", time.Now().Add(-24*time.Hour), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("whole-org rollup: %v", err)
+	}
+	by := map[string]OrgUsageRow{}
+	for _, r := range rows {
+		by[r.Slug] = r
+	}
+	if len(rows) != 5 { // boss, mgr, ic1, ic2, svc — all branches
+		t.Fatalf("whole-org row count: %d (%v)", len(rows), rows)
+	}
+	if _, ok := by["svc"]; !ok {
+		t.Fatal("second root svc missing from whole-org view")
+	}
+	// The shared cost model still applies across branches.
+	if ic1 := by["ic1"]; ic1.Requests != 2 || ic1.TotalTokens != 4200 {
+		t.Fatalf("ic1 rollup wrong: %+v", ic1)
+	}
+}
+
 func TestOrgRoots(t *testing.T) {
 	s, ctx := openTestStore(t)
 	seedFixture(t, s, ctx)
@@ -435,6 +464,27 @@ func TestOrgTree(t *testing.T) {
 	leaf, err := s.OrgTree(ctx, "ic2")
 	if err != nil || leaf.Slug != "ic2" || len(leaf.Children) != 0 {
 		t.Fatalf("leaf tree wrong: %+v %v", leaf, err)
+	}
+
+	// Whole forest: empty root hangs every branch under one synthetic node.
+	forest, err := s.OrgTree(ctx, "")
+	if err != nil {
+		t.Fatalf("forest tree: %v", err)
+	}
+	if forest.Slug != "" || forest.SubtreeSize != 5 {
+		t.Fatalf("forest root wrong: %+v", forest)
+	}
+	kids := map[string]bool{}
+	for _, c := range forest.Children {
+		kids[c.Slug] = true
+	}
+	if !kids["boss"] || !kids["svc"] || len(forest.Children) != 2 {
+		t.Fatalf("forest roots wrong: %+v", forest.Children)
+	}
+	for _, c := range forest.Children {
+		if c.Slug == "boss" && c.SubtreeSize != 4 {
+			t.Fatalf("boss branch size wrong: %d", c.SubtreeSize)
+		}
 	}
 }
 
