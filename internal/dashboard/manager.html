@@ -96,7 +96,6 @@ td.num{text-align:right}
   <nav>
     <a href="/dashboard">Usage</a>
     <a href="/manager" class="on" title="Usage for everyone on your team">My team</a>
-    <a href="/me" id="tab-me" style="display:none">My account</a>
     <a href="/routing" id="tab-routing" style="display:none">Routing</a>
     <a href="/compression" id="tab-compression" style="display:none">Compression</a>
     <a href="/admin" id="tab-admin" style="display:none">Admin</a>
@@ -307,7 +306,6 @@ async function boot(){
     role.textContent=me.isSuperAdmin?' (super admin)':' (admin)';
     ab.appendChild(role);
   }
-  document.getElementById('tab-me').style.display='';
   if(me.isSuperAdmin){
     ['tab-routing','tab-compression','tab-admin'].forEach(id=>document.getElementById(id).style.display='');
     const mvb=document.getElementById('my-view-btn');
