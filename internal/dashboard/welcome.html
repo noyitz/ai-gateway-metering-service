@@ -269,6 +269,7 @@ footer .mono{font-size:12px}
       <a href="#codex">Codex</a>
       <a href="#opencode">OpenCode</a>
       <a href="#hermes">Hermes CLI</a>
+      <a href="#pi">Pi</a>
       <a href="#hosted">Hosted models</a>
       <a class="cta" href="{{DASHBOARD_URL}}/dashboard">Dashboard ↗</a>
     </div>
@@ -292,7 +293,7 @@ footer .mono{font-size:12px}
   <h2>One key. Every frontier model. A fraction of the price.</h2>
   <p class="lede">A single PriceTag key reaches the full Claude lineup and the GPTs — and our own hosted models sit right beside them, at a fraction of the vendor price. Same gateway, same metering; the only difference is the number.</p>
   <h3 style="margin-top:26px">This is how PriceTag saves you money</h3>
-  <p class="cap">Do your day-to-day work on the hosted models — from <strong>Claude Code</strong>, <strong>Codex</strong> or <strong>OpenCode</strong>, all of them point at the same gateway and the same key — and the same tokens cost a fraction of the frontier price:</p>
+  <p class="cap">Do your day-to-day work on the hosted models — from <strong>Claude Code</strong>, <strong>Codex</strong>, <strong>OpenCode</strong> or <strong>Pi</strong>, all of them point at the same gateway and the same key — and the same tokens cost a fraction of the frontier price:</p>
   <div class="compare" id="compare">
     <div class="row"><span>Hosted Flash — output</span><div class="track"><div class="fill hosted" data-w="3"></div></div><span class="amt">$0.47 / MTok</span></div>
     <div class="row"><span>Frontier Claude — output</span><div class="track"><div class="fill paid" data-w="100"></div></div><span class="amt">$15.00 / MTok</span></div>
@@ -481,9 +482,51 @@ ANTHROPIC_API_KEY=<span class="s">pk-your-key</span></pre></div>
   <div class="callout warn"><span class="glyph">!</span><p>Four traps, learned the hard way this week: the OpenAI route has <strong>no Qwen ids</strong> — asking for one gets "The model … does not exist or you do not have access to it" from upstream, so keep the model id and the base URL as a matched pair, never mix halves. The <span class="mono">anthropic</span> provider needs the <strong><code>/v1</code> suffix</strong> on <span class="mono">base_url</span>. The unified route reads <strong>only</strong> <span class="mono">x-api-key</span> — a <span class="mono">custom</span> (OpenAI-client) provider sends its key as a <span class="mono">Bearer</span> token and gets <span class="mono">401 missing API key</span>; stick with the <span class="mono">anthropic</span> provider above for the hosted model, or if you wire it as a custom entry anyway, inject the same key through <span class="mono">extra_headers</span>. And Hermes auxiliary tasks (session titles, compression) follow the main model by default — pointing the default at the hosted id means those calls ride on it too.</p></div>
 </section>
 
+<!-- ============ PI (pi.dev CLI) ============ -->
+<section id="pi">
+  <h2><span class="no">07</span>Set up Pi</h2>
+  <p class="lede"><a href="https://pi.dev" target="_blank">Pi</a> speaks the Anthropic dialect natively and sends the key as <span class="mono">x-api-key</span> — exactly what the unified route reads — so the hosted model rides the <strong>unified route alone</strong>, no OpenAI route needed. Declare PriceTag as a provider in <span class="mono">~/.pi/agent/models.json</span>:</p>
+  <div class="codebox hasname"><div class="fname">~/.pi/agent/models.json</div><button class="copy">copy</button><pre>{
+  <span class="k">"providers"</span>: {
+    <span class="k">"pricetag"</span>: {
+      <span class="k">"name"</span>: <span class="s">"PriceTag"</span>,
+      <span class="k">"baseUrl"</span>: <span class="s">"{{UNIFIED_URL}}"</span>,
+      <span class="k">"api"</span>: <span class="s">"anthropic-messages"</span>,
+      <span class="k">"apiKey"</span>: <span class="s">"$PRICETAG_KEY"</span>,
+      <span class="k">"models"</span>: [
+        {
+          <span class="k">"id"</span>: <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>,
+          <span class="k">"name"</span>: <span class="s">"Qwen 3.8 Flash Next (PriceTag hosted)"</span>,
+          <span class="k">"reasoning"</span>: true,
+          <span class="k">"thinkingLevelMap"</span>: {
+            "off": null, "minimal": null, "low": <span class="s">"low"</span>,
+            "medium": <span class="s">"medium"</span>, "high": null, "xhigh": <span class="s">"xhigh"</span>, "max": null
+          },
+          <span class="k">"input"</span>: [<span class="s">"text"</span>],
+          <span class="k">"cost"</span>: { <span class="k">"input"</span>: 0.15, <span class="k">"output"</span>: 0.47, <span class="k">"cacheRead"</span>: 0.016, <span class="k">"cacheWrite"</span>: 0 },
+          <span class="k">"contextWindow"</span>: 262144,
+          <span class="k">"maxTokens"</span>: 262144
+        }
+      ]
+    }
+  }
+}</pre></div>
+  <div class="codebox hasname"><div class="fname">the key — any one of these works</div><button class="copy">copy</button><pre><span class="c"># 1. in a Pi session:</span>
+/login pricetag
+
+<span class="c"># 2. ~/.pi/agent/auth.json (chmod 0600) — wins over the env var:</span>
+{ <span class="k">"pricetag"</span>: { <span class="k">"type"</span>: <span class="s">"api_key"</span>, <span class="k">"key"</span>: <span class="s">"pk-…"</span> } }
+
+<span class="c"># 3. plain env, matching the $PRICETAG_KEY reference above:</span>
+export PRICETAG_KEY=pk-your-key</pre></div>
+  <p>Pick the model with <span class="mono">/model</span> → <span class="mono">pricetag/Inferact/Qwen3.8-Flash-Next-NVFP4</span> — it stays hidden from the picker until one of the three auth paths is configured. Costs above are the live hosted rates; your dashboard meters the usage the same as every other tool.</p>
+  <div class="callout warn"><span class="glyph">!</span><p>Two traps. <strong>No <code>/v1</code> suffix</strong> on the unified <span class="mono">baseUrl</span> — Pi appends <code>/v1/messages</code> itself (opposite of the OpenAI route, whose base URL must end in <code>/v1</code>). And <strong>map <span class="mono">high</span> to <span class="mono">null</span></strong> in <span class="mono">thinkingLevelMap</span>: Pi offers a <span class="mono">high</span> thinking level, the hosted endpoint rejects it outright, and the request dies — nulling it simply hides the level from the picker. Want to pin a level? <span class="mono">"enabledModels": ["pricetag/Inferact/Qwen3.8-Flash-Next-NVFP4:medium"]</span>.</p></div>
+  <p class="cap"><span class="mono">maxTokens</span> is the <em>output</em> cap, not the context size. Pi clamps each request to <span class="mono">contextWindow − prompt − 4096</span>, so declaring the full window (as above) is safe — the served model reports a 262144-token window and enforces no separate output limit. This recipe was verified end-to-end against the live gateway.</p>
+</section>
+
 <!-- ============ ROUTES (reference, after the setup steps) ============ -->
 <section id="routes">
-  <h2><span class="no">07</span>Know your routes</h2>
+  <h2><span class="no">08</span>Know your routes</h2>
   <p class="lede">Three endpoints, one key. Pick the one that speaks your client's dialect — the path suffixes differ on purpose.</p>
   <div class="routes">
     <div class="route">
@@ -512,7 +555,7 @@ ANTHROPIC_API_KEY=<span class="s">pk-your-key</span></pre></div>
 
 <!-- ============ HOSTED ============ -->
 <section id="hosted">
-  <h2><span class="no">08</span>Hosted models, starting with Qwen 3.8 Flash Next</h2>
+  <h2><span class="no">09</span>Hosted models, starting with Qwen 3.8 Flash Next</h2>
   <p class="lede">Self-hosted vLLM on our own hardware, exposed through the unified route under the id <span class="mono">Inferact/Qwen3.8-Flash-Next-NVFP4</span>. FP4 quantisation, <strong>262K context</strong>, and the price per token is a rounding error — billed honestly, tracked in your dashboard like everything else. It's the first of more hosted models to come.</p>
   <div class="rates">
     <div class="rate"><div class="top"><span class="v">$0.15</span><span class="per">/ MTok</span></div><div class="k">Input</div></div>
