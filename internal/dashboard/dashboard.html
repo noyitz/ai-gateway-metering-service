@@ -467,12 +467,11 @@ function renderRecent(data){
     const client=friendlyClient(r.user_agent);
     const clientColor=client==='Claude Code'?'var(--orange)':client==='OpenCLAW'?'var(--cyan)':client==='curl'?'var(--text2)':'var(--green)';
     const st=statusCell(r.status_code);
-    // Synthesized rows from the quota-denials ledger: no tokens were spent
-    // on a blocked request, so the usage columns show dashes and the status
-    // cell carries the month's blocked tally.
-    if(r.denials){st.title=r.denials+' request'+(r.denials>1?'s':'')+' blocked this month (monthly budget); newest at '+new Date(r.timestamp).toLocaleString('en-US',{hour12:false});st.text='429 ×'+r.denials;}
-    const dash=r.denials?'—':null;
-    return `<tr${r.denials?' style="background:rgba(248,81,73,.05)"':''}>
+    // Quota blocks are real usage_events rows (status 429, zero usage) that
+    // we refused ourselves (provider 'gateway'), so they render here exactly
+    // like any other error row — one per request, with a clearer tooltip.
+    if(r.status_code===429&&r.provider==='gateway')st.title='Blocked at the gateway: monthly budget exceeded';
+    return `<tr>
       <td style="white-space:nowrap;color:var(--text2)">${timeAgo(r.timestamp)}</td>
       <td>${userCell(r.username,r.display_name)}</td>
       <td>${fmtGroup(r.group_name)}</td>
@@ -480,12 +479,12 @@ function renderRecent(data){
       <td>${r.model||'—'}</td>
       <td style="color:${provColor}">${r.provider||'—'}</td>
       <td style="color:${st.color};font-weight:600" title="${st.title}">${st.text}</td>
-      <td class="num">${dash??fmtN(r.prompt_tokens)}</td>
-      <td class="num">${dash??fmtN(r.completion_tokens)}</td>
-      <td class="num" style="color:var(--cyan)">${dash??fmtN(r.cached_input_tokens||0)}</td>
-      <td class="num" style="color:var(--purple)">${dash??fmtN(r.cache_creation_tokens||0)}</td>
-      <td class="num">${dash??fmtN(r.total_tokens)}</td>
-      <td class="num">${dash??fmtC(r.cost_usd)}</td>
+      <td class="num">${fmtN(r.prompt_tokens)}</td>
+      <td class="num">${fmtN(r.completion_tokens)}</td>
+      <td class="num" style="color:var(--cyan)">${fmtN(r.cached_input_tokens||0)}</td>
+      <td class="num" style="color:var(--purple)">${fmtN(r.cache_creation_tokens||0)}</td>
+      <td class="num">${fmtN(r.total_tokens)}</td>
+      <td class="num">${fmtC(r.cost_usd)}</td>
     </tr>`;
   }).join('');
 }
