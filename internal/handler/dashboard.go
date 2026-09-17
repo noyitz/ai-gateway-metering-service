@@ -5,7 +5,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/noyitz/ai-gateway-metering-service/internal/config"
@@ -166,6 +168,38 @@ func (h *DashboardHandler) HandleRecent(w http.ResponseWriter, r *http.Request) 
 	}
 	if result == nil {
 		result = []storage.RecentEvent{}
+	}
+
+	// Weave blocked-request (429) rows into the same feed, honoring the same
+	// scope and filters (denials carry no event group unless the username
+	// resolves to a directory person). A denial-record failure never
+	// degrades the real events.
+	denials, err := h.store.RecentQuotaDenials(r.Context(), limit)
+	if err != nil {
+		slog.Warn("recent denials query failed", "error", err)
+	} else {
+		userSet := map[string]bool{}
+		for _, u := range strings.Split(user, ",") {
+			if u != "" {
+				userSet[u] = true
+			}
+		}
+		for _, d := range denials {
+			if user != "" && !userSet[d.Username] {
+				continue
+			}
+			if group != "" && d.GroupName != group {
+				continue
+			}
+			if model != "" && d.Model != model {
+				continue
+			}
+			result = append(result, d)
+		}
+		sort.SliceStable(result, func(i, j int) bool { return result[i].Timestamp.After(result[j].Timestamp) })
+		if len(result) > limit {
+			result = result[:limit]
+		}
 	}
 	writeJSON(w, result)
 }

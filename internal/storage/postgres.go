@@ -742,6 +742,10 @@ type RecentEvent struct {
 	UserAgent           string  `json:"user_agent"`
 	// StatusCode is the upstream HTTP status; nil (JSON null) when unknown.
 	StatusCode *int `json:"status_code"`
+	// Denials marks a synthesized feed row from the quota-denials ledger:
+	// the month's blocked-request tally for this (username, model), stamped
+	// at the newest block. Zero on real usage rows.
+	Denials int `json:"denials,omitempty"`
 }
 
 func (s *Store) GetRecentEvents(ctx context.Context, limit int, group, user, model string) ([]RecentEvent, error) {
