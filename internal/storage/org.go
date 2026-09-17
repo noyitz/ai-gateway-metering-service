@@ -960,6 +960,15 @@ type OrgUsageRow struct {
 	CostUSD     float64 `json:"cost_usd"`
 	LastUsed    *string `json:"last_used,omitempty"`
 	NoIdentity  bool    `json:"no_identity,omitempty"`
+
+	// Quota gauges for the manager page. QuotaUSD is the effective monthly
+	// limit (override → default, plus grants); QuotaSpentUSD is the calendar
+	// month to date — deliberately NOT the table's selected window, so the
+	// spend-vs-limit bar always compares apples to the limit's period even
+	// when the page is showing a 24h or 30d view.
+	QuotaUSD      float64 `json:"quota_usd"`
+	QuotaSpentUSD float64 `json:"quota_spent_usd"`
+	OverLimit     bool    `json:"over_limit"`
 }
 
 // GetOrgUsage rolls usage up per person for the whole subtree under rootSlug
@@ -990,16 +999,28 @@ func (s *Store) GetOrgUsage(ctx context.Context, rootSlug string, since, until t
 			LEFT JOIN model_pricing p ON e.model = p.model
 			WHERE e.timestamp >= $2 AND e.timestamp < $3
 			GROUP BY pi.person_slug
+		),
+		qm AS (
+			SELECT pi.person_slug,
+				COALESCE(ROUND(SUM(%s)::numeric,2),0) AS mtd_usd
+			FROM person_identities pi
+			JOIN usage_events e ON e.username = pi.username
+				AND e.timestamp >= date_trunc('month', NOW())
+			LEFT JOIN model_pricing p ON e.model = p.model
+			GROUP BY pi.person_slug
 		)
 		SELECT st.slug, p.full_name, COALESCE(pi.username, ''), COALESCE(p.manager_slug,''),
 			EXISTS (SELECT 1 FROM people r WHERE r.manager_slug = p.slug),
 			COALESCE(u.requests,0), COALESCE(u.total_tokens,0), COALESCE(u.cost_usd,0),
-			to_char(u.last_used, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+			to_char(u.last_used, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			COALESCE(ROUND((%s)::numeric,2),0), COALESCE(qm.mtd_usd,0)
 		FROM subtree st
 		JOIN people p ON p.slug = st.slug
 		LEFT JOIN LATERAL (SELECT username FROM person_identities WHERE person_slug = st.slug AND is_service = false ORDER BY username LIMIT 1) pi ON true
 		LEFT JOIN u ON u.person_slug = st.slug
-		ORDER BY COALESCE(u.cost_usd,0) DESC, p.full_name`, costUSDExpr)
+		%s
+		LEFT JOIN qm ON qm.person_slug = st.slug
+		ORDER BY COALESCE(u.cost_usd,0) DESC, p.full_name`, costUSDExpr, costUSDExpr, quotaLimitExpr, quotaJoinExpr)
 	rows, err := s.db.QueryContext(ctx, query, rootSlug, since, until)
 	if err != nil {
 		return nil, err
@@ -1010,13 +1031,15 @@ func (s *Store) GetOrgUsage(ctx context.Context, rootSlug string, since, until t
 		var r OrgUsageRow
 		var lastUsed sql.NullString
 		if err := rows.Scan(&r.Slug, &r.FullName, &r.Username, &r.ManagerSlug,
-			&r.IsManager, &r.Requests, &r.TotalTokens, &r.CostUSD, &lastUsed); err != nil {
+			&r.IsManager, &r.Requests, &r.TotalTokens, &r.CostUSD, &lastUsed,
+			&r.QuotaUSD, &r.QuotaSpentUSD); err != nil {
 			return nil, err
 		}
 		if lastUsed.Valid {
 			r.LastUsed = &lastUsed.String
 		}
 		r.NoIdentity = r.Username == ""
+		r.OverLimit = r.QuotaSpentUSD >= r.QuotaUSD
 		out = append(out, r)
 	}
 	return out, rows.Err()

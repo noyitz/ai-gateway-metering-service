@@ -155,6 +155,24 @@ tr.clickable{cursor:pointer}
   <a href="/admin/impersonate" style="margin-left:auto;background:#d29922;color:#1a1a1a;border-radius:5px;padding:4px 12px;font-size:11px;font-weight:700;text-decoration:none">Back to admin view</a>
 </div>
 
+<!-- Monthly budget state: over-limit warning, pending/approved/rejected
+     request status. Rendered entirely from /api/v1/me/quota (whoami carries
+     the same object on first paint). Hidden while quotas are off or you
+     are exempt. -->
+<div id="quota-banner" style="display:none;align-items:center;gap:10px;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:12px;border:1px solid"></div>
+
+<!-- Over-limit budget request popup (reuses the pricing modal's chrome) -->
+<div class="pricing-ov" id="quota-ov" onclick="if(event.target===this)closeQuotaModal()">
+  <div class="pricing-card" role="dialog" aria-modal="true" aria-label="Budget request" style="max-width:520px">
+    <div class="pm-head">
+      <span class="pm-title">Request more budget</span>
+      <span class="pm-sub" id="qo-sub"></span>
+      <button class="pm-close" style="margin-left:auto" onclick="closeQuotaModal()" aria-label="Close">✕</button>
+    </div>
+    <div id="qo-body"></div>
+  </div>
+</div>
+
 <!-- Model pricing modal: the same rate card on every page, openable anytime -->
 <div class="pricing-ov" id="pricing-ov" onclick="if(event.target===this)closePricing()">
   <div class="pricing-card" role="dialog" aria-modal="true" aria-label="Model pricing">
@@ -949,6 +967,7 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
       userFilter=[d.user];updateUserFilterLabel();renderUserChecklist();refresh();
     }
   }
+  if(d.quota)renderQuota(d.quota);
 }).catch(function(){});
 // ── Model pricing modal (shared rate card across all pages) ─────────
 function pmEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -972,6 +991,110 @@ function loadPricing(){
   }).catch(function(e){body.innerHTML='<div class="pm-sub" style="padding:14px 0;color:var(--red)">Could not load pricing ('+pmEsc(e.message)+').</div>';});
 }
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closePricing();});
+
+/* ── Monthly budget: banner + request popup ─────────────────────────
+   renderQuota() is fed the whoami `quota` object (GET /api/v1/me/quota
+   for refreshes). Banner states, in priority order:
+     pending request > over limit > rejected > near (>=80%) > extension note.
+   Hidden entirely when enforcement is off, the user is exempt (super-admin)
+   or has no directory row. When over with nothing in flight, the popup
+   opens once per browser session; always reopenable from the banner.   */
+var quotaState=null;
+function qfmt(v){return '$'+Number(v||0).toLocaleString(undefined,{maximumFractionDigits:2});}
+function qday(iso){var d=new Date(iso);return isNaN(d)?'':d.toLocaleDateString(undefined,{month:'short',day:'numeric'});}
+function renderQuota(q){
+  quotaState=q||null;
+  var b=document.getElementById('quota-banner');
+  var r=q&&q.request;
+  var pending=!!(r&&r.status==='pending');
+  var over=!!(q&&q.spent_usd>=q.limit_usd);
+  var near=!over&&q&&q.spent_usd>=0.8*q.limit_usd;
+  var rejected=r&&r.status==='rejected'&&r.is_current_month;
+  var red='rgba(248,81,73,.10)',redB='#f85149',amb='rgba(210,153,34,.12)',ambB='#d29922',grn='rgba(63,185,80,.10)',grnB='#3fb950';
+  var msg='',act='',bg=amb,bc=ambB;
+  var btn='<button class="pm-open" style="padding:4px 12px;font-size:12px" onclick="openQuotaModal()">Request more</button>';
+  var canc='<button class="pm-open" style="padding:4px 12px;font-size:12px" onclick="cancelQuotaRequest()">Cancel request</button>';
+  if(!q||!q.has_person||!q.enforced||q.exempt){b.style.display='none';return;}
+  if(pending){
+    bg=amb;bc=ambB;
+    if(r.is_current_month)msg='<b>Budget request pending</b> &mdash; '+qfmt(r.asked_usd)+' requested'+(r.approver_name?' with '+pmEsc(r.approver_name):' with an admin')+'. You will be able to send requests once it is approved.';
+    else msg='<b>A budget request from '+pmEsc(r.month)+' is still pending</b> &mdash; cancel it to file a new one for this month.';
+    act=canc;
+  }else if(over){
+    bg=red;bc=redB;
+    msg='<b>Monthly budget reached</b> &mdash; '+qfmt(q.spent_usd)+' of '+qfmt(q.limit_usd)+' used. New requests are blocked until '+qday(q.month_ends)+'.'+(rejected?' Your '+qfmt(r.asked_usd)+' request was rejected'+(r.comment?': '+pmEsc(r.comment):'')+'.':'');
+    act=btn;
+  }else if(rejected){
+    bg=amb;bc=ambB;
+    msg='<b>Budget request rejected</b> &mdash; '+qfmt(r.asked_usd)+' '+qday(r.decided_at||r.created_at)+(r.comment?': '+pmEsc(r.comment):'')+'.';
+    act=btn;
+  }else if(near){
+    bg=amb;bc=ambB;
+    msg='<b>Near your monthly budget</b> &mdash; '+qfmt(q.spent_usd)+' of '+qfmt(q.limit_usd)+' used. Requests will be blocked at '+qday(q.month_ends)+' unless extended.';
+    act=btn;
+  }else if(q.grant_usd>0){
+    bg=grn;bc=grnB;
+    msg='<b>Budget extended</b> &mdash; +'+qfmt(q.grant_usd)+' this month, now '+qfmt(q.limit_usd)+' until '+qday(q.month_ends)+'.';
+  }else{b.style.display='none';return;}
+  b.style.background=bg;b.style.borderColor=bc;
+  b.innerHTML='<div style="flex:1">'+msg+'</div>'+act;
+  b.style.display='flex';
+  if(over&&!pending){
+    var seen=false;try{seen=sessionStorage.getItem('quota-popup-shown')==='1';}catch(e){}
+    if(!seen){try{sessionStorage.setItem('quota-popup-shown','1');}catch(e){}openQuotaModal();}
+  }
+}
+function openQuotaModal(){
+  var q=quotaState;if(!q)return;
+  document.getElementById('quota-ov').classList.add('show');
+  document.getElementById('qo-sub').textContent=qfmt(q.spent_usd)+' of '+qfmt(q.limit_usd)+' used this month · resets '+qday(q.month_ends);
+  var head='';
+  if(q.spent_usd>=q.limit_usd)head='<div style="color:#f85149;font-size:13px;margin-bottom:12px">You are over your monthly budget. The gateway blocks new requests until this is approved or the month resets ('+qday(q.month_ends)+').</div>';
+  var r=q.request;
+  if(r&&r.status==='rejected'&&r.is_current_month&&r.comment)head+='<div style="color:var(--text2);font-size:12px;margin-bottom:12px">Previously rejected: '+pmEsc(r.comment)+'</div>';
+  var over=Math.max(q.spent_usd-q.limit_usd,0);
+  var dflt=over>0?Math.max(50,Math.ceil((over+25)/50)*50):100;
+  document.getElementById('qo-body').innerHTML=head
+    +'<div style="font-size:13px;line-height:1.6">'
+    +'<label style="display:block;color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Additional budget for the rest of the month ($)</label>'
+    +'<input id="qo-amount" type="number" min="1" max="100000" step="1" value="'+dflt+'" style="width:140px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:14px;font-family:inherit">'
+    +'<label style="display:block;color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 4px">Reason (shared with your approver)</label>'
+    +'<textarea id="qo-reason" rows="3" maxlength="2000" placeholder="What you need the extra budget for" style="width:100%;box-sizing:border-box;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit;resize:vertical"></textarea>'
+    +'<div id="qo-err" style="display:none;color:#f85149;font-size:12px;margin-top:10px"></div>'
+    +'<div style="display:flex;gap:10px;align-items:center;margin-top:16px">'
+    +'<button class="pm-open" id="qo-submit" onclick="submitQuotaRequest()">Submit request</button>'
+    +'<span style="color:var(--text2);font-size:11px">Routed to your manager for approval.</span>'
+    +'</div></div>';
+  var a=document.getElementById('qo-amount');if(a)a.focus();
+}
+function closeQuotaModal(){document.getElementById('quota-ov').classList.remove('show');}
+function quotaFormErr(m){var e=document.getElementById('qo-err');if(e){e.textContent=m;e.style.display='block';}}
+function submitQuotaRequest(){
+  var q=quotaState;if(!q)return;
+  var amt=parseFloat(document.getElementById('qo-amount').value);
+  var reason=(document.getElementById('qo-reason').value||'').trim();
+  if(!(amt>0)){quotaFormErr('Enter the additional amount you are asking for.');return;}
+  if(!reason){quotaFormErr('Add a short reason — your approver will see it.');return;}
+  var btn=document.getElementById('qo-submit');btn.disabled=true;btn.textContent='Submitting…';
+  fetch('/api/v1/me/quota/request',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({asked_usd:amt,reason:reason})})
+  .then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error((t||'').trim()||('HTTP '+r.status));});})
+  .then(function(){closeQuotaModal();return refreshQuota();})
+  .catch(function(e){btn.disabled=false;btn.textContent='Submit request';quotaFormErr(e.message||'Request failed.');});
+}
+function cancelQuotaRequest(){
+  if(!confirm('Cancel this budget request? You can file a new one afterwards.'))return;
+  fetch('/api/v1/me/quota/request',{method:'DELETE',credentials:'same-origin'})
+  .then(function(r){return r.ok?true:r.text().then(function(t){throw new Error((t||'').trim()||('HTTP '+r.status));});})
+  .then(function(){return refreshQuota();})
+  .catch(function(e){alert('Could not cancel the request: '+(e.message||'HTTP error'));});
+}
+function refreshQuota(){
+  return fetch('/api/v1/me/quota',{credentials:'same-origin'})
+  .then(function(r){return r.ok?r.json():null;})
+  .then(function(q){if(q)renderQuota(q);})
+  .catch(function(){});
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeQuotaModal();});
 </script>
 </body>
 </html>

@@ -67,6 +67,26 @@ func IsSuperAdmin(cfg config.Config, r *http.Request) bool {
 	return false
 }
 
+// IsSuperAdminUsername is IsSuperAdmin for callers that carry no session
+// header — the gateway's M2M entitlement lookup, where the only identity is
+// the customer username in the path. SUPERADMIN_USERS entries are OAuth
+// identities (email form); gateway logins are the local part, so both forms
+// match.
+func IsSuperAdminUsername(cfg config.Config, username string) bool {
+	if username == "" {
+		return false
+	}
+	for _, admin := range cfg.SuperAdminUsers {
+		if strings.EqualFold(username, admin) {
+			return true
+		}
+		if i := strings.IndexByte(admin, '@'); i > 0 && strings.EqualFold(username, admin[:i]) {
+			return true
+		}
+	}
+	return false
+}
+
 // RequireAdmin gates a handler behind IsAdmin, sending everyone else to
 // their own account page.
 func RequireAdmin(cfg config.Config, next http.HandlerFunc) http.HandlerFunc {

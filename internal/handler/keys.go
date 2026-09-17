@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -186,6 +187,14 @@ func (h *KeysHandler) HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 		isManager, scopeSize := WhoAmIScope(r, h.store, h.cfg)
 		resp["isManager"] = isManager
 		resp["scopeSize"] = scopeSize
+		// Quota carrier (additive): the dashboard's over-limit popup/banner
+		// renders straight off this — no extra round-trip on boot. A quota
+		// lookup failure degrades the banner away, not the whole whoami.
+		if q, err := h.store.GetQuotaView(r.Context(), user, IsSuperAdmin(h.cfg, r)); err == nil {
+			resp["quota"] = q
+		} else {
+			slog.Error("quota view lookup failed", "user", user, "error", err)
+		}
 	}
 	// githubId backs the redesigned user dashboard's avatar; only available
 	// when the kubernetes adapter can read OpenShift users.
