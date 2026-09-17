@@ -97,9 +97,21 @@ tr.clickable{cursor:pointer}
 .pm-close:hover{color:var(--text);background:var(--border)}
 .pm-body{overflow:auto;padding:4px 18px 16px}
 /* ── Budget request popup (shares the modal chrome, own form styling) ── */
-.qo-warn{background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.35);border-radius:8px;padding:10px 12px;color:#f85149;font-size:12.5px;line-height:1.55;margin-top:14px}
+.qo-bar{margin-top:14px}
+.qo-barrow{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--text2)}
+.qo-barrow b{color:var(--text);font-size:13px;font-variant-numeric:tabular-nums}
+.qo-pct{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700}
+.qo-track{height:6px;border-radius:3px;background:var(--bg-hover);margin-top:7px;overflow:hidden}
+.qo-fill{height:100%;border-radius:3px}
+.qo-note{font-size:11.5px;line-height:1.5;margin-top:9px}
 .qo-rej{background:var(--bg-hover);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text2);font-size:12px;line-height:1.5;margin-top:10px}
 .qo-label{display:block;color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 6px}
+.qo-chips{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.qo-chip{background:var(--bg-hover);border:1px solid var(--border);border-radius:14px;padding:4px 12px;font-size:12px;color:var(--text2);cursor:pointer;font-family:inherit}
+.qo-chip:hover{color:var(--text);border-color:var(--text2)}
+.qo-chip.on{color:#58a6ff;border-color:#58a6ff;background:rgba(88,166,255,.1)}
+.qo-new{font-size:11.5px;color:var(--text2);margin-top:8px;font-variant-numeric:tabular-nums}
+.qo-new b{color:var(--text)}
 .qo-amt{display:flex;border:1px solid var(--border);border-radius:8px;background:var(--bg);overflow:hidden}
 .qo-amt:focus-within{border-color:#58a6ff}
 .qo-amt .pfx{display:flex;align-items:center;padding:0 11px;color:var(--text2);font-size:15px;border-right:1px solid var(--border);background:var(--bg-hover)}
@@ -1089,23 +1101,45 @@ function openQuotaModal(){
   var q=quotaState;if(!q)return;
   document.getElementById('quota-ov').classList.add('show');
   document.getElementById('qo-sub').textContent=qfmt(q.spent_usd)+' of '+qfmt(q.limit_usd)+' used this month · resets '+qday(q.month_ends);
-  var head='';
-  if(q.spent_usd>=q.limit_usd)head='<div class="qo-warn"><b>Over budget.</b> New requests are blocked until this is approved or the month resets ('+qday(q.month_ends)+'). An approved amount covers the rest of the month.</div>';
+  // Spend bar: fill capped at 100%, the percentage tells the over story.
+  var pct=q.limit_usd>0?Math.round(q.spent_usd/q.limit_usd*100):0;
+  var col=pct>=100?'#f85149':pct>=80?'#d29922':'#3fb950';
+  var head='<div class="qo-bar">'
+    +'<div class="qo-barrow"><b>'+qfmt(q.spent_usd)+'</b> of '+qfmt(q.limit_usd)+' used<span class="qo-pct" style="color:'+col+'">'+pct+'%</span></div>'
+    +'<div class="qo-track"><div class="qo-fill" style="width:'+Math.min(pct,100)+'%;background:'+col+'"></div></div></div>';
+  head+=q.spent_usd>=q.limit_usd
+    ?'<div class="qo-note" style="color:#f85149">Blocked right now &mdash; an approved amount lifts you for the rest of the month.</div>'
+    :'<div class="qo-note" style="color:var(--text2)">Under budget &mdash; this raises your limit through '+qday(q.month_ends)+'.</div>';
   var r=q.request;
   if(r&&r.status==='rejected'&&r.is_current_month&&r.comment)head+='<div class="qo-rej">Your last request was declined: &ldquo;'+pmEsc(r.comment)+'&rdquo;</div>';
   var over=Math.max(q.spent_usd-q.limit_usd,0);
   var dflt=over>0?Math.max(50,Math.ceil((over+25)/50)*50):100;
+  var chips=[50,100,150,250].map(function(v){
+    return '<button type="button" class="qo-chip'+(v===dflt?' on':'')+'" data-v="'+v+'" onclick="qoChip('+v+')">+$'+v+'</button>';}).join('');
   document.getElementById('qo-body').innerHTML=head
-    +'<label class="qo-label" for="qo-amount">Ask for this much more until '+qday(q.month_ends)+' ($)</label>'
-    +'<div class="qo-amt"><span class="pfx">$</span><input id="qo-amount" type="number" min="1" max="100000" step="1" value="'+dflt+'"></div>'
+    +'<label class="qo-label" for="qo-amount">Extra budget until '+qday(q.month_ends)+'</label>'
+    +'<div class="qo-chips">'+chips+'</div>'
+    +'<div class="qo-amt"><span class="pfx">$</span><input id="qo-amount" type="number" min="1" max="100000" step="1" value="'+dflt+'" oninput="quotaAmtChanged()"></div>'
+    +'<div class="qo-new">New limit if approved: <b id="qo-new">'+qfmt(q.limit_usd+dflt)+'</b> until '+qday(q.month_ends)+'</div>'
     +'<label class="qo-label" for="qo-reason">Reason (your approver sees this)</label>'
-    +'<textarea id="qo-reason" class="qo-area" rows="3" maxlength="2000" placeholder="What you need the extra budget for"></textarea>'
+    +'<textarea id="qo-reason" class="qo-area" rows="2" maxlength="2000" placeholder="What you need the extra budget for"></textarea>'
     +'<div id="qo-err" style="display:none;color:#f85149;font-size:12px;margin-top:10px"></div>'
     +'<div class="qo-foot">'
     +'<button class="qo-go" id="qo-submit" onclick="submitQuotaRequest()">Submit request</button>'
     +'<span class="qo-hint">Goes to your manager &mdash; one tap to approve.</span>'
     +'</div>';
   var a=document.getElementById('qo-amount');if(a)a.focus();
+}
+// Amount ↔ chips ↔ new-limit preview stay in sync as the form is edited.
+function qoChip(v){var a=document.getElementById('qo-amount');if(a){a.value=v;quotaAmtChanged();}}
+function quotaAmtChanged(){
+  var q=quotaState;if(!q)return;
+  var a=document.getElementById('qo-amount');if(!a)return;
+  var amt=parseFloat(a.value)||0;
+  var n=document.getElementById('qo-new');
+  if(n)n.textContent=qfmt(q.limit_usd+amt);
+  var chips=document.querySelectorAll('#qo-body .qo-chip');
+  for(var i=0;i<chips.length;i++)chips[i].classList.toggle('on',parseFloat(chips[i].getAttribute('data-v'))===amt);
 }
 function closeQuotaModal(){document.getElementById('quota-ov').classList.remove('show');}
 function quotaFormErr(m){var e=document.getElementById('qo-err');if(e){e.textContent=m;e.style.display='block';}}
