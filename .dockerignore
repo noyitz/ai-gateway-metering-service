@@ -1,0 +1,11 @@
+.git
+.gitignore
+Dockerfile
+README.md
+LICENSE
+docs/
+deploy/
+seeds/
+scripts/
+docker-compose.yaml
+**/*_test.go
