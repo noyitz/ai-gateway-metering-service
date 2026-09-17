@@ -264,6 +264,12 @@ type DashboardOverview struct {
 	TotalTokens           int64   `json:"total_tokens"`
 	ActiveUsers           int     `json:"active_users"`
 	TotalCostUSD          float64 `json:"total_cost_usd"`
+	// Saved · Hosted Models KPI, computed server-side as the exact sum of
+	// the per-user saved_usd column (GetHostedSavings) so the card and the
+	// table can never disagree. Ratio/RatioApplied back the sub-label.
+	SavedUSD     float64 `json:"saved_usd"`
+	SavingsRatio float64 `json:"savings_ratio"`
+	RatioApplied bool    `json:"savings_ratio_applied"`
 }
 
 type GroupSummary struct {
@@ -407,32 +413,84 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 		limit = 100
 	}
 
-	// saved_usd reproduces the dashboard KPI arithmetic per user:
-	//   r_ref/r_all  observed cache ratio (cached/prompt) of VENDOR (paid,
-	//                non-hosted) traffic in the window — range-only
-	//                (unfiltered), like the client's unfiltered model
-	//                catalog; reference model preferred, all vendor paid as
-	//                fallback. Hosted providers (vllm / legacy qwen) are
-	//                excluded: they carry no cache telemetry, so including
-	//                them once they bill nonzero would drag the observed
-	//                ratio toward 0.
-	//   pr           reference model rates from model_pricing (aggregated so
-	//                the CTE always yields exactly one row).
-	//   fm           per-user-per-model totals over the active filters, plus
-	//                a `hosted` flag (provider vllm or the legacy qwen
-	//                alias). A model also counts as hosted when its metered
-	//                cost is 0 with real tokens, same as the client.
-	//   sv           per-user savings: for each hosted model, what its
-	//                traffic would have cost on the reference rates minus
-	//                what it was actually billed (hosted models bill at
-	//                OpenRouter parity, not $0), floored at 0 per model so
-	//                one model can never cancel another's saving. The
-	//                counterfactual is cache-aware: cache-write tokens are
-	//                deducted from the fresh-input term so each tier is
-	//                priced once; hosted traffic with no cache telemetry
-	//                gets the observed ratio applied (per model, rounded —
-	//                matches the client).
-	query := fmt.Sprintf(`
+	query := hostedSavingsWithSQL() + fmt.Sprintf(`
+		SELECT e.username,
+			%s,
+			COALESCE(e.group_name, ''),
+			COUNT(*) as requests,
+			COALESCE(SUM(e.prompt_tokens),0) as prompt_tokens,
+			COALESCE(SUM(e.completion_tokens),0) as completion_tokens,
+			COALESCE(SUM(e.total_tokens),0) as total_tokens,
+			COALESCE(ROUND(SUM(%s)::numeric, 2), 0) as cost_usd,
+			COALESCE(ROUND(MAX(sv.saved)::numeric, 2), 0) as saved_usd
+		FROM usage_events e
+		LEFT JOIN model_pricing p ON e.model = p.model
+		LEFT JOIN user_profiles up ON up.username = e.username
+		LEFT JOIN sv ON sv.username = e.username
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
+		GROUP BY e.username, %s, COALESCE(e.group_name, '')
+		ORDER BY %s %s
+		LIMIT $6`, displayNameExpr, costUSDExpr, displayNameExpr, sortExpr, direction)
+
+	rows, err := s.db.QueryContext(ctx, query, since, until, group, user, model, limit, refModel)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []UserSummary
+	for rows.Next() {
+		var u UserSummary
+		var displayName sql.NullString
+		if err := rows.Scan(&u.Username, &displayName, &u.GroupName, &u.Requests, &u.PromptTokens, &u.CompletionTokens, &u.TotalTokens, &u.CostUSD, &u.SavedUSD); err != nil {
+			return nil, err
+		}
+		u.DisplayName = displayName.String
+		result = append(result, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// hostedSavingsWithSQL is the single source of truth for the
+// "Saved · Hosted Models" counterfactual. Both the per-user table column
+// (GetDashboardUsers) and the org-wide KPI (GetHostedSavings) run THIS SQL,
+// so the card can never disagree with the column beneath it — the split
+// this replaced computed the KPI client-side over per-MODEL aggregates,
+// where the "no cache telemetry" heuristic (apply the observed vendor cache
+// ratio) fires or not depending on whether ANY user reported cache for a
+// model, while the per-user column decided per user×model pair. A single
+// 8,800-token cached row once swung the org KPI by thousands of dollars.
+//
+//	r_ref/r_all  observed cache ratio (cached/prompt) of VENDOR (paid,
+//	             non-hosted) traffic in the window — range-only
+//	             (unfiltered), like the client's unfiltered model
+//	             catalog; reference model preferred, all vendor paid as
+//	             fallback. Hosted providers (vllm / legacy qwen) are
+//	             excluded: they carry no cache telemetry, so including
+//	             them once they bill nonzero would drag the observed
+//	             ratio toward 0.
+//	pr           reference model rates from model_pricing (aggregated so
+//	             the CTE always yields exactly one row).
+//	fm           per-user-per-model totals over the active filters, plus
+//	             a `hosted` flag (provider vllm / qwen seed or the qwen-*
+//	             route label). A model also counts as hosted when its
+//	             metered cost is 0 with real tokens.
+//	sv           per-user savings: for each hosted model, what its traffic
+//	             would have cost on the reference rates minus what it was
+//	             actually billed (hosted models bill at OpenRouter parity,
+//	             not $0), floored at 0 per user×model so one model can
+//	             never cancel another's saving. Cache-aware: cache-write
+//	             tokens are deducted from the fresh-input term so each
+//	             tier is priced once; a hosted row with no cache telemetry
+//	             gets the observed ratio applied (rounded, per row).
+//
+// Positional params: $1 since, $2 until, $3 group, $4 user, $5 model,
+// $7 reference model ($6 is left to the caller — the user-table LIMIT).
+func hostedSavingsWithSQL() string {
+	return fmt.Sprintf(`
 		WITH r_ref AS (
 			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
 			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
@@ -482,45 +540,27 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 			FROM fm CROSS JOIN pr CROSS JOIN rat
 			WHERE (fm.hosted OR fm.cost = 0) AND fm.tot > 0
 			GROUP BY fm.username
-		)
-		SELECT e.username,
-			%s,
-			COALESCE(e.group_name, ''),
-			COUNT(*) as requests,
-			COALESCE(SUM(e.prompt_tokens),0) as prompt_tokens,
-			COALESCE(SUM(e.completion_tokens),0) as completion_tokens,
-			COALESCE(SUM(e.total_tokens),0) as total_tokens,
-			COALESCE(ROUND(SUM(%s)::numeric, 2), 0) as cost_usd,
-			COALESCE(ROUND(MAX(sv.saved)::numeric, 2), 0) as saved_usd
-		FROM usage_events e
-		LEFT JOIN model_pricing p ON e.model = p.model
-		LEFT JOIN user_profiles up ON up.username = e.username
-		LEFT JOIN sv ON sv.username = e.username
-		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
-		GROUP BY e.username, %s, COALESCE(e.group_name, '')
-		ORDER BY %s %s
-		LIMIT $6`, costUSDExpr, costUSDExpr, costUSDExpr, displayNameExpr, costUSDExpr, displayNameExpr, sortExpr, direction)
+		)`, costUSDExpr, costUSDExpr, costUSDExpr)
+}
 
-	rows, err := s.db.QueryContext(ctx, query, since, until, group, user, model, limit, refModel)
-	if err != nil {
-		return nil, err
+// GetHostedSavings returns the org-wide "Saved · Hosted Models" KPI: the
+// exact sum of the per-user saved_usd column (same CTE, same floors) over
+// the active filters, so the KPI card equals the table underneath it by
+// construction. ratio/ratioApplied back the "N% input est. cached"
+// sub-label — the estimate the counterfactual had to make for hosted
+// traffic that reports no cache telemetry.
+func (s *Store) GetHostedSavings(ctx context.Context, since, until time.Time, group, user, model, refModel string) (saved, ratio float64, ratioApplied bool, err error) {
+	if refModel == "" {
+		refModel = "claude-opus-4-8"
 	}
-	defer rows.Close()
-
-	var result []UserSummary
-	for rows.Next() {
-		var u UserSummary
-		var displayName sql.NullString
-		if err := rows.Scan(&u.Username, &displayName, &u.GroupName, &u.Requests, &u.PromptTokens, &u.CompletionTokens, &u.TotalTokens, &u.CostUSD, &u.SavedUSD); err != nil {
-			return nil, err
-		}
-		u.DisplayName = displayName.String
-		result = append(result, u)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return result, nil
+	query := hostedSavingsWithSQL() + `,
+		sa AS (SELECT COALESCE(SUM(saved), 0) as saved FROM sv),
+		ra AS (SELECT COALESCE(bool_or(cached = 0 AND cwrite = 0 AND prompt > 0 AND (SELECT r FROM rat) > 0), false) as applied
+		       FROM fm WHERE (hosted OR cost = 0) AND tot > 0)
+		SELECT COALESCE(ROUND((SELECT saved FROM sa)::numeric, 2), 0)::float8,
+		       (SELECT r FROM rat), (SELECT applied FROM ra)`
+	err = s.db.QueryRowContext(ctx, query, since, until, group, user, model, 0, refModel).Scan(&saved, &ratio, &ratioApplied)
+	return saved, ratio, ratioApplied, err
 }
 
 func (s *Store) GetDashboardModels(ctx context.Context, since, until time.Time, group, user, model string) ([]ModelSummary, error) {
