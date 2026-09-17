@@ -1047,14 +1047,18 @@ function renderQuota(q){
   var btn='<button class="pm-open" style="padding:4px 12px;font-size:12px" onclick="openQuotaModal()">Request more</button>';
   var canc='<button class="pm-open" style="padding:4px 12px;font-size:12px" onclick="cancelQuotaRequest()">Cancel request</button>';
   if(!q||!q.has_person||!q.enforced||q.exempt){b.style.display='none';return;}
+  // How many requests the gateway has actually bounced this month (counted
+  // by metering at the moment it answers hasAccess:false).
+  var dn=parseInt(q.denials_this_month,10)||0;
+  var dl=dn>0?' <span style="opacity:.75">('+dn+' request'+(dn>1?'s':'')+' blocked so far.)</span>':'';
   if(pending){
     bg=amb;bc=ambB;
-    if(r.is_current_month)msg='<b>Budget request pending</b> &mdash; '+qfmt(r.asked_usd)+' requested'+(r.approver_name?' with '+pmEsc(r.approver_name):' with an admin')+'. You will be able to send requests once it is approved.';
+    if(r.is_current_month)msg='<b>Budget request pending</b> &mdash; '+qfmt(r.asked_usd)+' requested'+(r.approver_name?' with '+pmEsc(r.approver_name):' with an admin')+'. You will be able to send requests once it is approved.'+dl;
     else msg='<b>A budget request from '+pmEsc(r.month)+' is still pending</b> &mdash; cancel it to file a new one for this month.';
     act=canc;
   }else if(over){
     bg=red;bc=redB;
-    msg='<b>Monthly budget reached</b> &mdash; '+qfmt(q.spent_usd)+' of '+qfmt(q.limit_usd)+' used. New requests are blocked until '+qday(q.month_ends)+'.'+(rejected?' Your '+qfmt(r.asked_usd)+' request was rejected'+(r.comment?': '+pmEsc(r.comment):'')+'.':'');
+    msg='<b>Monthly budget reached</b> &mdash; '+qfmt(q.spent_usd)+' of '+qfmt(q.limit_usd)+' used. New requests are blocked until '+qday(q.month_ends)+'.'+(rejected?' Your '+qfmt(r.asked_usd)+' request was rejected'+(r.comment?': '+pmEsc(r.comment):'')+'.':'')+dl;
     act=btn;
   }else if(rejected){
     bg=amb;bc=ambB;

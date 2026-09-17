@@ -376,3 +376,59 @@ func TestQuotaAuditTrail(t *testing.T) {
 		}
 	}
 }
+
+// TestQuotaDenialCounters covers the blocked-request ledger: repeated
+// denials upsert (not multiply-insert) per (username, month, model), a
+// stale month row never counts toward this month, the person view
+// aggregates across every login of one identity, and the admin totals sort
+// the most-blocked first.
+func TestQuotaDenialCounters(t *testing.T) {
+	s, ctx := openTestStore(t)
+	seedQuotaRoster(t, s, ctx)
+	quotaExec(t, s, ctx, `INSERT INTO person_identities (username, person_slug) VALUES ('alice_alt','alice')`)
+
+	// alice blocked twice on one model, once on another, once via her
+	// second login: four this-month denials for the person, two ledger
+	// usernames carrying them (3 + 1).
+	for i := 0; i < 2; i++ {
+		if err := s.RecordQuotaDenial(ctx, "alice", "claude-x"); err != nil {
+			t.Fatalf("record: %v", err)
+		}
+	}
+	if err := s.RecordQuotaDenial(ctx, "alice", "qwen-y"); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	if err := s.RecordQuotaDenial(ctx, "alice_alt", "claude-x"); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	// A prior-month row must not leak into this month's numbers.
+	quotaExec(t, s, ctx, `INSERT INTO quota_denials (username, month, model, count) VALUES ('alice','2020-01','claude-x',99)`)
+
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT count FROM quota_denials WHERE username='alice' AND model='claude-x' AND month<>$1`, "2020-01").Scan(&n); err != nil || n != 2 {
+		t.Fatalf("upsert count: got %d err %v, want 2", n, err)
+	}
+
+	v, err := s.GetQuotaView(ctx, "alice", false)
+	if err != nil {
+		t.Fatalf("view: %v", err)
+	}
+	if v.DenialsThisMonth != 4 {
+		t.Fatalf("view denials: got %d, want 4 (cross-login, current month only)", v.DenialsThisMonth)
+	}
+	// bob was never blocked.
+	if vb, err := s.GetQuotaView(ctx, "bob", false); err != nil || vb.DenialsThisMonth != 0 {
+		t.Fatalf("bob denials: got %d err %v, want 0", vb.DenialsThisMonth, err)
+	}
+
+	total, byUser, err := s.QuotaDenialTotals(ctx)
+	if err != nil {
+		t.Fatalf("totals: %v", err)
+	}
+	if total != 4 {
+		t.Fatalf("admin total: got %d, want 4 (stale month excluded)", total)
+	}
+	if len(byUser) != 2 || byUser[0].Username != "alice" || byUser[0].Count != 3 {
+		t.Fatalf("admin breakdown: %+v, want alice(2) first", byUser)
+	}
+}

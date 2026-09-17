@@ -259,6 +259,7 @@ func main() {
 	// check that answers fetch() with a 403 instead of RequireSuperAdmin's
 	// redirect; /me and /org endpoints scope internally like the org APIs.
 	mux.HandleFunc("/api/v1/admin/quota/policy", auth(quotaHandler.HandleAdminPolicy))
+	mux.HandleFunc("/api/v1/admin/quota/denials", auth(quotaHandler.HandleAdminDenials))
 	mux.HandleFunc("/api/v1/admin/quota/overrides", auth(quotaHandler.HandleAdminOverrides))
 	mux.HandleFunc("/api/v1/me/quota", auth(quotaHandler.HandleMe))
 	mux.HandleFunc("/api/v1/me/quota/request", auth(quotaHandler.HandleMeRequest))
