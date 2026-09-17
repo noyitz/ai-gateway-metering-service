@@ -615,6 +615,10 @@ type QuotaView struct {
 	// stale pending from an earlier month (PendingFromPriorMonth). nil when
 	// there is nothing to show.
 	Request *QuotaRequest `json:"request,omitempty"`
+	// ApprovalsPending counts requests waiting on THIS user as approver:
+	// routed to them as the requester's manager, plus (for super-admins) the
+	// manager-less backstop queue. Drives the manager-side pending banner.
+	ApprovalsPending int `json:"approvals_pending"`
 }
 
 // GetQuotaView assembles the decision plus the person's latest request for
@@ -635,6 +639,14 @@ func (s *Store) GetQuotaView(ctx context.Context, username string, exempt bool) 
 			if err == nil {
 				v.Request = &q
 			}
+			// Approver badge: what this person owes a decision on. Matches
+			// the manager inbox exactly (state=pending, any month — stale
+			// rows are shown in the inbox too, so they count here as well).
+			// Super-admins also see the manager-less backstop queue.
+			_ = s.db.QueryRowContext(ctx, `
+				SELECT count(*) FROM quota_requests
+				WHERE status = 'pending' AND (approver_slug = $1 OR ($2 AND approver_slug IS NULL))`,
+				person.Slug, exempt).Scan(&v.ApprovalsPending)
 		}
 	}
 	return v, nil

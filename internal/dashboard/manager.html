@@ -157,8 +157,16 @@ td.num{text-align:right}
     <div class="kpi"><div class="l">Members</div><div class="v" id="kPeople">–</div><div class="s" id="kPeopleS"></div></div>
     <div class="kpi"><div class="l" id="kBudgetL">Team budget</div><div class="v" id="kBudget">–</div><div class="s" id="kBudgetS"></div></div>
   </div>
+  <!-- Pending-decisions banner: same role as the user's "request pending"
+       banner, mirrored for the approver side. Sits above the KPIs so it
+       reads on arrival, and jumps to the inbox on click. -->
+  <div id="apprBanner" style="display:none;align-items:center;gap:10px;border:1px solid #58a6ff66;background:#58a6ff1f;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:12px;color:#cfe3ff">
+    <span id="apprBannerText" style="flex:1"></span>
+    <button onclick="document.getElementById('approvals').scrollIntoView({behavior:'smooth'})"
+      style="background:none;border:1px solid #58a6ff;border-radius:6px;padding:3px 10px;color:#58a6ff;font-size:11px;cursor:pointer;font-family:inherit">Review requests ↓</button>
+  </div>
   <div class="panel" id="approvals" style="display:none">
-    <h2>Approval requests <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">— over-limit budget asks from your team</span></h2>
+    <h2>Approval requests <span id="apprCount" class="dim" style="text-transform:none;letter-spacing:0;font-weight:400"></span> <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">— over-limit budget asks from your team</span></h2>
     <div id="apprBody"></div>
   </div>
   <div class="panel"><h2>Daily tokens by member</h2><canvas id="tl" height="70"></canvas></div>
@@ -405,8 +413,16 @@ async function loadInbox(){
     if(!Array.isArray(list))return;
     inboxById={};list.forEach(q=>{inboxById[q.id]=q;});
     const panel=document.getElementById('approvals');
-    if(!list.length){panel.style.display='none';return;}
+    const banner=document.getElementById('apprBanner');
+    const cnt=document.getElementById('apprCount');
+    if(cnt)cnt.textContent=list.length?('('+list.length+')'):'';
+    if(!list.length){panel.style.display='none';if(banner)banner.style.display='none';return;}
     panel.style.display='';
+    if(banner){
+      document.getElementById('apprBannerText').innerHTML=
+        '<b>'+list.length+(list.length===1?' request':' requests')+' awaiting your approval</b> — from '+esc(new Set(list.map(q=>q.person_name)).size+(new Set(list.map(q=>q.person_name)).size===1?' person':' people'))+'.';
+      banner.style.display='flex';
+    }
     document.getElementById('apprBody').innerHTML=list.map(q=>{
       const age=esc(new Date(q.created_at).toLocaleDateString('en-US'));
       const stale=!q.is_current_month;
