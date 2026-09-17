@@ -105,7 +105,7 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
   }
   document.getElementById('abUser').style.display='';
   document.getElementById('abOut').style.display='';
-  if(d.isManager||d.isAdmin)document.getElementById('tab-team').style.display='';
+  if(d.isSuperAdmin||d.isManager)document.getElementById('tab-team').style.display='';
   if(d.isSuperAdmin){
     ['tab-routing','tab-compression','tab-admin'].forEach(function(id){document.getElementById(id).style.display='';});
     var mvb=document.getElementById('my-view-btn');

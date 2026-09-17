@@ -21,12 +21,17 @@ import (
 // OrgHandler serves the people directory, the manager scope, the org chart,
 // and key invites.
 //
-// Scope model (the whole feature's security hinges on this):
-//   - admin: sees everything (ADMIN_USERS allowlist, as today);
-//   - manager: a person WITH REPORTS in the directory — never assigned,
-//     always derived from the org shape. Sees their whole subtree: their
-//     people plus subordinate managers' people;
-//   - everyone else: themselves only, exactly as before this feature.
+// Scope model (the whole feature's security hinges on this). The two
+// surfaces deliberately differ:
+//   - Usage page (/dashboard, ApplyScope): admins — managers included —
+//     see every user; everyone else sees ONLY their own spend. Team
+//     visibility is never a Usage-page feature.
+//   - Team views (/manager, /api/v1/org/*): super-admins see the whole
+//     organisation; managers see their own subtree (their people plus
+//     subordinate managers' people — even when the manager is also an
+//     admin); everyone else themselves only. A plain admin with no
+//     reports sees no more than any other user here, and the nav hides
+//     the My-team tab for them entirely.
 //
 // Admin "view as" (the signed session claim) swaps the identity header
 // BEFORE any scope is computed, so an admin impersonating a manager gets
@@ -66,12 +71,13 @@ func caller(r *http.Request, cfg config.Config) string {
 }
 
 // ApplyScope rewrites the dashboard's user filter for a non-admin caller.
-// Admins pass through untouched (today's behaviour, byte for byte). For
-// everyone else the requested user list (if any) must sit inside their
-// scope or the request is rejected with 403; with no explicit list, their
-// whole scope becomes the filter. The result feeds the existing
-// `username = ANY(string_to_array($n, ','))` storage filter unchanged —
-// manager visibility is one new argument, not new reporting SQL.
+// Admins pass through untouched — the Usage page is the admin's all-users
+// view whether or not they also manage people. Everyone ELSE, managers
+// included, sees only their own spend here: a manager looking at team
+// spend goes to the My-team page, not the Usage filters. The requested
+// user list (if any) must sit inside the caller's own identities or the
+// request is rejected with 403. The result feeds the existing
+// `username = ANY(string_to_array($n, ','))` storage filter unchanged.
 // Returns ok=false when an error response was already written.
 //
 // Package-level (not an OrgHandler method) so every dashboard handler can
@@ -85,13 +91,7 @@ func ApplyScope(w http.ResponseWriter, r *http.Request, store *storage.Store, cf
 		http.Error(w, "who are you?", http.StatusUnauthorized)
 		return "", false
 	}
-	list, _, _, err := store.ScopeUsernames(r.Context(), me)
-	if err != nil {
-		// Fail closed to self: a directory outage must never widen anyone's
-		// visibility beyond what existed before this feature.
-		slog.Error("scope resolution failed, falling back to self", "user", me, "error", err)
-		list = []string{me}
-	}
+	list := selfScope(r.Context(), store, me)
 	if requestedUser == "" {
 		return strings.Join(list, ","), true
 	}
@@ -110,6 +110,32 @@ func ApplyScope(w http.ResponseWriter, r *http.Request, store *storage.Store, cf
 		}
 	}
 	return requestedUser, true
+}
+
+// selfScope resolves the usernames a non-admin caller may see on the Usage
+// page: their own directory identities when they're in the directory (one
+// person can hold several sign-in usernames), otherwise the session
+// username alone. Managers get no subtree here — that is the whole point.
+// Fails closed to the session username on any directory error.
+func selfScope(ctx context.Context, store *storage.Store, me string) []string {
+	_, _, slug, err := store.ScopeUsernames(ctx, me)
+	if err != nil {
+		// Fail closed to self: a directory outage must never widen anyone's
+		// visibility beyond what existed before this feature.
+		slog.Error("scope resolution failed, falling back to self", "user", me, "error", err)
+		return []string{me}
+	}
+	if slug == "" {
+		return []string{me}
+	}
+	own, err := store.PersonUsernames(ctx, slug)
+	if err != nil || len(own) == 0 {
+		if err != nil {
+			slog.Error("own-identities lookup failed, falling back to self", "user", me, "error", err)
+		}
+		return []string{me}
+	}
+	return own
 }
 
 // ServeManager renders the manager page. Anyone signed in may open it —
@@ -131,19 +157,25 @@ func (h *OrgHandler) ServeManager(w http.ResponseWriter, r *http.Request) {
 func (h *OrgHandler) HandleScope(w http.ResponseWriter, r *http.Request) {
 	me := caller(r, h.cfg)
 	resp := map[string]any{
-		"username":   me,
-		"scope":      "self",
-		"isAdmin":    IsAdmin(h.cfg, r),
-		"isManager":  false,
-		"scopeSize":  1,
-		"roots":      []string{},
-		"personSlug": "",
+		"username":     me,
+		"scope":        "self",
+		"isAdmin":      IsAdmin(h.cfg, r),
+		"isSuperAdmin": IsSuperAdmin(h.cfg, r),
+		"isManager":    false,
+		"scopeSize":    1,
+		"roots":        []string{},
+		"personSlug":   "",
 	}
 	if me == "" {
 		writeJSON(w, resp)
 		return
 	}
-	if IsAdmin(h.cfg, r) {
+	// Only super-admins get the org-wide view on the team page. A plain
+	// admin — even one who manages people — resolves below exactly like
+	// everyone else: their own subtree if the directory has reports under
+	// them, otherwise self. That's what makes "manager who is also an
+	// admin" show HIS team here while still seeing all users on Usage.
+	if IsSuperAdmin(h.cfg, r) {
 		resp["scope"] = "admin"
 		roots, err := h.store.RootSlugs(r.Context())
 		if err == nil {
@@ -165,9 +197,11 @@ func (h *OrgHandler) HandleScope(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, resp)
 }
 
-// scopeRoot resolves which subtree a ?root= request may read. Admins may
-// name any slug; with no root they see the whole organisation (empty slug).
-// A manager may name
+// scopeRoot resolves which subtree a ?root= request may read. Only
+// super-admins may name any slug; with no root they see the whole
+// organisation (empty slug). A plain admin is NOT special here — they
+// resolve through the manager path below, so an admin who also manages
+// people sees their own branch, nothing wider. A manager may name
 // their own slug or any slug INSIDE their subtree — that is the manager of
 // managers drill-down: focusing the team view on one subordinate manager's
 // branch. Anyone outside the tree gets a 403; people with no directory entry
@@ -176,7 +210,7 @@ func (h *OrgHandler) HandleScope(w http.ResponseWriter, r *http.Request) {
 func (h *OrgHandler) scopeRoot(w http.ResponseWriter, r *http.Request) (string, bool) {
 	me := caller(r, h.cfg)
 	reqRoot := storage.SlugNorm(r.URL.Query().Get("root"))
-	if IsAdmin(h.cfg, r) {
+	if IsSuperAdmin(h.cfg, r) {
 		// No explicit root means the WHOLE organisation — the empty
 		// string, which the store spells as "every root". It used to
 		// silently mean "the alphabetically-first root's branch", so
@@ -246,16 +280,16 @@ func (h *OrgHandler) HandleOrgUsage(w http.ResponseWriter, r *http.Request) {
 
 // HandleOrgPerson: GET /api/v1/org/person?slug=&range= — one person's
 // per-model breakdown, the drill-down behind a row in the team table. The
-// permission is the same one that governs the tree: an admin may open
-// anyone; everyone else may open a person inside their own subtree (which
-// always includes themselves).
+// permission is the same one that governs the tree: a super-admin may open
+// anyone; everyone else — plain admins included — may open a person inside
+// their own subtree (which always includes themselves).
 func (h *OrgHandler) HandleOrgPerson(w http.ResponseWriter, r *http.Request) {
 	slug := storage.SlugNorm(r.URL.Query().Get("slug"))
 	if slug == "" {
 		http.Error(w, "slug required", http.StatusBadRequest)
 		return
 	}
-	if !IsAdmin(h.cfg, r) {
+	if !IsSuperAdmin(h.cfg, r) {
 		_, _, mine, err := h.store.ScopeUsernames(r.Context(), caller(r, h.cfg))
 		if err != nil {
 			slog.Error("scope resolution failed", "error", err)
@@ -757,9 +791,13 @@ func renderClaim(w http.ResponseWriter, d claimData) {
 
 // WhoAmIScope decorates /whoami responses with the org fields. Kept
 // separate from HandleWhoAmI so keys.go stays what it was.
+//
+// It resolves for admins too — admins are no longer blanket-special here:
+// the tabs use isManager to decide whether the admin caller has a My-team
+// tab at all (manager-admin: yes, their own branch; plain admin: no).
 func WhoAmIScope(r *http.Request, store *storage.Store, cfg config.Config) (isManager bool, scopeSize int) {
 	me := caller(r, cfg)
-	if me == "" || IsAdmin(cfg, r) {
+	if me == "" {
 		return false, 0
 	}
 	list, isMgr, _, err := store.ScopeUsernames(r.Context(), me)

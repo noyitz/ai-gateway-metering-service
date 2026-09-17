@@ -267,7 +267,7 @@ async function load(){
 }
 let drillRoot=''; // slug of the subtree currently shown (own slug for managers, '' for whole org)
 let scopeRootSlug='';
-let adminScope=false; // admins see the whole organisation, not a manager's branch
+let adminScope=false; // super-admins only: whole organisation, not a manager's branch
 
 async function loadTimeline(){
   // scoped via the shared endpoint: non-admin callers get their own user
@@ -333,9 +333,12 @@ async function boot(){
     drillRoot=scopeRootSlug;
     document.getElementById('scopeSub').textContent=sc.scopeSize+' people in your tree · their spend and yours, this window';
   } else if(sc.scope==='admin'){
+    // Only super-admins ever reach this branch — the server hands the
+    // "admin" scope to nobody else, so a manager who is also an admin
+    // lands in the manager branch above and sees their own tree.
     adminScope=true;
     document.getElementById('scopeTitle').textContent='Org view';
-    document.getElementById('scopeSub').textContent='Admin — everyone in the organisation, one table. Filter to any manager’s branch above.';
+    document.getElementById('scopeSub').textContent='Super admin — everyone in the organisation, one table. Filter to any manager’s branch above.';
   }
   if(sc.scope!=='self')load();
   else loadSelf();

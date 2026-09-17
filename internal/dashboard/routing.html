@@ -407,7 +407,7 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
   }
   ab.style.display='';
   document.getElementById('abOut').style.display='';
-  if(d.isManager||d.isAdmin)document.getElementById('tab-team').style.display='';
+  if(d.isSuperAdmin||d.isManager)document.getElementById('tab-team').style.display='';
   document.getElementById('tab-compression').style.display='';
   document.getElementById('tab-admin').style.display='';
   var mvb=document.getElementById('my-view-btn');
