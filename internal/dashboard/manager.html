@@ -221,6 +221,7 @@ function renderRows(){
 // Drill into one manager's branch. The server re-checks that the root is
 // inside the caller's subtree, so a bad slug just yields a 403 -> error row.
 function drillTo(slug){
+  if(slug===drillRoot)slug=''; // drilling into one's own root IS the whole team
   drillSlug=slug;
   if(slug){
     const m=rows0.find(r=>r.slug===slug);
@@ -328,7 +329,8 @@ async function boot(){
       '<div class="self-note">You are seeing only your own numbers. If you manage people and expected the team view, ask an admin to add your reporting lines to the <b>People</b> directory — the manager view turns on automatically the moment people report to you.</div>';
     document.querySelectorAll('.kpis .kpi')[3].style.display='none';
   } else if(sc.scope==='manager'){
-    scopeRootSlug=sc.slug||'';
+    scopeRootSlug=sc.personSlug||'';
+
     drillRoot=scopeRootSlug;
     document.getElementById('scopeSub').textContent=sc.scopeSize+' people in your tree · their spend and yours, this window';
   } else if(sc.scope==='admin'){
