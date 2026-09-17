@@ -498,7 +498,17 @@ async function loadUserModels(username){
   const el=document.getElementById('expand-content-'+username);
   if(!el)return;
   try{
-    const models=await api(`/api/v1/dashboard/models?range=${range}&user=${username}`);
+    // Same query string the rest of the page uses: a bare range=custom is
+    // meaningless without from/to (the server silently falls back to the
+    // last 7 days), which made the expanded rows show a different window
+    // than the KPIs above them whenever a custom date range was active —
+    // a user filtered to one day saw ~4x their own tokens in the breakdown.
+    // Group/model filters ride along so the rows also sum to the user's row.
+    var r=range;
+    if(r==='custom'&&customFrom&&customTo)r='custom&from='+customFrom+'&to='+customTo;
+    var gf=groupFilter?'&group='+encodeURIComponent(groupFilter):'';
+    var mf=modelFilter?'&model='+encodeURIComponent(modelFilter):'';
+    const models=await api(`/api/v1/dashboard/models?range=${r}${gf}${mf}&user=${encodeURIComponent(username)}`);
     if(!models.length){el.innerHTML='<div style="padding:12px;color:var(--text2)">No model data</div>';return;}
     const total=models.reduce((s,m)=>s+m.total_tokens,0);
     el.innerHTML=`<div class="expand-detail">
