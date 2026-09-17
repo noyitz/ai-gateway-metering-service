@@ -1147,12 +1147,12 @@ func (s *Store) GetPersonModelUsage(ctx context.Context, usernames []string, sin
 			FROM model_pricing WHERE model = $4
 		),
 		model_cache AS (
-			// Same per-MODEL telemetry verdict as the dashboard's hostedSavingsWithSQL:
-			// whether a model reports cache at all is a property of the model/route,
-			// not of the drilled-down users' traffic through it. Deciding per user×model
-			// pair here (fm.cached = 0) let one stray cached event price a manager's
-			// drill-down at the full input rate while the main table applied the
-			// observed ratio for the same user×model — the two views disagreed.
+			-- Same per-MODEL telemetry verdict as the dashboard's hostedSavingsWithSQL:
+			-- whether a model reports cache at all is a property of the model/route,
+			-- not of the drilled-down users' traffic through it. Deciding per user×model
+			-- pair here (fm.cached = 0) let one stray cached event price a manager's
+			-- drill-down at the full input rate while the main table applied the
+			-- observed ratio for the same user×model — the two views disagreed.
 			SELECT e.model,
 			       (SUM(COALESCE(e.cached_input_tokens, 0) + COALESCE(e.cache_creation_tokens, 0))::float
 			         / NULLIF(SUM(e.prompt_tokens), 0)) > 0.01 AS has_cache
