@@ -647,6 +647,48 @@ func (s *Store) sumQuotaDenials(ctx context.Context, logins []string) int {
 	return n
 }
 
+// RecentQuotaDenials returns feed-shaped rows for the dashboard's Recent
+// Activity list: one row per (username, model) with blocks this month,
+// stamped at the newest block and carrying the month's tally. They share
+// the RecentEvent shape so the live feed renders them as 429 rows beside
+// real usage; group comes from the directory (denials have no event group),
+// tokens/cost are honestly zero — a blocked request spent nothing.
+func (s *Store) RecentQuotaDenials(ctx context.Context, limit int) ([]RecentEvent, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT d.last_at, d.username,
+			NULLIF(TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')), ''),
+			COALESCE(p.group_name, ''), d.model, d.count
+		FROM quota_denials d
+		LEFT JOIN person_identities pi ON pi.username = d.username
+		LEFT JOIN people p ON p.slug = pi.person_slug
+		WHERE d.month = to_char(date_trunc('month', NOW()), 'YYYY-MM')
+		ORDER BY d.last_at DESC
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RecentEvent
+	for rows.Next() {
+		var e RecentEvent
+		var displayName sql.NullString
+		var count int
+		if err := rows.Scan(&e.Timestamp, &e.Username, &displayName, &e.GroupName, &e.Model, &count); err != nil {
+			return nil, err
+		}
+		e.DisplayName = displayName.String
+		st := 429
+		e.StatusCode = &st
+		e.Denials = count
+		e.Provider = "gateway"
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // QuotaDenialStat is one username's blocked-request tally for the admin view.
 type QuotaDenialStat struct {
 	Username string    `json:"username"`
