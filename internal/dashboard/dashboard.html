@@ -177,6 +177,14 @@ tr.clickable{cursor:pointer}
      are exempt. -->
 <div id="quota-banner" style="display:none;align-items:center;gap:10px;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:12px;border:1px solid"></div>
 
+<!-- Approver-side counterpart to the user's pending banner: shown to a
+     manager (or super-admin backstop) who has budget requests awaiting
+     their decision. Links to the team view where the inbox lives. -->
+<div id="approve-banner" style="display:none;align-items:center;gap:10px;border:1px solid #58a6ff66;background:#58a6ff1f;color:#cfe3ff;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:12px">
+  <span id="approve-banner-text" style="flex:1"></span>
+  <a href="/manager" style="border:1px solid #58a6ff;border-radius:6px;padding:3px 10px;color:#58a6ff;text-decoration:none;white-space:nowrap">Review requests &rarr;</a>
+</div>
+
 <!-- Over-limit budget request popup (reuses the pricing modal's chrome) -->
 <div class="pricing-ov" id="quota-ov" onclick="if(event.target===this)closeQuotaModal()">
   <div class="pricing-card" role="dialog" aria-modal="true" aria-label="Budget request" style="max-width:520px">
@@ -1021,6 +1029,14 @@ function qday(iso){var d=new Date(iso);return isNaN(d)?'':d.toLocaleDateString(u
 function renderQuota(q){
   quotaState=q||null;
   var b=document.getElementById('quota-banner');
+  // Approver badge first, before the personal-state gates: a manager who is
+  // under budget (or exempt) still needs to see that requests await them.
+  var ab=document.getElementById('approve-banner');
+  var n=q&&q.approvals_pending?parseInt(q.approvals_pending,10)||0:0;
+  if(n>0){
+    document.getElementById('approve-banner-text').innerHTML='<b>'+n+' budget request'+(n>1?'s':'')+' await'+(n>1?'':'s')+' your approval</b>';
+    ab.style.display='flex';
+  }else ab.style.display='none';
   var r=q&&q.request;
   var pending=!!(r&&r.status==='pending');
   var over=!!(q&&q.spent_usd>=q.limit_usd);
