@@ -111,6 +111,22 @@ var quotaMigrations = []string{
 	// every gateway request inside its 5s subrequest budget; the best
 	// existing index was username-only with a timestamp recheck.
 	`CREATE INDEX IF NOT EXISTS idx_usage_events_user_ts ON usage_events (username, timestamp)`,
+	// Blocked-request counters. The gateway's blocking entitlement call is a
+	// per-request event whose 200 hasAccess:false answer deterministically
+	// becomes the client-visible 429 (fail-open means NO 429 is sent when we
+	// are unreachable), so counting our own denials equals the gateway's 429
+	// count by construction — no gateway-side report-back needed. Aggregated
+	// per (ledger username, calendar month, model) so denied retries cost one
+	// cheap upsert, not a row each; month keying makes history expire by
+	// lookup, like grants.
+	`CREATE TABLE IF NOT EXISTS quota_denials (
+		username TEXT NOT NULL,
+		month TEXT NOT NULL,
+		model TEXT NOT NULL DEFAULT '',
+		count INT NOT NULL DEFAULT 1,
+		last_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		PRIMARY KEY (username, month, model)
+	)`,
 }
 
 func (s *Store) migrateQuota(ctx context.Context) error {
@@ -603,6 +619,69 @@ func (s *Store) ListQuotaRequests(ctx context.Context, approverSlug string, all 
 	return out, rows.Err()
 }
 
+// --- Denial counters (who has been 429'd, and how often) ---
+
+// RecordQuotaDenial counts one entitlement answer of hasAccess:false.
+// Callers must never block on it: it runs off the request path (the answer
+// has already been written to the gateway), and its failure costs only a
+// missing data point, never a wrong entitlement.
+func (s *Store) RecordQuotaDenial(ctx context.Context, username, model string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO quota_denials (username, month, model)
+		VALUES ($1, to_char(date_trunc('month', NOW()), 'YYYY-MM'), $2)
+		ON CONFLICT (username, month, model)
+		DO UPDATE SET count = quota_denials.count + 1, last_at = NOW()`,
+		username, model)
+	return err
+}
+
+// sumQuotaDenials totals this month's blocked requests across a person's
+// logins (denials are keyed by the ledger username the gateway used, which
+// is only one of several identities for multi-login people).
+func (s *Store) sumQuotaDenials(ctx context.Context, logins []string) int {
+	var n int
+	_ = s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(count), 0) FROM quota_denials
+		WHERE username = ANY($1) AND month = to_char(date_trunc('month', NOW()), 'YYYY-MM')`,
+		logins).Scan(&n)
+	return n
+}
+
+// QuotaDenialStat is one username's blocked-request tally for the admin view.
+type QuotaDenialStat struct {
+	Username string    `json:"username"`
+	Count    int       `json:"count"`
+	LastAt   time.Time `json:"last_at"`
+}
+
+// QuotaDenialTotals: this month's blocked-request total plus the per-user
+// breakdown (newest activity per user, most-blocked first).
+func (s *Store) QuotaDenialTotals(ctx context.Context) (int, []QuotaDenialStat, error) {
+	var total int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(count), 0) FROM quota_denials
+		WHERE month = to_char(date_trunc('month', NOW()), 'YYYY-MM')`).Scan(&total); err != nil {
+		return 0, nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT username, SUM(count), MAX(last_at) FROM quota_denials
+		WHERE month = to_char(date_trunc('month', NOW()), 'YYYY-MM')
+		GROUP BY username ORDER BY SUM(count) DESC LIMIT 50`)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer rows.Close()
+	var out []QuotaDenialStat
+	for rows.Next() {
+		var st QuotaDenialStat
+		if err := rows.Scan(&st.Username, &st.Count, &st.LastAt); err != nil {
+			return 0, nil, err
+		}
+		out = append(out, st)
+	}
+	return total, out, rows.Err()
+}
+
 // --- Status view (whoami / me / gauges carrier) ---
 
 // QuotaView is the full quota picture for one login: what the dashboard
@@ -619,6 +698,9 @@ type QuotaView struct {
 	// routed to them as the requester's manager, plus (for super-admins) the
 	// manager-less backstop queue. Drives the manager-side pending banner.
 	ApprovalsPending int `json:"approvals_pending"`
+	// DenialsThisMonth: how many of this person's gateway requests were
+	// blocked this calendar month (all their logins, both quota gates).
+	DenialsThisMonth int `json:"denials_this_month"`
 }
 
 // GetQuotaView assembles the decision plus the person's latest request for
@@ -632,6 +714,14 @@ func (s *Store) GetQuotaView(ctx context.Context, username string, exempt bool) 
 	v := QuotaView{Username: username, QuotaDecision: d}
 	if d.HasPerson {
 		if person, err := s.GetPersonByUsername(ctx, username); err == nil {
+			// One directory walk serves both: the person's login set (spend
+			// and denials aggregate across every identity) and the request/
+			// approver lookups below.
+			logins := []string{username}
+			if own, err := s.PersonUsernames(ctx, person.Slug); err == nil && len(own) > 0 {
+				logins = own
+			}
+			v.DenialsThisMonth = s.sumQuotaDenials(ctx, logins)
 			q, err := s.latestRequestForPerson(ctx, person.Slug)
 			if err != nil && err != sql.ErrNoRows {
 				return v, nil // a request lookup failure degrades the banner, not the whole view
@@ -648,6 +738,9 @@ func (s *Store) GetQuotaView(ctx context.Context, username string, exempt bool) 
 				WHERE status = 'pending' AND (approver_slug = $1 OR ($2 AND approver_slug IS NULL))`,
 				person.Slug, exempt).Scan(&v.ApprovalsPending)
 		}
+	} else {
+		// No directory row: the bare ledger username is its own login set.
+		v.DenialsThisMonth = s.sumQuotaDenials(ctx, []string{username})
 	}
 	return v, nil
 }

@@ -133,6 +133,25 @@ func (h *QuotaHandler) HandleAdminPolicy(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// HandleAdminDenials: GET this month's blocked-request tallies — the
+// enforcement liveness signal for admins: denials recorded while the flag
+// is on means the gateway circuit is actually reaching us.
+func (h *QuotaHandler) HandleAdminDenials(w http.ResponseWriter, r *http.Request) {
+	if !h.requireSuperAdminJSON(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	total, byUser, err := h.store.QuotaDenialTotals(r.Context())
+	if err != nil {
+		h.quotaError(w, r, err)
+		return
+	}
+	writeJSON(w, map[string]any{"total": total, "by_user": byUser})
+}
+
 // HandleAdminOverrides: GET lists every per-user (person slug) or per-group
 // override; PUT upserts one {"scope","principal","monthly_usd"}; DELETE
 // takes ?scope=&principal=. Deleting an override falls the principal back

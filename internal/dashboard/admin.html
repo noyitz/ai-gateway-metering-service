@@ -739,6 +739,19 @@ td .tag{white-space:nowrap}
   <div class="card">
     <div class="card-hdr">
       <div>
+        <span class="card-title">Blocked Requests</span>
+        <span class="card-count" id="quota-denials-meta"></span>
+      </div>
+    </div>
+    <div class="ts" style="margin:0 16px 8px">Requests the gateway bounced with 429 this calendar month, counted at the moment the budget decision was made. Non-zero while enforcement is on is proof the gateway circuit is reaching this service.</div>
+    <div id="quota-denials-body">
+      <div class="loading"><div class="spinner"></div>Loading blocked requests...</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr">
+      <div>
         <span class="card-title">Overrides</span>
         <span class="card-count" id="quota-overrides-count"></span>
       </div>
@@ -995,6 +1008,7 @@ function setTabBadge(tab, n, alert) {
 var quotaPolicy = null;
 
 function loadQuotaPolicy() {
+  loadQuotaDenials();
   fetchJSON('/api/v1/admin/quota/policy').then(function(p) {
     quotaPolicy = p;
     renderQuotaPolicy();
@@ -1079,6 +1093,33 @@ function loadQuotaOverrides() {
   }).catch(function(err) {
     document.getElementById('quota-overrides-body').innerHTML = '<div class="err-msg">Overrides: ' + esc(err.message) + '</div>';
   });
+}
+
+function loadQuotaDenials() {
+  fetchJSON('/api/v1/admin/quota/denials').then(function(d) {
+    renderQuotaDenials(d && typeof d.total === 'number' ? d : { total: 0, by_user: [] });
+  }).catch(function(err) {
+    document.getElementById('quota-denials-body').innerHTML = '<div class="err-msg">Blocked requests: ' + esc(err.message) + '</div>';
+  });
+}
+
+function renderQuotaDenials(d) {
+  var list = Array.isArray(d.by_user) ? d.by_user : [];
+  document.getElementById('quota-denials-meta').textContent =
+    d.total ? d.total + ' blocked this month' : 'none blocked this month';
+  var html = '<div class="tbl-wrap"><table><thead><tr>' +
+    '<th>Username</th><th>Blocked</th><th>Last block</th>' +
+    '</tr></thead><tbody>';
+  list.forEach(function(u) {
+    html += '<tr>' +
+      '<td>' + esc(u.username) + '</td>' +
+      '<td style="font-variant-numeric:tabular-nums">' + esc(u.count) + '</td>' +
+      '<td>' + new Date(u.last_at).toLocaleString('en-US', { hour12: false }) + '</td>' +
+      '</tr>';
+  });
+  if (!list.length) html += '<tr><td colspan="3" class="loading">Nothing has been blocked this month.</td></tr>';
+  html += '</tbody></table></div>';
+  document.getElementById('quota-denials-body').innerHTML = html;
 }
 
 function renderQuotaOverrides(list) {
