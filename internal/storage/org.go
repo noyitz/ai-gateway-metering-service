@@ -1086,7 +1086,10 @@ type OrgPersonModelRow struct {
 // would have cost on the reference model's rates minus what it was actually
 // billed, floored at zero. The reference-model cache ratio is observed over
 // the caller's own username filter, so a manager's drill-down reflects their
-// team's traffic rather than the whole company's.
+// team's traffic rather than the whole company's. The estimate-vs-literal
+// cache decision is the same per-MODEL model_cache verdict the dashboard uses
+// (see model_cache comment above), so the drill-down and the main table can
+// never disagree about whether a model reports cache telemetry.
 func (s *Store) GetPersonModelUsage(ctx context.Context, usernames []string, since, until time.Time, refModel string) ([]OrgPersonModelRow, error) {
 	if len(usernames) == 0 {
 		return nil, nil
@@ -1120,6 +1123,20 @@ func (s *Store) GetPersonModelUsage(ctx context.Context, usernames []string, sin
 			       COALESCE(MAX(cache_read_cost_per_mtok), 0) as cr, COALESCE(MAX(cache_write_cost_per_mtok), 0) as cw
 			FROM model_pricing WHERE model = $4
 		),
+		model_cache AS (
+			// Same per-MODEL telemetry verdict as the dashboard's hostedSavingsWithSQL:
+			// whether a model reports cache at all is a property of the model/route,
+			// not of the drilled-down users' traffic through it. Deciding per user×model
+			// pair here (fm.cached = 0) let one stray cached event price a manager's
+			// drill-down at the full input rate while the main table applied the
+			// observed ratio for the same user×model — the two views disagreed.
+			SELECT e.model,
+			       (SUM(COALESCE(e.cached_input_tokens, 0) + COALESCE(e.cache_creation_tokens, 0))::float
+			         / NULLIF(SUM(e.prompt_tokens), 0)) > 0.01 AS has_cache
+			FROM usage_events e
+			WHERE e.timestamp >= $1 AND e.timestamp < $2
+			GROUP BY e.model
+		),
 		fm AS (
 			SELECT e.model,
 				MAX(COALESCE(e.provider, '')) as provider,
@@ -1128,8 +1145,10 @@ func (s *Store) GetPersonModelUsage(ctx context.Context, usernames []string, sin
 				SUM(COALESCE(e.cached_input_tokens, 0)) as cached, SUM(COALESCE(e.cache_creation_tokens, 0)) as cwrite,
 				SUM(e.total_tokens) as tot, SUM(%s) as cost,
 				bool_or(`+hostedProviderCond+`) as hosted,
+				BOOL_OR(COALESCE(mc.has_cache, false)) as model_has_cache,
 				MAX(e.timestamp) as last_used
 			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+			LEFT JOIN model_cache mc ON mc.model = e.model
 			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND e.username = ANY(string_to_array($3, ','))
 			GROUP BY e.model
 		)
@@ -1138,11 +1157,11 @@ func (s *Store) GetPersonModelUsage(ctx context.Context, usernames []string, sin
 			COALESCE(ROUND(fm.cost::numeric, 2), 0),
 			CASE WHEN (fm.hosted OR fm.cost = 0) AND fm.tot > 0 THEN COALESCE(ROUND(GREATEST(
 				(GREATEST(fm.prompt
-					- CASE WHEN fm.cached = 0 AND fm.cwrite = 0 AND fm.prompt > 0 AND rat.r > 0
+					- CASE WHEN NOT fm.model_has_cache AND fm.prompt > 0 AND rat.r > 0
 					       THEN LEAST(ROUND(fm.prompt * rat.r), fm.prompt)
 					       ELSE fm.cached END
 					- fm.cwrite, 0) * pr.i
-				+ CASE WHEN fm.cached = 0 AND fm.cwrite = 0 AND fm.prompt > 0 AND rat.r > 0
+				+ CASE WHEN NOT fm.model_has_cache AND fm.prompt > 0 AND rat.r > 0
 				       THEN LEAST(ROUND(fm.prompt * rat.r), fm.prompt)
 				       ELSE fm.cached END * pr.cr
 				+ fm.cwrite * pr.cw
