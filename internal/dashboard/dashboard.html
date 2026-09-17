@@ -967,7 +967,13 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
     }
     // Re-render once the role is known so per-row "view as" links appear.
     if(isSuperAdmin)refresh();
-    if(!d.isAdmin&&!userFilter.length){
+    // Pin plain members to their own rows so the first frame isn't a
+    // fleet-wide flash. Managers are excluded: the server already scopes
+    // them to their subtree, and pinning them to themselves hid their
+    // team's activity entirely — a manager with no personal traffic loaded
+    // an all-zero Usage page (it looked broken until Clear All widened the
+    // scope back out).
+    if(!d.isAdmin&&!d.isManager&&!userFilter.length){
       userFilter=[d.user];updateUserFilterLabel();renderUserChecklist();refresh();
     }
   }
