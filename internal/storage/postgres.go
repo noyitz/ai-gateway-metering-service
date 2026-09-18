@@ -55,6 +55,16 @@ type UsageStats struct {
 type Store struct {
 	db *sql.DB
 
+	// readDB is the optional read-replica pool (Phase 2 of
+	// docs/dashboard-scaling-plan.md). The allowlist is the set of
+	// functions that call s.reader() — dashboard/report reads only.
+	// Everything money-adjacent (GetMonthlyUsage, quota reads, the
+	// entitlement path) and GetRecentEvents stay on s.db: a lagging or
+	// pre-promotion replica must never serve an enforcement decision, and
+	// Recent is a freshness feature, not a throughput one. Unset (nil)
+	// means every read uses the primary, exactly as before.
+	readDB *sql.DB
+
 	// tokenQuota is the per-user monthly token budget enforced by the
 	// entitlement endpoint. A value <= 0 means unlimited: the service
 	// reports usage but does not gate access. It stays as an outer safety
@@ -92,7 +102,43 @@ func New(databaseURL string, tokenQuota int64) (*Store, error) {
 }
 
 func (s *Store) Close() error {
+	if s.readDB != nil {
+		_ = s.readDB.Close()
+	}
 	return s.db.Close()
+}
+
+// reader returns the replica pool when one is configured, the primary
+// otherwise. See the readDB field comment for the allowlist rule.
+func (s *Store) reader() *sql.DB {
+	if s.readDB != nil {
+		return s.readDB
+	}
+	return s.db
+}
+
+// UseReadReplica opens a second pool for the CNPG read service (the `-r`
+// endpoint, which routes to healthy replicas and falls back to the
+// primary during failover). It pings before accepting — a replica DSN
+// that can't answer is a configuration error, not a reason to refuse to
+// boot, so callers log and continue on the primary.
+func (s *Store) UseReadReplica(databaseURL string) error {
+	db, err := sql.Open("postgres", databaseURL)
+	if err != nil {
+		return fmt.Errorf("open read replica: %w", err)
+	}
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(14400 * time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("ping read replica: %w", err)
+	}
+	s.readDB = db
+	return nil
 }
 
 func (s *Store) InsertEvent(ctx context.Context, e UsageEvent) error {
@@ -375,7 +421,7 @@ type TimelineBucket struct {
 
 func (s *Store) GetDashboardOverview(ctx context.Context, since, until time.Time, group, user, model string) (DashboardOverview, error) {
 	var o DashboardOverview
-	err := s.db.QueryRowContext(ctx, fmt.Sprintf(`
+	err := s.reader().QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT COUNT(*),
 			COALESCE(SUM(e.prompt_tokens),0),
 			COALESCE(SUM(e.completion_tokens),0),
@@ -392,7 +438,7 @@ func (s *Store) GetDashboardOverview(ctx context.Context, since, until time.Time
 }
 
 func (s *Store) GetDashboardGroups(ctx context.Context, since, until time.Time, group, user, model string) ([]GroupSummary, error) {
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
+	rows, err := s.reader().QueryContext(ctx, fmt.Sprintf(`
 		SELECT COALESCE(e.group_name, 'unknown'),
 			COUNT(*),
 			COALESCE(SUM(e.total_tokens),0),
@@ -468,7 +514,7 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 		ORDER BY %s %s
 		LIMIT $6`, displayNameExpr, costUSDExpr, displayNameExpr, sortExpr, direction)
 
-	rows, err := s.db.QueryContext(ctx, query, since, until, group, user, model, limit, refModel)
+	rows, err := s.reader().QueryContext(ctx, query, since, until, group, user, model, limit, refModel)
 	if err != nil {
 		return nil, err
 	}
@@ -639,12 +685,12 @@ func (s *Store) GetHostedSavings(ctx context.Context, since, until time.Time, gr
 		       FROM fm WHERE (hosted OR cost = 0) AND tot > 0)
 		SELECT COALESCE(ROUND((SELECT saved FROM sa)::numeric, 2), 0)::float8,
 		       (SELECT r FROM rat), (SELECT applied FROM ra)`
-	err = s.db.QueryRowContext(ctx, query, since, until, group, user, model, refModel).Scan(&saved, &ratio, &ratioApplied)
+	err = s.reader().QueryRowContext(ctx, query, since, until, group, user, model, refModel).Scan(&saved, &ratio, &ratioApplied)
 	return saved, ratio, ratioApplied, err
 }
 
 func (s *Store) GetDashboardModels(ctx context.Context, since, until time.Time, group, user, model string) ([]ModelSummary, error) {
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
+	rows, err := s.reader().QueryContext(ctx, fmt.Sprintf(`
 		SELECT e.model, COALESCE(e.provider, ''),
 			COUNT(*),
 			COALESCE(SUM(e.total_tokens),0),
@@ -705,7 +751,7 @@ func (s *Store) GetDashboardTimeline(ctx context.Context, since, until time.Time
 		GROUP BY bucket, series
 		ORDER BY bucket, series`, truncInterval, seriesCol)
 
-	rows, err := s.db.QueryContext(ctx, query, since, until, group, user, model)
+	rows, err := s.reader().QueryContext(ctx, query, since, until, group, user, model)
 	if err != nil {
 		return nil, err
 	}
