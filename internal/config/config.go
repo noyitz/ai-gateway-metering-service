@@ -74,8 +74,10 @@ type Config struct {
 	// nearly all steady-state traffic. The middleware warns at load.
 	DashboardCacheTTLSeconds int
 
-	// DashboardCacheEnabled is the response-cache kill switch: rollback
-	// is setting it false and redeploying, no code path changes.
+	// DashboardCacheEnabled gates the dashboard response cache. Default
+	// OFF: a new build shipping and caching going live are separate,
+	// deliberate events — enable per deployment and use cache-stats hit
+	// ratio as the go/no-go. Disabling is the one-knob rollback.
 	DashboardCacheEnabled bool
 
 	KeyService KeyService
@@ -185,11 +187,13 @@ func Load() Config {
 		DefaultGroup:              envDefault("DEFAULT_GROUP", "default"),
 		OrgInviteTTLHours:         envInt("ORG_INVITE_TTL_HOURS", 72),
 		KeyRotationOverlapDays:    envInt("KEY_ROTATION_OVERLAP_DAYS", 7),
-		// On by default — the whole point of Phase 1 is that steady-state
-		// polls stop reaching Postgres; DASHBOARD_CACHE_ENABLED=false is
-		// the one-knob rollback to today's behavior.
+		// Off by default (PR #19 review): shipping the build must not be
+		// the same event as turning caching on. Enable per deployment with
+		// DASHBOARD_CACHE_ENABLED=true and watch /api/v1/admin/cache-stats
+		// — the hit ratio is the go/no-go, and disabling is a one-knob
+		// redeploy.
 		DashboardCacheTTLSeconds: envInt("DASHBOARD_CACHE_TTL_SECONDS", 60),
-		DashboardCacheEnabled:    envBool("DASHBOARD_CACHE_ENABLED", true),
+		DashboardCacheEnabled:    envBool("DASHBOARD_CACHE_ENABLED", false),
 		KeyService: KeyService{
 			URL:                strings.TrimSuffix(os.Getenv("KEY_SERVICE_URL"), "/"),
 			UserHeader:         envDefault("KEY_SERVICE_USER_HEADER", "X-Auth-Username"),
