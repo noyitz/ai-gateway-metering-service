@@ -94,6 +94,15 @@ var quotaMigrations = []string{
 	`CREATE UNIQUE INDEX IF NOT EXISTS uq_quota_requests_pending ON quota_requests (person_slug) WHERE status = 'pending'`,
 	`CREATE INDEX IF NOT EXISTS idx_quota_requests_approver ON quota_requests (approver_slug, status)`,
 	`CREATE INDEX IF NOT EXISTS idx_quota_requests_person ON quota_requests (person_slug, month)`,
+	// Requester questionnaire (mirrors the org's Token Budget Escalation
+	// form). `reason` carries the per-project task description; the rest are
+	// the additional answers the approver sees. All default '' so rows filed
+	// before the questionnaire keep working (shown with what they have).
+	`ALTER TABLE quota_requests ADD COLUMN IF NOT EXISTS reduction_steps TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE quota_requests ADD COLUMN IF NOT EXISTS estimate_basis TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE quota_requests ADD COLUMN IF NOT EXISTS timeline TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE quota_requests ADD COLUMN IF NOT EXISTS feasible_within_base TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE quota_requests ADD COLUMN IF NOT EXISTS why_not_enough TEXT NOT NULL DEFAULT ''`,
 	// Approved extra budget for ONE calendar month, keyed by 'YYYY-MM'.
 	// Expiry is automatic — the effective-limit query only sums grants whose
 	// month key is the current month — no cron, no cleanup.
@@ -385,20 +394,27 @@ func (s *Store) invalidateQuotaCache() {
 // QuotaRequest is one approval request with its people joined in, so a
 // manager inbox renders without a second lookup.
 type QuotaRequest struct {
-	ID           int64      `json:"id"`
-	PersonSlug   string     `json:"person_slug"`
-	PersonName   string     `json:"person_name"`
-	Username     string     `json:"username,omitempty"` // primary login, for "contact them"
-	Month        string     `json:"month"`
-	AskedUSD     float64    `json:"asked_usd"`
-	Reason       string     `json:"reason"`
-	Status       string     `json:"status"`
-	ApproverSlug string     `json:"approver_slug,omitempty"` // "" = super-admin backstop
-	ApproverName string     `json:"approver_name,omitempty"`
-	DecidedBy    string     `json:"decided_by,omitempty"`
-	Comment      string     `json:"comment,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
-	DecidedAt    *time.Time `json:"decided_at,omitempty"`
+	ID         int64   `json:"id"`
+	PersonSlug string  `json:"person_slug"`
+	PersonName string  `json:"person_name"`
+	Username   string  `json:"username,omitempty"` // primary login, for "contact them"
+	Month      string  `json:"month"`
+	AskedUSD   float64 `json:"asked_usd"`
+	Reason     string  `json:"reason"` // per-project task description (questionnaire Q1)
+	// Questionnaire answers added alongside the free-text reason; '' on rows
+	// filed before the questionnaire existed — the UI shows what's there.
+	ReductionSteps     string     `json:"reduction_steps,omitempty"`
+	EstimateBasis      string     `json:"estimate_basis,omitempty"`
+	Timeline           string     `json:"timeline,omitempty"`
+	FeasibleWithinBase string     `json:"feasible_within_base,omitempty"` // "yes" | "no" | "" (old rows)
+	WhyNotEnough       string     `json:"why_not_enough,omitempty"`       // only when FeasibleWithinBase == "no"
+	Status             string     `json:"status"`
+	ApproverSlug       string     `json:"approver_slug,omitempty"` // "" = super-admin backstop
+	ApproverName       string     `json:"approver_name,omitempty"`
+	DecidedBy          string     `json:"decided_by,omitempty"`
+	Comment            string     `json:"comment,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	DecidedAt          *time.Time `json:"decided_at,omitempty"`
 	// PendingFromPriorMonth marks a pending row whose month key is no longer
 	// the current month: shown for history, not actionable, no longer
 	// blocking new requests (it is still 'pending' but its month has passed).
@@ -409,7 +425,9 @@ type QuotaRequest struct {
 
 const quotaRequestSelect = `
 	SELECT q.id, q.person_slug, p.full_name, COALESCE(pi.username, ''), q.month,
-		q.asked_usd, q.reason, q.status, COALESCE(q.approver_slug, ''), COALESCE(a.full_name, ''),
+		q.asked_usd, q.reason, q.reduction_steps, q.estimate_basis, q.timeline,
+		q.feasible_within_base, q.why_not_enough,
+		q.status, COALESCE(q.approver_slug, ''), COALESCE(a.full_name, ''),
 		q.decided_by, q.comment, q.created_at, q.decided_at,
 		q.month = to_char(date_trunc('month', NOW()), 'YYYY-MM')
 	FROM quota_requests q
@@ -422,7 +440,9 @@ func scanQuotaRequest(row interface{ Scan(...any) error }) (QuotaRequest, error)
 	var q QuotaRequest
 	var decided sql.NullTime
 	err := row.Scan(&q.ID, &q.PersonSlug, &q.PersonName, &q.Username, &q.Month,
-		&q.AskedUSD, &q.Reason, &q.Status, &q.ApproverSlug, &q.ApproverName,
+		&q.AskedUSD, &q.Reason, &q.ReductionSteps, &q.EstimateBasis, &q.Timeline,
+		&q.FeasibleWithinBase, &q.WhyNotEnough,
+		&q.Status, &q.ApproverSlug, &q.ApproverName,
 		&q.DecidedBy, &q.Comment, &q.CreatedAt, &decided, &q.IsCurrentMonth)
 	if err != nil {
 		return q, err
@@ -438,13 +458,63 @@ func (s *Store) GetQuotaRequest(ctx context.Context, id int64) (QuotaRequest, er
 	return scanQuotaRequest(s.db.QueryRowContext(ctx, quotaRequestSelect+`WHERE q.id = $1`, id))
 }
 
-// CreateQuotaRequest files the caller's ask with their directory manager as
-// the approver (NULL = super-admin backstop for the manager-less). The
-// partial unique index enforces one live pending request per person; a
-// stale pending from an earlier month was already non-blocking by
-// definition only if cancelled first — it isn't auto-cancelled here, the
+// QuotaRequestInput is the questionnaire the requester fills: the ask
+// amount plus the org's Token-Budget-Escalation questions. Tasks carries
+// the historical `reason` column. Validate is the single source of truth
+// for what a complete questionnaire is — the HTTP handler calls it verbatim.
+type QuotaRequestInput struct {
+	AskedUSD           float64
+	Tasks              string // Q: tasks per project needing the increase
+	ReductionSteps     string // Q: steps already taken to reduce spend
+	EstimateBasis      string // Q: what the estimate is based on
+	Timeline           string // Q: this month only, continuing, etc.
+	FeasibleWithinBase string // Q: can the work fit the standard budget? "yes"|"no"
+	WhyNotEnough       string // Q: required only when FeasibleWithinBase == "no"
+}
+
+const quotaAnswerMax = 2000
+
+func (in QuotaRequestInput) Validate() error {
+	if in.AskedUSD <= 0 || in.AskedUSD > 100000 {
+		return errors.New("enter the additional amount you are asking for (up to $100,000)")
+	}
+	for _, q := range []struct {
+		name, val string
+	}{
+		{"describe the tasks that need the extra budget", in.Tasks},
+		{"say what you have done to reduce token usage", in.ReductionSteps},
+		{"explain what your estimate is based on", in.EstimateBasis},
+		{"give a timeline for the increase", in.Timeline},
+	} {
+		if strings.TrimSpace(q.val) == "" {
+			return errors.New("please " + q.name)
+		}
+		if len(q.val) > quotaAnswerMax {
+			return fmt.Errorf("%s is too long (%d characters max)", q.name, quotaAnswerMax)
+		}
+	}
+	switch in.FeasibleWithinBase {
+	case "yes":
+	case "no":
+		if strings.TrimSpace(in.WhyNotEnough) == "" {
+			return errors.New("explain why the standard budget is not enough")
+		}
+		if len(in.WhyNotEnough) > quotaAnswerMax {
+			return fmt.Errorf("the explanation is too long (%d characters max)", quotaAnswerMax)
+		}
+	default:
+		return errors.New("answer whether the work can fit within your standard budget")
+	}
+	return nil
+}
+
+// CreateQuotaRequest files the caller's questionnaire with their directory
+// manager as the approver (NULL = super-admin backstop for the
+// manager-less). The partial unique index enforces one live pending request
+// per person; a stale pending from an earlier month was already non-blocking
+// by definition only if cancelled first — it isn't auto-cancelled here, the
 // unique index still holds, and the handler explains it.
-func (s *Store) CreateQuotaRequest(ctx context.Context, username string, askedUSD float64, reason string) (QuotaRequest, error) {
+func (s *Store) CreateQuotaRequest(ctx context.Context, username string, in QuotaRequestInput) (QuotaRequest, error) {
 	person, err := s.GetPersonByUsername(ctx, username)
 	if err == sql.ErrNoRows {
 		return QuotaRequest{}, ErrQuotaNotInDirectory
@@ -456,12 +526,19 @@ func (s *Store) CreateQuotaRequest(ctx context.Context, username string, askedUS
 	if person.ManagerSlug != "" {
 		approver = person.ManagerSlug
 	}
+	why := strings.TrimSpace(in.WhyNotEnough)
+	if in.FeasibleWithinBase == "yes" {
+		why = "" // a "yes" answer never carries an explanation, even if one was sent
+	}
 	var id int64
 	err = s.db.QueryRowContext(ctx, `
-		INSERT INTO quota_requests (person_slug, month, asked_usd, reason, approver_slug)
-		VALUES ($1, to_char(date_trunc('month', NOW()), 'YYYY-MM'), $2, $3, $4)
+		INSERT INTO quota_requests (person_slug, month, asked_usd, reason, reduction_steps,
+			estimate_basis, timeline, feasible_within_base, why_not_enough, approver_slug)
+		VALUES ($1, to_char(date_trunc('month', NOW()), 'YYYY-MM'), $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id`,
-		person.Slug, askedUSD, strings.TrimSpace(reason), approver,
+		person.Slug, in.AskedUSD, strings.TrimSpace(in.Tasks), strings.TrimSpace(in.ReductionSteps),
+		strings.TrimSpace(in.EstimateBasis), strings.TrimSpace(in.Timeline),
+		in.FeasibleWithinBase, why, approver,
 	).Scan(&id)
 	if err != nil {
 		// The 23505 constraint name is the precise signal for "a live
@@ -471,7 +548,7 @@ func (s *Store) CreateQuotaRequest(ctx context.Context, username string, askedUS
 		}
 		return QuotaRequest{}, err
 	}
-	if err := s.Audit(ctx, username, "quota.request", person.Slug, map[string]any{"id": id, "asked_usd": askedUSD}); err != nil {
+	if err := s.Audit(ctx, username, "quota.request", person.Slug, map[string]any{"id": id, "asked_usd": in.AskedUSD}); err != nil {
 		return QuotaRequest{}, err
 	}
 	q, err := s.GetQuotaRequest(ctx, id)
@@ -701,6 +778,10 @@ type QuotaView struct {
 	// DenialsThisMonth: how many of this person's gateway requests were
 	// blocked this calendar month (all their logins, both quota gates).
 	DenialsThisMonth int `json:"denials_this_month"`
+	// ManagerName: display name of the directory manager requests route to —
+	// the form shows it as a fixed routing line instead of asking "select
+	// your manager". "" when manager-less (requests go to the admin backstop).
+	ManagerName string `json:"manager_name,omitempty"`
 }
 
 // GetQuotaView assembles the decision plus the person's latest request for
@@ -717,6 +798,7 @@ func (s *Store) GetQuotaView(ctx context.Context, username string, exempt bool) 
 			// One directory walk serves both: the person's login set (spend
 			// and denials aggregate across every identity) and the request/
 			// approver lookups below.
+			v.ManagerName = person.ManagerName
 			logins := []string{username}
 			if own, err := s.PersonUsernames(ctx, person.Slug); err == nil && len(own) > 0 {
 				logins = own

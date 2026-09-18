@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -215,22 +216,43 @@ func TestQuotaDecision_LimitPrecedenceAndSpend(t *testing.T) {
 // the direct manager, the one-pending guard, cancel ownership, approve-down
 // minting a current-month grant, double-decide refusing, reject+comment,
 // and the stale-pending-then-cancel path.
+// qask builds a valid filled questionnaire with the asked amount and task
+// text varied per test; the other answers are placeholders that satisfy
+// Validate — the questionnaire-required-fields rules are their own test.
+func qask(usd float64, tasks string) QuotaRequestInput {
+	return QuotaRequestInput{
+		AskedUSD:           usd,
+		Tasks:              tasks,
+		ReductionSteps:     "caching + cheaper models for small tasks",
+		EstimateBasis:      "current run-rate x remaining days this month",
+		Timeline:           "this month only",
+		FeasibleWithinBase: "no",
+		WhyNotEnough:       "deadline work is far above the standard volume",
+	}
+}
+
 func TestQuotaRequestFlow(t *testing.T) {
 	s, ctx := openTestStore(t)
 	seedQuotaRoster(t, s, ctx)
 
 	// Unknown username cannot request anything.
-	if _, err := s.CreateQuotaRequest(ctx, "nobody", 100, "why"); !errors.Is(err, ErrQuotaNotInDirectory) {
+	if _, err := s.CreateQuotaRequest(ctx, "nobody", qask(100, "why")); !errors.Is(err, ErrQuotaNotInDirectory) {
 		t.Fatalf("unknown user: got %v, want ErrQuotaNotInDirectory", err)
 	}
 
 	// alice files; routed to her manager, not her boss.
-	q, err := s.CreateQuotaRequest(ctx, "alice", 200, "big refactor week")
+	q, err := s.CreateQuotaRequest(ctx, "alice", qask(200, "big refactor week"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if q.Status != "pending" || q.ApproverSlug != "mgr" {
 		t.Fatalf("routing: status=%q approver=%q, want pending/mgr", q.Status, q.ApproverSlug)
+	}
+	// The questionnaire must survive the round trip — the approver sees
+	// every answer.
+	if q.Reason != "big refactor week" || q.ReductionSteps == "" || q.EstimateBasis == "" ||
+		q.Timeline == "" || q.FeasibleWithinBase != "no" || q.WhyNotEnough == "" {
+		t.Fatalf("questionnaire round trip: %+v", q)
 	}
 	// Only mgr's inbox sees it, and only as pending.
 	inbox, err := s.ListQuotaRequests(ctx, "mgr", false, "pending")
@@ -242,7 +264,7 @@ func TestQuotaRequestFlow(t *testing.T) {
 		t.Fatalf("boss must not see it: %d rows err=%v", len(bossInbox), err)
 	}
 	// One pending per person.
-	if _, err := s.CreateQuotaRequest(ctx, "alice", 50, "again"); !errors.Is(err, ErrQuotaAlreadyPending) {
+	if _, err := s.CreateQuotaRequest(ctx, "alice", qask(50, "again")); !errors.Is(err, ErrQuotaAlreadyPending) {
 		t.Fatalf("second pending: got %v, want ErrQuotaAlreadyPending", err)
 	}
 
@@ -253,7 +275,7 @@ func TestQuotaRequestFlow(t *testing.T) {
 	if err := s.CancelQuotaRequest(ctx, q.ID, "alice", "alice", false); err != nil {
 		t.Fatalf("own cancel: %v", err)
 	}
-	q, err = s.CreateQuotaRequest(ctx, "alice", 200, "refiled")
+	q, err = s.CreateQuotaRequest(ctx, "alice", qask(200, "refiled"))
 	if err != nil {
 		t.Fatalf("refile after cancel: %v", err)
 	}
@@ -288,7 +310,7 @@ func TestQuotaRequestFlow(t *testing.T) {
 	}
 
 	// A decided person may re-file; next round gets rejected with a comment.
-	q2, err := s.CreateQuotaRequest(ctx, "alice", 1000, "huge month")
+	q2, err := s.CreateQuotaRequest(ctx, "alice", qask(1000, "huge month"))
 	if err != nil {
 		t.Fatalf("re-file after approval: %v", err)
 	}
@@ -311,7 +333,7 @@ func TestQuotaRequestFlow(t *testing.T) {
 		t.Fatalf("view after reject: %+v", v.Request)
 	}
 	// …and a fresh pending replaces it in the view.
-	if _, err := s.CreateQuotaRequest(ctx, "alice", 300, "third time"); err != nil {
+	if _, err := s.CreateQuotaRequest(ctx, "alice", qask(300, "third time")); err != nil {
 		t.Fatal(err)
 	}
 	v, err = s.GetQuotaView(ctx, "alice", false)
@@ -327,7 +349,7 @@ func TestQuotaRequestFlow(t *testing.T) {
 	quotaExec(t, s, ctx, `DELETE FROM quota_requests WHERE status = 'pending'`)
 	quotaExec(t, s, ctx, `INSERT INTO quota_requests (person_slug, month, asked_usd, reason, status, approver_slug)
 		VALUES ('bob', to_char(date_trunc('month', NOW()) - interval '1 month', 'YYYY-MM'), 90, 'last month', 'pending', 'mgr')`)
-	if _, err := s.CreateQuotaRequest(ctx, "bob", 40, "this month"); !errors.Is(err, ErrQuotaAlreadyPending) {
+	if _, err := s.CreateQuotaRequest(ctx, "bob", qask(40, "this month")); !errors.Is(err, ErrQuotaAlreadyPending) {
 		t.Fatalf("stale pending must hold the slot: got %v", err)
 	}
 	vb, err := s.GetQuotaView(ctx, "bob", false)
@@ -343,8 +365,71 @@ func TestQuotaRequestFlow(t *testing.T) {
 	if err := s.CancelPendingForPerson(ctx, "bob", "bob", false); !errors.Is(err, ErrQuotaNoPending) {
 		t.Fatalf("second cancel: got %v, want ErrQuotaNoPending", err)
 	}
-	if _, err := s.CreateQuotaRequest(ctx, "bob", 40, "this month"); err != nil {
+	if _, err := s.CreateQuotaRequest(ctx, "bob", qask(40, "this month")); err != nil {
 		t.Fatalf("file after stale cancel: %v", err)
+	}
+
+	// A "yes" to "fits the standard budget" never carries an explanation —
+	// the create path normalizes why_not_enough away even if one was sent.
+	quotaExec(t, s, ctx, `DELETE FROM quota_requests WHERE person_slug='bob' AND status='pending'`)
+	in := qask(60, "one more thing")
+	in.FeasibleWithinBase = "yes"
+	in.WhyNotEnough = "leftover text that must be dropped"
+	qb, err := s.CreateQuotaRequest(ctx, "bob", in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if qb.FeasibleWithinBase != "yes" || qb.WhyNotEnough != "" {
+		t.Fatalf("yes-normalization: %+v", qb)
+	}
+	// GetQuotaView names the directory manager, so the popup can print
+	// "Routes to <manager>" instead of asking anyone to pick one.
+	if v, err := s.GetQuotaView(ctx, "alice", false); err != nil || v.ManagerName != "Manager Person" {
+		t.Fatalf("view manager: %q err %v, want Manager Person", v.ManagerName, err)
+	}
+}
+
+// TestQuotaRequestValidate pins the questionnaire-required rules without a
+// database: every question is mandatory, the follow-up is mandatory only
+// behind a "no", and the amount bound is enforced.
+func TestQuotaRequestValidate(t *testing.T) {
+	good := func() QuotaRequestInput {
+		return QuotaRequestInput{
+			AskedUSD: 100, Tasks: "ship it", ReductionSteps: "caching",
+			EstimateBasis: "run-rate", Timeline: "this month", FeasibleWithinBase: "no",
+			WhyNotEnough: "volume",
+		}
+	}
+	if err := good().Validate(); err != nil {
+		t.Fatalf("complete questionnaire rejected: %v", err)
+	}
+	yes := good()
+	yes.FeasibleWithinBase = "yes"
+	yes.WhyNotEnough = ""
+	if err := yes.Validate(); err != nil {
+		t.Fatalf("yes answer rejected: %v", err)
+	}
+	bad := []struct {
+		name string
+		mut  func(*QuotaRequestInput)
+	}{
+		{"amount zero", func(i *QuotaRequestInput) { i.AskedUSD = 0 }},
+		{"amount huge", func(i *QuotaRequestInput) { i.AskedUSD = 1e9 }},
+		{"no tasks", func(i *QuotaRequestInput) { i.Tasks = "  " }},
+		{"no reduction steps", func(i *QuotaRequestInput) { i.ReductionSteps = "" }},
+		{"no basis", func(i *QuotaRequestInput) { i.EstimateBasis = "" }},
+		{"no timeline", func(i *QuotaRequestInput) { i.Timeline = "" }},
+		{"feasible unanswered", func(i *QuotaRequestInput) { i.FeasibleWithinBase = "" }},
+		{"feasible garbage", func(i *QuotaRequestInput) { i.FeasibleWithinBase = "maybe" }},
+		{"no + no explanation", func(i *QuotaRequestInput) { i.WhyNotEnough = "" }},
+		{"answer too long", func(i *QuotaRequestInput) { i.Tasks = strings.Repeat("x", quotaAnswerMax+1) }},
+	}
+	for _, tc := range bad {
+		in := good()
+		tc.mut(&in)
+		if err := in.Validate(); err == nil {
+			t.Fatalf("%s: expected rejection", tc.name)
+		}
 	}
 }
 
@@ -357,7 +442,7 @@ func TestQuotaAuditTrail(t *testing.T) {
 	if err := s.UpsertQuotaOverride(ctx, "tester", "user", "alice", 500); err != nil {
 		t.Fatal(err)
 	}
-	q, err := s.CreateQuotaRequest(ctx, "alice", 100, "audit me")
+	q, err := s.CreateQuotaRequest(ctx, "alice", qask(100, "audit me"))
 	if err != nil {
 		t.Fatal(err)
 	}
