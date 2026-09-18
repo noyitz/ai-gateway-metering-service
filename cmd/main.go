@@ -35,6 +35,17 @@ func main() {
 	}
 	defer store.Close()
 
+	// Read replica (Phase 2 scaling plan): dashboard/report reads only,
+	// enforcement paths ignore this pool. A replica that can't be pinged
+	// is a loud config error, not a boot failure — reads stay on primary.
+	if cfg.ReadDatabaseURL != "" {
+		if err := store.UseReadReplica(cfg.ReadDatabaseURL); err != nil {
+			slog.Error("read replica unavailable — all reads stay on the primary", "error", err)
+		} else {
+			slog.Info("read replica enabled for dashboard/report reads")
+		}
+	}
+
 	// Seed model pricing from LiteLLM (try fetch latest, fall back to bundled)
 	ctx := context.Background()
 	litellmPrices, pricingSource := pricing.LoadPrices(ctx)

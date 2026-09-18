@@ -80,6 +80,13 @@ type Config struct {
 	// ratio as the go/no-go. Disabling is the one-knob rollback.
 	DashboardCacheEnabled bool
 
+	// ReadDatabaseURL is an optional second pool for dashboard/report
+	// reads only (Phase 2 of docs/dashboard-scaling-plan.md) — point it
+	// at the CNPG read service. Empty (default) keeps every read on the
+	// primary. Enforcement and quota reads ignore this pool by design;
+	// see the readDB allowlist in internal/storage/postgres.go.
+	ReadDatabaseURL string
+
 	KeyService KeyService
 	Kubernetes Kubernetes
 	Welcome    Welcome
@@ -194,6 +201,7 @@ func Load() Config {
 		// redeploy.
 		DashboardCacheTTLSeconds: envInt("DASHBOARD_CACHE_TTL_SECONDS", 60),
 		DashboardCacheEnabled:    envBool("DASHBOARD_CACHE_ENABLED", false),
+		ReadDatabaseURL:          os.Getenv("READ_DATABASE_URL"),
 		KeyService: KeyService{
 			URL:                strings.TrimSuffix(os.Getenv("KEY_SERVICE_URL"), "/"),
 			UserHeader:         envDefault("KEY_SERVICE_USER_HEADER", "X-Auth-Username"),
