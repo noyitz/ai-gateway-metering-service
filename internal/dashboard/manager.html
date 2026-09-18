@@ -74,6 +74,13 @@ td.num{text-align:right}
 .appr-row{display:flex;align-items:flex-start;gap:12px;padding:9px 4px;border-bottom:1px solid var(--border);flex-wrap:wrap}
 .appr-row:last-child{border-bottom:none}
 .appr-act{margin-left:auto;display:flex;gap:6px;align-items:center}
+/* Full-questionnaire block shown inline on each pending request. */
+.appr-qs{margin-top:8px;display:grid;gap:6px;max-width:640px}
+.appr-qa{font-size:12.5px;color:var(--text);line-height:1.45}
+.appr-ql{display:inline-block;min-width:150px;color:var(--text2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;vertical-align:top;margin-right:8px}
+.appr-feas{display:inline-block;font-size:11px;font-weight:600;border-radius:5px;padding:1px 8px;vertical-align:middle}
+.appr-feas.yes{color:var(--accent2);border:1px solid var(--accent2)}
+.appr-feas.no{color:#f2777a;border:1px solid #e8554e}
 .saved-pos{color:var(--saved)}
 /* Person detail modal */
 .det-ov{display:none;position:fixed;inset:0;background:rgba(5,7,10,.72);z-index:70;align-items:flex-start;justify-content:center;padding:40px 14px}
@@ -423,6 +430,10 @@ async function loadInbox(){
         '<b>'+list.length+(list.length===1?' request':' requests')+' awaiting your approval</b> — from '+esc(new Set(list.map(q=>q.person_name)).size+(new Set(list.map(q=>q.person_name)).size===1?' person':' people'))+'.';
       banner.style.display='flex';
     }
+    // Each row shows the FULL questionnaire the person filed — the inbox is
+    // the decision surface, so nothing the requester answered stays hidden
+    // behind a click. Rows filed before the questionnaire only have `reason`.
+    const qa=(label,val)=>val?`<div class="appr-qa"><span class="appr-ql">${label}</span>${esc(val)}</div>`:'';
     document.getElementById('apprBody').innerHTML=list.map(q=>{
       const age=esc(new Date(q.created_at).toLocaleDateString('en-US'));
       const stale=!q.is_current_month;
@@ -430,10 +441,20 @@ async function loadInbox(){
         ?'<span class="dim">from a past month — they can cancel it and re-file</span>'
         :`<button class="appr ok" onclick="approveReq(${q.id})">Approve</button>
           <button class="appr no" onclick="rejectReq(${q.id})">Reject</button>`;
+      const feas=q.feasible_within_base==='yes'?'<span class="appr-feas yes">Yes</span>'
+        :q.feasible_within_base==='no'?'<span class="appr-feas no">No</span>':'';
       return `<div class="appr-row">
-        <div>
+        <div style="flex:1;min-width:260px">
           <b>${esc(q.person_name)}</b> <span class="dim">${esc(q.username||'')} · asked ${fmt$(q.asked_usd)} for ${esc(q.month)} · ${age}</span>
-          <div class="dim" style="font-size:12.5px;margin-top:2px">${esc(q.reason||'(no reason given)')}</div>
+          <div class="appr-qs">
+            ${qa('Tasks',q.reason)}
+            ${qa('Reduction steps',q.reduction_steps)}
+            ${qa('Estimate based on',q.estimate_basis)}
+            ${qa('Timeline',q.timeline)}
+            ${feas?`<div class="appr-qa"><span class="appr-ql">Fits standard budget?</span>${feas}</div>`:''}
+            ${qa('Why standard budget is not enough',q.why_not_enough)}
+            ${q.reason||q.reduction_steps?'':'<div class="dim" style="font-size:12.5px">(no reason given)</div>'}
+          </div>
         </div>
         <div class="appr-act">${act}</div>
       </div>`;

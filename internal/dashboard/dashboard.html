@@ -1115,19 +1115,48 @@ function openQuotaModal(){
   var dflt=over>0?Math.max(50,Math.ceil((over+25)/50)*50):100;
   var chips=[50,100,150,250].map(function(v){
     return '<button type="button" class="qo-chip'+(v===dflt?' on':'')+'" data-v="'+v+'" onclick="qoChip('+v+')">+$'+v+'</button>';}).join('');
+  // Questionnaire mirroring the org's Token Budget Escalation form. The
+  // email and "select your manager" fields are deliberately not asked: the
+  // directory knows both, and routing is automatic — the manager shows as a
+  // fixed line above Submit instead.
+  qoFeas='';
   document.getElementById('qo-body').innerHTML=head
-    +'<label class="qo-label" for="qo-amount">Extra budget until '+qday(q.month_ends)+'</label>'
+    +'<label class="qo-label" for="qo-amount">Additional budget needed (above your current '+qfmt(q.limit_usd)+', through '+qday(q.month_ends)+')</label>'
     +'<div class="qo-chips">'+chips+'</div>'
     +'<div class="qo-amt"><span class="pfx">$</span><input id="qo-amount" type="number" min="1" max="100000" step="1" value="'+dflt+'" oninput="quotaAmtChanged()"></div>'
     +'<div class="qo-new">New limit if approved: <b id="qo-new">'+qfmt(q.limit_usd+dflt)+'</b> until '+qday(q.month_ends)+'</div>'
-    +'<label class="qo-label" for="qo-reason">Reason (your approver sees this)</label>'
-    +'<textarea id="qo-reason" class="qo-area" rows="2" maxlength="2000" placeholder="What you need the extra budget for"></textarea>'
+    +'<label class="qo-label" for="qo-reason">Tasks needing the increase <span style="color:#f85149">*</span> <span style="text-transform:none;letter-spacing:0">(per project)</span></label>'
+    +'<textarea id="qo-reason" class="qo-area" rows="2" maxlength="2000" placeholder="What you are working on that requires the spend"></textarea>'
+    +'<label class="qo-label" for="qo-steps">Steps taken to reduce token usage <span style="color:#f85149">*</span></label>'
+    +'<textarea id="qo-steps" class="qo-area" rows="2" maxlength="2000" placeholder="e.g. smaller context, cheaper models where possible, caching"></textarea>'
+    +'<label class="qo-label" for="qo-basis">What is the estimate based on? <span style="color:#f85149">*</span></label>'
+    +'<textarea id="qo-basis" class="qo-area" rows="2" maxlength="2000" placeholder="e.g. current daily run-rate x remaining days"></textarea>'
+    +'<label class="qo-label" for="qo-time">Timeline for the increase <span style="color:#f85149">*</span></label>'
+    +'<textarea id="qo-time" class="qo-area" rows="2" maxlength="2000" placeholder="This month only, or also expected next month, etc."></textarea>'
+    +'<label class="qo-label">Can this work fit within your standard budget? <span style="color:#f85149">*</span></label>'
+    +'<div class="qo-chips" id="qo-feas" style="margin-bottom:0">'
+    +'<button type="button" class="qo-chip" data-v="no" onclick="qoFeasSet(\'no\')">No</button>'
+    +'<button type="button" class="qo-chip" data-v="yes" onclick="qoFeasSet(\'yes\')">Yes</button>'
+    +'</div>'
+    +'<div id="qo-whynowrap" style="display:none">'
+    +'<label class="qo-label" for="qo-whynot">Why is the current budget not enough? <span style="color:#f85149">*</span></label>'
+    +'<textarea id="qo-whynot" class="qo-area" rows="2" maxlength="2000"></textarea>'
+    +'</div>'
     +'<div id="qo-err" style="display:none;color:#f85149;font-size:12px;margin-top:10px"></div>'
     +'<div class="qo-foot">'
     +'<button class="qo-go" id="qo-submit" onclick="submitQuotaRequest()">Submit request</button>'
-    +'<span class="qo-hint">Goes to your manager &mdash; one tap to approve.</span>'
+    +'<span class="qo-hint">Routes to '+(q.manager_name?pmEsc(q.manager_name):'an admin')+' &mdash; one tap to approve.</span>'
     +'</div>';
   var a=document.getElementById('qo-amount');if(a)a.focus();
+}
+// Feasible-within-standard-budget answer ('' until picked); "No" reveals
+// the follow-up explanation, same shape as the org's paper form.
+var qoFeas='';
+function qoFeasSet(v){
+  qoFeas=v;
+  var bs=document.querySelectorAll('#qo-feas .qo-chip');
+  for(var i=0;i<bs.length;i++)bs[i].classList.toggle('on',bs[i].getAttribute('data-v')===v);
+  var w=document.getElementById('qo-whynowrap');if(w)w.style.display=v==='no'?'':'none';
 }
 // Amount ↔ chips ↔ new-limit preview stay in sync as the form is edited.
 function qoChip(v){var a=document.getElementById('qo-amount');if(a){a.value=v;quotaAmtChanged();}}
@@ -1146,10 +1175,19 @@ function submitQuotaRequest(){
   var q=quotaState;if(!q)return;
   var amt=parseFloat(document.getElementById('qo-amount').value);
   var reason=(document.getElementById('qo-reason').value||'').trim();
+  var steps=(document.getElementById('qo-steps').value||'').trim();
+  var basis=(document.getElementById('qo-basis').value||'').trim();
+  var time=(document.getElementById('qo-time').value||'').trim();
+  var whynot=(document.getElementById('qo-whynot').value||'').trim();
   if(!(amt>0)){quotaFormErr('Enter the additional amount you are asking for.');return;}
-  if(!reason){quotaFormErr('Add a short reason — your approver will see it.');return;}
+  if(!reason){quotaFormErr('Describe the tasks that need the extra budget.');return;}
+  if(!steps){quotaFormErr('Say what you have done to reduce token usage.');return;}
+  if(!basis){quotaFormErr('Explain what your estimate is based on.');return;}
+  if(!time){quotaFormErr('Give a timeline for the increase.');return;}
+  if(!qoFeas){quotaFormErr('Answer whether the work can fit within your standard budget.');return;}
+  if(qoFeas==='no'&&!whynot){quotaFormErr('Explain why the current budget is not enough.');return;}
   var btn=document.getElementById('qo-submit');btn.disabled=true;btn.textContent='Submitting…';
-  fetch('/api/v1/me/quota/request',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({asked_usd:amt,reason:reason})})
+  fetch('/api/v1/me/quota/request',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({asked_usd:amt,reason:reason,reduction_steps:steps,estimate_basis:basis,timeline:time,feasible_within_base:qoFeas,why_not_enough:whynot})})
   .then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error((t||'').trim()||('HTTP '+r.status));});})
   .then(function(){closeQuotaModal();return refreshQuota();})
   .catch(function(e){btn.disabled=false;btn.textContent='Submit request';quotaFormErr(e.message||'Request failed.');});

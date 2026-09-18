@@ -238,7 +238,8 @@ func (h *QuotaHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, view)
 }
 
-// HandleMeRequest: POST files {"asked_usd","reason"} — routed to the
+// HandleMeRequest: POST files the escalation questionnaire (asked_usd +
+// the escalation answers; see storage.QuotaRequestInput) — routed to the
 // caller's directory manager, or the super-admin backstop when they have
 // none. DELETE cancels the caller's pending request; a super-admin may pass
 // ?user= to cancel someone else's.
@@ -249,22 +250,35 @@ func (h *QuotaHandler) HandleMeRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodPost:
+		// The escalation questionnaire. `reason` is the historical column
+		// carrying the per-project task description (Q1).
 		var body struct {
-			AskedUSD float64 `json:"asked_usd"`
-			Reason   string  `json:"reason"`
+			AskedUSD           float64 `json:"asked_usd"`
+			Reason             string  `json:"reason"`
+			ReductionSteps     string  `json:"reduction_steps"`
+			EstimateBasis      string  `json:"estimate_basis"`
+			Timeline           string  `json:"timeline"`
+			FeasibleWithinBase string  `json:"feasible_within_base"`
+			WhyNotEnough       string  `json:"why_not_enough"`
 		}
 		if !decodeJSON(w, r, &body) {
 			return
 		}
-		if body.AskedUSD <= 0 || body.AskedUSD > 100000 {
-			http.Error(w, "asked_usd must be a positive amount up to 100000", http.StatusBadRequest)
+		in := storage.QuotaRequestInput{
+			AskedUSD:           body.AskedUSD,
+			Tasks:              body.Reason,
+			ReductionSteps:     body.ReductionSteps,
+			EstimateBasis:      body.EstimateBasis,
+			Timeline:           body.Timeline,
+			FeasibleWithinBase: body.FeasibleWithinBase,
+			WhyNotEnough:       body.WhyNotEnough,
+		}
+		// One source of truth for questionnaire completeness, in storage.
+		if err := in.Validate(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if len(body.Reason) > 2000 {
-			http.Error(w, "reason is too long (2000 characters max)", http.StatusBadRequest)
-			return
-		}
-		q, err := h.store.CreateQuotaRequest(r.Context(), user, body.AskedUSD, body.Reason)
+		q, err := h.store.CreateQuotaRequest(r.Context(), user, in)
 		if err != nil {
 			h.quotaError(w, r, err)
 			return
