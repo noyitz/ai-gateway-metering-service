@@ -696,15 +696,37 @@ func (s *Store) ListQuotaRequests(ctx context.Context, approverSlug string, all 
 // (the answer has already been written to the gateway), and its failure
 // costs only a missing data point, never a wrong entitlement.
 func (s *Store) RecordQuotaDenial(ctx context.Context, username, model string) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO usage_events (event_id, username, model, provider, group_name, status_code, source)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// The rollup must see the same group_name the ledger row got, and the
+	// row's hour, so both come back from the insert rather than being
+	// re-derived (the group subquery is part of the row's identity).
+	var ts time.Time
+	var group sql.NullString
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO usage_events (event_id, username, model, provider, group_name, status_code, source, cost_usd)
 		VALUES ('deny-' || gen_random_uuid()::text, $1, $2, 'gateway',
 			(SELECT p.group_name FROM person_identities pi
 			 JOIN people p ON p.slug = pi.person_slug
 			 WHERE pi.username = $1 LIMIT 1),
-			429, 'metering-quota')`,
-		username, model)
-	return err
+			429, 'metering-quota', 0)
+		RETURNING timestamp, group_name`,
+		username, model).Scan(&ts, &group)
+	if err != nil {
+		return err
+	}
+	// Denials ride the rollup as requests+1 at zero usage/cost — the plan
+	// rev2 parity definition counts them; whether dashboards show them is
+	// a display filter, not a rollup question.
+	if err := upsertRollup(ctx, tx, ts, username, group.String, model, "gateway",
+		1, 0, 0, 0, 0, 0, "0"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // sumQuotaDenials counts this month's gateway refusals across a person's

@@ -46,6 +46,13 @@ func main() {
 		}
 	}
 
+	// Phase 3 groundwork: freeze cost at insert (live path), and bring the
+	// historical ledger + hourly rollups up to date in the background —
+	// resumable and idempotent, steady-state it checks one meta row.
+	// Reads do NOT switch to usage_hourly until RollupsReady() AND the
+	// PR-B read flag are both on; see /api/v1/admin/rollups for state.
+	go store.EnsureRollupsBackfilled(context.Background())
+
 	// Seed model pricing from LiteLLM (try fetch latest, fall back to bundled)
 	ctx := context.Background()
 	litellmPrices, pricingSource := pricing.LoadPrices(ctx)
@@ -232,6 +239,8 @@ func main() {
 	// approach (polls − filter-combos-per-TTL) / polls once the fleet
 	// settles. Read-only, super-admin page material.
 	mux.HandleFunc("/api/v1/admin/cache-stats", auth(handler.RequireSuperAdmin(cfg, dashCache.ServeStats)))
+	rollupHandler := handler.NewRollupHandler(store)
+	mux.HandleFunc("/api/v1/admin/rollups", auth(handler.RequireSuperAdmin(cfg, rollupHandler.HandleStatus)))
 	mux.HandleFunc("/api/v1/admin/providers", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleProviders)))
 	mux.HandleFunc("/api/v1/admin/models", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleModels)))
 	mux.HandleFunc("/api/v1/admin/models/", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleUpdateWeights)))
