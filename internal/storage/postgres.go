@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -75,6 +76,10 @@ type Store struct {
 	// quotaCacheTTL; see QuotaDecisionCached. Guarded by quotaMu.
 	quotaMu    sync.Mutex
 	quotaCache map[string]quotaCacheEntry
+
+	// rollupsReadyNow caches the rollup backfill completion flag; the
+	// authoritative value lives in rollup_meta. See rollups.go.
+	rollupsReadyNow atomic.Bool
 }
 
 func New(databaseURL string, tokenQuota int64) (*Store, error) {
@@ -141,14 +146,53 @@ func (s *Store) UseReadReplica(databaseURL string) error {
 	return nil
 }
 
+// insertEventSQL freezes the row's cost in the same statement: the
+// inline SELECT gives the parameterized values the `e` alias shape
+// costUSDExpr expects and joins model_pricing exactly as the read-side
+// aggregates do, so insert-time and query-time cost can never diverge
+// — it is the same expression string, not a re-implementation. That is
+// the deliberate answer to the fallback-rate trap in the PR #18 review:
+// the unpriced-model fallbacks, the mid-stream price-row visibility and
+// the numeric typing all come from ONE definition.
+var insertEventSQL = fmt.Sprintf(`
+	INSERT INTO usage_events (event_id, timestamp, username, group_name, subscription, provider, model, prompt_tokens, completion_tokens, total_tokens, cached_input_tokens, cache_creation_tokens, reasoning_tokens, source, user_agent, status_code, cost_usd)
+	SELECT e.event_id, e.timestamp, e.username, e.group_name, e.subscription, e.provider, e.model,
+		e.prompt_tokens, e.completion_tokens, e.total_tokens, e.cached_input_tokens, e.cache_creation_tokens, e.reasoning_tokens,
+		e.source, e.user_agent, e.status_code,
+		%s
+	FROM (SELECT $1::text AS event_id, $2::timestamptz AS timestamp, $3::text AS username, $4::text AS group_name,
+		$5::text AS subscription, $6::text AS provider, $7::text AS model, $8::int AS prompt_tokens,
+		$9::int AS completion_tokens, $10::int AS total_tokens, $11::int AS cached_input_tokens,
+		$12::int AS cache_creation_tokens, $13::int AS reasoning_tokens, $14::text AS source,
+		$15::text AS user_agent, $16::int AS status_code) e
+	LEFT JOIN model_pricing p ON p.model = e.model
+	RETURNING cost_usd`, costUSDExpr)
+
+// InsertEvent writes the ledger row and maintains the hourly rollup in
+// the SAME transaction (plan rev2 pt.2): either both land or neither, so
+// usage_hourly is never reachable in a state that disagrees with raw.
+// The rollup rides the cost the database just computed (returned as
+// text to keep NUMERIC exact — no float round-trip).
 func (s *Store) InsertEvent(ctx context.Context, e UsageEvent) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO usage_events (event_id, timestamp, username, group_name, subscription, provider, model, prompt_tokens, completion_tokens, total_tokens, cached_input_tokens, cache_creation_tokens, reasoning_tokens, source, user_agent, status_code)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var costUSD string
+	err = tx.QueryRowContext(ctx, insertEventSQL,
 		e.EventID, e.Timestamp, e.Username, e.GroupName, e.Subscription, e.Provider, e.Model,
 		e.PromptTokens, e.CompletionTokens, e.TotalTokens, e.CachedInputTokens, e.CacheCreationTokens, e.ReasoningTokens, e.Source, e.UserAgent, e.StatusCode,
-	)
-	return err
+	).Scan(&costUSD)
+	if err != nil {
+		return err
+	}
+	if err := upsertRollup(ctx, tx, e.Timestamp, e.Username, e.GroupName, e.Model, e.Provider,
+		1, e.PromptTokens, e.CompletionTokens, e.TotalTokens, e.CachedInputTokens, e.CacheCreationTokens, costUSD); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 type TeamUserUsage struct {
@@ -985,6 +1029,40 @@ var migrations = []string{
 		first_name TEXT NOT NULL DEFAULT '',
 		last_name TEXT NOT NULL DEFAULT '',
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	)`,
+	// Phase 3 (docs/dashboard-scaling-plan.md): cost frozen at insert.
+	// NULL = "not yet backfilled"; every NEW insert sets it in-statement
+	// from costUSDExpr, so insert-time and read-time cost agree by
+	// construction — the SAME expression string, not a Go re-implementation
+	// (that is the fallback-rate trap in the PR #18 review).
+	`ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS cost_usd NUMERIC(16,8)`,
+	// Hourly rollup, maintained in each event's insert transaction.
+	// group_name is coalesced to '' because a NULL could never live in a
+	// conflict key; reads map back transparently. Denial rows (zero usage)
+	// count in requests — the parity gate counts them too (plan rev2 pt.4).
+	`CREATE TABLE IF NOT EXISTS usage_hourly (
+		hour TIMESTAMPTZ NOT NULL,
+		username TEXT NOT NULL,
+		group_name TEXT NOT NULL DEFAULT '',
+		model TEXT NOT NULL,
+		provider TEXT NOT NULL DEFAULT '',
+		requests BIGINT NOT NULL DEFAULT 0,
+		prompt_tokens BIGINT NOT NULL DEFAULT 0,
+		completion_tokens BIGINT NOT NULL DEFAULT 0,
+		total_tokens BIGINT NOT NULL DEFAULT 0,
+		cached_input_tokens BIGINT NOT NULL DEFAULT 0,
+		cache_creation_tokens BIGINT NOT NULL DEFAULT 0,
+		cost_usd NUMERIC(20,8) NOT NULL DEFAULT 0
+	)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS usage_hourly_key ON usage_hourly (hour, username, group_name, model, provider)`,
+	`CREATE INDEX IF NOT EXISTS idx_usage_hourly_hour ON usage_hourly (hour)`,
+	`CREATE INDEX IF NOT EXISTS idx_usage_hourly_user_hour ON usage_hourly (username, hour)`,
+	// Backfill bookkeeping: cost_usd backfill progresses by id watermark;
+	// the rollup rebuild is resumable per hour. Both idempotent across
+	// restarts — see rollups.go.
+	`CREATE TABLE IF NOT EXISTS rollup_meta (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL
 	)`,
 }
 
