@@ -159,7 +159,7 @@ h2 .no{font:600 13px "IBM Plex Mono",monospace; color:var(--faint); margin-right
 .codebox{position:relative; margin:0 0 14px}
 .codebox:last-child{margin-bottom:0}
 .codebox .fname{
-  font:500 11px "IBM Plex Mono",monospace; letter-spacing:.08em; text-transform:uppercase;
+  font:500 11px "IBM Plex Mono",monospace; letter-spacing:.02em;
   color:var(--faint); margin-bottom:6px;
 }
 pre{
@@ -439,19 +439,28 @@ model_context_window = 262144</pre></div>
 <section id="opencode">
   <h2><span class="no">05</span>Set up OpenCode</h2>
   <p class="lede">Re-aim OpenCode's <em>built-in</em> <span class="mono">anthropic</span> and <span class="mono">openai</span> providers at the gateway. Keep them built-in on purpose: OpenCode only pulls the model chooser and effort levels from models.dev for official provider ids, so overriding <span class="mono">options</span> — instead of adding a custom provider — keeps every model and setting available in the picker.</p>
-  <div class="codebox hasname"><div class="fname">opencode.json (project root)</div><button class="copy">copy</button><pre>{
+  <div class="steps">
+    <div class="step"><div class="body">
+      <h3>Save your key — one command, one time</h3>
+      <p>Replace <span class="mono">pk-your-key</span> below with the key from your claim link (keep the quotes), paste into a terminal, press Enter:</p>
+      <div class="codebox hasname"><div class="fname">terminal</div><button class="copy">copy</button><pre>echo <span class="s">"pk-your-key"</span> &gt; ~/.config/opencode/pricetag.key && chmod 600 ~/.config/opencode/pricetag.key</pre></div>
+    </div></div>
+    <div class="step"><div class="body">
+      <h3>Paste this config</h3>
+      <p>Save it as <span class="mono">~/.config/opencode/opencode.jsonc</span> — creates the file, applies to every project on this machine. Already have an <span class="mono">opencode.json</span> there? Merge this into it instead of keeping both. The key itself never appears in this file — OpenCode reads it from the key file you saved in step 1:</p>
+      <div class="codebox hasname"><div class="fname">~/.config/opencode/opencode.jsonc</div><button class="copy">copy</button><pre>{
   <span class="k">"$schema"</span>: <span class="s">"https://opencode.ai/config.json"</span>,
   <span class="k">"provider"</span>: {
     <span class="k">"anthropic"</span>: {
-      <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{UNIFIED_URL}}/v1"</span>, <span class="k">"apiKey"</span>: <span class="s">"{env:PRICETAG_KEY}"</span> }
+      <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{UNIFIED_URL}}/v1"</span>, <span class="k">"apiKey"</span>: <span class="s">"{file:~/.config/opencode/pricetag.key}"</span> }
     },
     <span class="k">"openai"</span>: {
-      <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{OPENAI_URL}}"</span>, <span class="k">"apiKey"</span>: <span class="s">"{env:PRICETAG_KEY}"</span> }
+      <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{OPENAI_URL}}"</span>, <span class="k">"apiKey"</span>: <span class="s">"{file:~/.config/opencode/pricetag.key}"</span> }
     },
     <span class="k">"pricetag-hosted"</span>: {
       <span class="k">"npm"</span>: <span class="s">"@ai-sdk/anthropic"</span>,
       <span class="k">"name"</span>: <span class="s">"PriceTag (hosted)"</span>,
-      <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{UNIFIED_URL}}/v1"</span>, <span class="k">"apiKey"</span>: <span class="s">"{env:PRICETAG_KEY}"</span> },
+      <span class="k">"options"</span>: { <span class="k">"baseURL"</span>: <span class="s">"{{UNIFIED_URL}}/v1"</span>, <span class="k">"apiKey"</span>: <span class="s">"{file:~/.config/opencode/pricetag.key}"</span> },
       <span class="k">"models"</span>: {
         <span class="k">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>: {
           <span class="k">"name"</span>: <span class="s">"Qwen 3.8 Flash Next (hosted)"</span>,
@@ -462,6 +471,16 @@ model_context_window = 262144</pre></div>
   },
   <span class="k">"model"</span>: <span class="s">"anthropic/claude-sonnet-5"</span>
 }</pre></div>
+    </div></div>
+    <div class="step"><div class="body">
+      <h3>Restart OpenCode</h3>
+      <p>OpenCode reads its config once, at startup — quit it and run <span class="mono">opencode</span> again. If a model works and the key is good, you're done.</p>
+    </div></div>
+  </div>
+  <div class="callout good"><span class="glyph">✓</span><div class="cbody">
+    <p><strong>Rather keep it simple?</strong> Replace every <span class="mono">{file:~/.config/opencode/pricetag.key}</span> in the config with your key pasted in literally (<span class="mono">"apiKey": "pk-…"</span>). Works the same — the key just sits in the config file in plain text, so never share or commit that file.</p>
+    <p style="margin-bottom:0"><strong>OpenCode won't start after step 2</strong>, error says <span class="mono">bad file reference</span>? The key file from step 1 is missing or the path is off — re-run step 1 with the same path.</p>
+  </div></div>
   <p>Switch models inside OpenCode with <span class="mono">/models</span> — <span class="mono">anthropic/…</span> and <span class="mono">openai/…</span> now ride the gateway (billed like everything else), and <span class="mono">pricetag-hosted/…</span> runs on our vLLM at hosted rates. Don't want to touch the config file? OpenCode also merges the <span class="mono">OPENCODE_CONFIG_CONTENT</span> env var, which takes the same JSON as a string.</p>
   <div class="callout warn"><span class="glyph">!</span><p>Two traps, both silent: the Anthropic SDK appends <code>/messages</code> to <span class="mono">baseURL</span>, so it needs the <strong><code>/v1</code> suffix</strong> (host root hits <code>/messages</code> and fails) — the OpenAI SDK appends <code>/chat/completions</code>, which is why <span class="mono">{{OPENAI_URL}}</span> already ends in <code>/v1</code>. And don't point the built-in <span class="mono">anthropic</span> provider at the OpenAI route: its catalog has no <span class="mono">claude-*</span> ids, so requests die with "model does not exist or you do not have access to it".</p></div>
 </section>
