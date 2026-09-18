@@ -190,14 +190,17 @@ func main() {
 	mux.HandleFunc("/api/v1/whoami", auth(keysHandler.HandleWhoAmI))
 	mux.HandleFunc("/whoami", auth(keysHandler.HandleWhoAmI))
 
-	// Dashboard — session required, per-user scoping in handlers
+	// Dashboard — session required, per-user scoping in handlers. The API
+	// handlers ride the response cache (inside auth: a hit still pays
+	// session validation, and the cache key contains the resolved scope).
+	dashCache := handler.NewDashboardCache(cfg, store)
 	mux.HandleFunc("/dashboard", auth(dashboardHandler.ServeDashboard))
-	mux.HandleFunc("/api/v1/dashboard/overview", auth(dashboardHandler.HandleOverview))
-	mux.HandleFunc("/api/v1/dashboard/groups", auth(dashboardHandler.HandleGroups))
-	mux.HandleFunc("/api/v1/dashboard/users", auth(dashboardHandler.HandleUsers))
-	mux.HandleFunc("/api/v1/dashboard/models", auth(dashboardHandler.HandleModels))
-	mux.HandleFunc("/api/v1/dashboard/timeline", auth(dashboardHandler.HandleTimeline))
-	mux.HandleFunc("/api/v1/dashboard/recent", auth(dashboardHandler.HandleRecent))
+	mux.HandleFunc("/api/v1/dashboard/overview", auth(dashCache.Wrap(dashboardHandler.HandleOverview)))
+	mux.HandleFunc("/api/v1/dashboard/groups", auth(dashCache.Wrap(dashboardHandler.HandleGroups)))
+	mux.HandleFunc("/api/v1/dashboard/users", auth(dashCache.Wrap(dashboardHandler.HandleUsers)))
+	mux.HandleFunc("/api/v1/dashboard/models", auth(dashCache.Wrap(dashboardHandler.HandleModels)))
+	mux.HandleFunc("/api/v1/dashboard/timeline", auth(dashCache.Wrap(dashboardHandler.HandleTimeline)))
+	mux.HandleFunc("/api/v1/dashboard/recent", auth(dashCache.Wrap(dashboardHandler.HandleRecent)))
 
 	// Pricing modal rate card — readable by any logged-in user: the rates
 	// are the same numbers every request is billed at, no user data.
@@ -214,6 +217,10 @@ func main() {
 	mux.HandleFunc("/compression", auth(handler.RequireSuperAdmin(cfg, adminHandler.ServeCompression)))
 	// Admin APIs are gated by RequireSuperAdmin (auth() alone is not enough —
 	// otherwise any signed-in user could change weights/config).
+	// Cache hit/miss counters — the Phase 1 verify step: hit ratio should
+	// approach (polls − filter-combos-per-TTL) / polls once the fleet
+	// settles. Read-only, super-admin page material.
+	mux.HandleFunc("/api/v1/admin/cache-stats", auth(handler.RequireSuperAdmin(cfg, dashCache.ServeStats)))
 	mux.HandleFunc("/api/v1/admin/providers", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleProviders)))
 	mux.HandleFunc("/api/v1/admin/models", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleModels)))
 	mux.HandleFunc("/api/v1/admin/models/", auth(handler.RequireSuperAdmin(cfg, adminHandler.HandleUpdateWeights)))

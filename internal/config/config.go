@@ -68,6 +68,16 @@ type Config struct {
 	// (use for a suspected leak).
 	KeyRotationOverlapDays int
 
+	// DashboardCacheTTLSeconds bounds staleness of cached dashboard
+	// responses. It must stay ABOVE the 30s client poll — a shorter TTL
+	// makes every poll arrive after its key expired and the cache misses
+	// nearly all steady-state traffic. The middleware warns at load.
+	DashboardCacheTTLSeconds int
+
+	// DashboardCacheEnabled is the response-cache kill switch: rollback
+	// is setting it false and redeploying, no code path changes.
+	DashboardCacheEnabled bool
+
 	KeyService KeyService
 	Kubernetes Kubernetes
 	Welcome    Welcome
@@ -175,6 +185,11 @@ func Load() Config {
 		DefaultGroup:              envDefault("DEFAULT_GROUP", "default"),
 		OrgInviteTTLHours:         envInt("ORG_INVITE_TTL_HOURS", 72),
 		KeyRotationOverlapDays:    envInt("KEY_ROTATION_OVERLAP_DAYS", 7),
+		// On by default — the whole point of Phase 1 is that steady-state
+		// polls stop reaching Postgres; DASHBOARD_CACHE_ENABLED=false is
+		// the one-knob rollback to today's behavior.
+		DashboardCacheTTLSeconds: envInt("DASHBOARD_CACHE_TTL_SECONDS", 60),
+		DashboardCacheEnabled:    envBool("DASHBOARD_CACHE_ENABLED", true),
 		KeyService: KeyService{
 			URL:                strings.TrimSuffix(os.Getenv("KEY_SERVICE_URL"), "/"),
 			UserHeader:         envDefault("KEY_SERVICE_USER_HEADER", "X-Auth-Username"),
