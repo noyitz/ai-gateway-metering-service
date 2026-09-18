@@ -1,0 +1,15 @@
+ai-gateway-metering-service
+Copyright Red Hat, Inc.
+
+This product includes software developed at third parties:
+
+- golang.org/x/sync (singleflight) — BSD-3-Clause license
+  Copyright The Go Authors
+- github.com/hashicorp/golang-lru/v2 (expirable LRU) — Mozilla Public License 2.0
+  Copyright (c) 2021 HashiCorp, Inc.
+- github.com/lib/pq (PostgreSQL driver) — MIT license
+  Copyright (c) 2011 The Go Authors
+- gopkg.in/yaml.v3 (YAML parser) — MIT / Apache-2.0 dual license
+  Copyright (c) 2011-2019 Canonical Ltd
+- k8s.io/apimachinery, k8s.io/client-go — Apache-2.0 license
+  Copyright The Kubernetes Authors
