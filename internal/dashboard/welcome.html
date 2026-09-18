@@ -93,7 +93,7 @@ h1 .pricetag{color:var(--accent)}
 .hero .sub{max-width:56ch; color:var(--muted); font-size:18px; margin-top:18px}
 .hero .sub strong{color:var(--ink); font-weight:600}
 .hero-cta{margin-top:26px}
-/* Group title heading the numbered getting-started sequence (§01–08) */
+/* Group title heading the numbered getting-started sequence (§01–09) */
 .gstart{margin-top:38px; padding-top:30px; border-top:2px solid var(--line-strong); scroll-margin-top:70px}
 .gstart h2{font-size:34px; font-weight:800; letter-spacing:-.02em; margin-bottom:0}
 .gstart + section{padding-top:26px}
@@ -270,6 +270,7 @@ footer .mono{font-size:12px}
       <a href="#opencode">OpenCode</a>
       <a href="#hermes">Hermes CLI</a>
       <a href="#pi">Pi</a>
+      <a href="#openclaw">OpenClaw</a>
       <a href="#hosted">Hosted models</a>
       <a class="cta" href="{{DASHBOARD_URL}}/dashboard">Dashboard ↗</a>
     </div>
@@ -396,6 +397,7 @@ claude</pre></div>
   }
 }</pre></div>
       <div class="callout warn"><span class="glyph">!</span><p>Use the model id <strong>exactly</strong> as shown — on the unified route an unknown id falls through to Anthropic and 404s. And keep <span class="mono">effortLevel</span> at <span class="mono">"medium"</span>: the hosted endpoint accepts <span class="mono">low/medium/xhigh</span> and rejects <span class="mono">"high"</span>.</p></div>
+      <div class="callout warn"><span class="glyph">!</span><p><strong>Expect some Sonnet/Haiku rows even on an all-Qwen setup.</strong> Claude Code runs some internal requests on the Sonnet / Haiku-class model regardless of the model selected in <span class="mono">/model</span> — conversation summaries for <span class="mono">--resume</span>, status commands like <span class="mono">/usage</span>, background classification, and (by default) subagents. They go through the same gateway base URL, carry the full session context, and show up under your usage as <span class="mono">claude-sonnet-*</span> / <span class="mono">claude-haiku-*</span>. To pin those calls to a gateway model too, set <span class="mono">ANTHROPIC_DEFAULT_SONNET_MODEL</span> / <span class="mono">ANTHROPIC_DEFAULT_HAIKU_MODEL</span> (and optionally <span class="mono">CLAUDE_CODE_SUBAGENT_MODEL</span>) to a gateway model id in your launcher.</p></div>
     </div></div>
   </div>
 </section>
@@ -524,9 +526,51 @@ export PRICETAG_KEY=pk-your-key</pre></div>
   <p class="cap"><span class="mono">maxTokens</span> is the <em>output</em> cap, not the context size. Pi clamps each request to <span class="mono">contextWindow − prompt − 4096</span>, so declaring the full window (as above) is safe — the served model reports a 262144-token window and enforces no separate output limit. This recipe was verified end-to-end against the live gateway.</p>
 </section>
 
+<!-- ============ OPENCLAW ============ -->
+<section id="openclaw">
+  <h2><span class="no">08</span>Set up OpenClaw</h2>
+  <p class="lede"><a href="https://openclaw.ai" target="_blank">OpenClaw</a> talks to the gateway the same way Claude Code and Pi do — the Anthropic <span class="mono">/v1/messages</span> dialect with the key in <span class="mono">x-api-key</span> — so the hosted model rides the <strong>unified route alone</strong>. Smoke-test the route first, then declare PriceTag as a provider in <span class="mono">~/.openclaw/openclaw.json</span>.</p>
+  <div class="codebox hasname"><div class="fname">smoke test — env + one call</div><button class="copy">copy</button><pre>export PRICETAG_BASE_URL="{{UNIFIED_URL}}"
+export PRICETAG_KEY="pk-your-key"          <span class="c"># keep it secret; never commit it</span>
+
+curl "$PRICETAG_BASE_URL/v1/messages" \
+  -H "x-api-key: $PRICETAG_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "content-type: application/json" \
+  -d '{"model":"Inferact/Qwen3.8-Flash-Next-NVFP4","max_tokens":256,"messages":[{"role":"user","content":"Reply with exactly OK."}]}'</pre></div>
+  <div class="codebox hasname"><div class="fname">~/.openclaw/openclaw.json</div><button class="copy">copy</button><pre>{
+  <span class="k">"models"</span>: {
+    <span class="k">"providers"</span>: {
+      <span class="k">"pricetag"</span>: {
+        <span class="k">"baseUrl"</span>: <span class="s">"{{UNIFIED_URL}}"</span>,     <span class="c">// no /v1 — OpenClaw appends /v1/messages itself</span>
+        <span class="k">"api"</span>: <span class="s">"anthropic-messages"</span>,      <span class="c">// required — not openai-completions</span>
+        <span class="k">"apiKey"</span>: <span class="s">"$PRICETAG_KEY"</span>,
+        <span class="k">"models"</span>: [
+          {
+            <span class="k">"id"</span>: <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>,
+            <span class="k">"name"</span>: <span class="s">"Qwen 3.8 Flash Next"</span>,
+            <span class="k">"reasoning"</span>: true,
+            <span class="k">"input"</span>: [<span class="s">"text"</span>],
+            <span class="k">"contextWindow"</span>: 262144,
+            <span class="k">"maxTokens"</span>: 262144
+          }
+        ]
+      }
+    }
+  },
+  <span class="k">"agents"</span>: {
+    <span class="k">"defaults"</span>: {
+      <span class="k">"model"</span>: { <span class="k">"primary"</span>: <span class="s">"pricetag/Inferact/Qwen3.8-Flash-Next-NVFP4"</span> }
+    }
+  }
+}</pre></div>
+  <div class="callout good"><span class="glyph">✓</span><p><strong>Restart OpenClaw after changing provider config</strong> — edits to <span class="mono">openclaw.json</span> are not picked up live. The hosted model may not appear in the gateway’s <span class="mono">/v1/models</span> listing either; that doesn’t mean it’s unreachable — the smoke test above is the real validation.</p></div>
+  <div class="callout warn"><span class="glyph">!</span><p><strong>Use <code>anthropic-messages</code>, not the OpenAI route.</strong> This model answers on the Anthropic Messages endpoint (<span class="mono">POST &lt;base&gt;/v1/messages</span>) only — on the OpenAI Chat Completions route the gateway answers <span class="mono">400 invalid model ID</span>. That 400 usually means the wrong <em>endpoint</em>, not a typo in the model id.</p></div>
+</section>
+
 <!-- ============ ROUTES (reference, after the setup steps) ============ -->
 <section id="routes">
-  <h2><span class="no">08</span>Know your routes</h2>
+  <h2><span class="no">09</span>Know your routes</h2>
   <p class="lede">Three endpoints, one key. Pick the one that speaks your client's dialect — the path suffixes differ on purpose.</p>
   <div class="routes">
     <div class="route">
@@ -555,7 +599,7 @@ export PRICETAG_KEY=pk-your-key</pre></div>
 
 <!-- ============ HOSTED ============ -->
 <section id="hosted">
-  <h2><span class="no">09</span>Hosted models, starting with Qwen 3.8 Flash Next</h2>
+  <h2><span class="no">10</span>Hosted models, starting with Qwen 3.8 Flash Next</h2>
   <p class="lede">Self-hosted vLLM on our own hardware, exposed through the unified route under the id <span class="mono">Inferact/Qwen3.8-Flash-Next-NVFP4</span>. FP4 quantisation, <strong>262K context</strong>, and the price per token is a rounding error — billed honestly, tracked in your dashboard like everything else. It's the first of more hosted models to come.</p>
   <div class="rates">
     <div class="rate"><div class="top"><span class="v">$0.15</span><span class="per">/ MTok</span></div><div class="k">Input</div></div>
@@ -569,7 +613,7 @@ export PRICETAG_KEY=pk-your-key</pre></div>
       <p class="cap">The gateway publishes hosted models on <span class="mono">/v1/models</span> — cheaper than guessing:</p>
       <div class="codebox"><button class="copy">copy</button><pre>curl <span class="s">{{UNIFIED_URL}}</span>/v1/models \
   -H <span class="k">"x-api-key: $PRICETAG_KEY"</span></pre></div>
-      <p class="cap" style="margin:10px 0 0">Claude Code's picker hides it (ids are filtered to <em>claude/anthropic</em>) — that's what the <span class="mono">modelPicker</span> entry in §4 fixes.</p>
+      <p class="cap" style="margin:10px 0 0">Claude Code's picker hides it (ids are filtered to <em>claude/anthropic</em>) — that's what the <span class="mono">modelPicker</span> entry in §3 fixes.</p>
     </div>
     <div class="card">
       <h3>Good to know</h3>
