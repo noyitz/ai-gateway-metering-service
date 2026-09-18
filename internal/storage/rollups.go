@@ -272,6 +272,9 @@ func (s *Store) rebuildStep(ctx context.Context) (bool, error) {
 	if err := s.metaSet(ctx, metaRollupWatermark, hour.Format(time.RFC3339)); err != nil {
 		return false, err
 	}
+	// Same courtesy as the cost sweep: one small tx per hour, but the
+	// loop must not saturate pg-1 or replication lag while it drains.
+	time.Sleep(50 * time.Millisecond)
 	return hour.Add(time.Hour).After(cutoff) || hour.Add(time.Hour).Equal(cutoff), nil
 }
 
@@ -315,6 +318,13 @@ type ParityShape struct {
 // table, the rollup holds insert-time prices); it is reported, not
 // hidden, and must be read by a human before the read switch.
 func (s *Store) ParityReport(ctx context.Context, since, until time.Time) ([]ParityShape, error) {
+	// Both sides must share HOUR boundaries: usage_hourly buckets are
+	// hour-aligned, so raw must be truncated to the same boundaries or a
+	// non-aligned window would drop the edge buckets on one side and the
+	// gate would diff red from measurement, not drift.
+	since = since.Truncate(time.Hour)
+	until = until.Truncate(time.Hour).Add(time.Hour)
+
 	type acc struct {
 		rawReq, rollReq   int64
 		rawCost, rollCost float64
