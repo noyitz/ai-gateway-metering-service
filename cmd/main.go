@@ -49,9 +49,16 @@ func main() {
 	// Phase 3 groundwork: freeze cost at insert (live path), and bring the
 	// historical ledger + hourly rollups up to date in the background —
 	// resumable and idempotent, steady-state it checks one meta row.
-	// Reads do NOT switch to usage_hourly until RollupsReady() AND the
-	// PR-B read flag are both on; see /api/v1/admin/rollups for state.
 	go store.EnsureRollupsBackfilled(context.Background())
+
+	// Phase 3 part B: maintenance loop (refresh recent hours, standing
+	// parity check) runs REGARDLESS of the read switch — keeping the
+	// table reconciled and the parity signal warm is what makes
+	// DASHBOARD_USE_ROLLUPS a risk-free flip and a red check an
+	// automatic fallback to raw. Reads switch only when flag + ready +
+	// parity-green all hold; see /api/v1/admin/rollups for state.
+	store.UseRollups(cfg.DashboardUseRollups)
+	go store.RunRollupMaintenance(context.Background(), time.Duration(cfg.RollupRefreshSeconds)*time.Second)
 
 	// Seed model pricing from LiteLLM (try fetch latest, fall back to bundled)
 	ctx := context.Background()
