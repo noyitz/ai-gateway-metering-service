@@ -152,11 +152,75 @@ Makes dashboard cost **flat in total event volume**.
 5. Parity gate before switching reads: shadow-compute both paths against
    prod data and diff (same window, all endpoints) — numbers must match
    to the cent, then flip.
-- **Verify:** parity diff green; dashboard query latency at the 30-day
-  window; upsert correctness under concurrent writes (integration test
-  with two writers).
-- **Rollback:** reads flip back via config flag; the rollup table is
-  additive, raw path untouched until parity passes.
+ - **Verify:** parity diff green; dashboard query latency at the 30-day
+   window; upsert correctness under concurrent writes (integration test
+   with two writers).
+ - **Rollback:** reads flip back via config flag; the rollup table is
+   additive, raw path untouched until parity passes.
+
+### Phase 3 part B as built (post-review, four conditions)
+
+Part A landed with reads unchanged. Part B adds the switch under Noy's
+four conditions, with two scope decisions revised from the original
+draft above:
+
+- **Enforcement does NOT switch** (revises item 3). `GetMonthlyUsage`
+  and the quota engine keep `costUSDExpr` over raw on the primary:
+  blocking decisions must run on the freshest, most authoritative data,
+  and the query is cached per person — this was never the load problem.
+  The switch covers the seven panel queries only: overview, groups,
+  users, models, timeline, team-usage, hosted-savings. The savings CTE
+  keeps ONE math source (`hostedSavingsWithSQL`), parameterized by
+  source table — never a second copy.
+- **The Recent feed does not switch and cannot** (revises item 3): it is
+  row-level detail, hourly buckets cannot answer it. Noy's stacked-
+  staleness note (cache TTL + replica lag + refresh interval) is
+  therefore structurally confined to the aggregate panels — the
+  "did enforcement just block me" view stays as fresh as it is today.
+
+1. **Flag:** `DASHBOARD_USE_ROLLUPS` (default OFF; deploy and enable are
+   separate decisions, parity is the go signal). Reads honor it only
+   while `rollups_ready` AND standing parity are green; the maintenance
+   loop runs regardless of the flag, so the flip lands on a warm,
+   reconciled table and `oc set env DASHBOARD_USE_ROLLUPS=false` is the
+   one-knob rollback.
+2. **Hour locks:** both writers on an hour bucket serialize on
+   `pg_advisory_xact_lock(hashtext('usage_hourly:' || bucket))` —
+   `upsertRollup` takes its own hour inside the event tx; rebuild and
+   the periodic `refreshRecentHours` take their whole range in ascending
+   order (deadlock-free: single-lock upserters, ascending-chain
+   refreshers). UTC-explicit bucket rendering so a session TimeZone can
+   never fork the key space (test-guarded). This also unblocks >1
+   replica: every pod's ticker is safe against every other's.
+3. **Standing parity:** `RunRollupMaintenance` refreshes recent hours and
+   re-runs the parity report every `ROLLUP_REFRESH_SECONDS` (quick 24h
+   window; 7d hourly), inside ONE REPEATABLE READ snapshot on the reader
+   — two separate queries could straddle a WAL replay boundary and diff
+   red on live traffic that isn't drift. Gates on REQUEST COUNTS only;
+   a cost-only delta is a logged note, not a red (a pricing change must
+   not black out the table — the frozen-cost semantics decision below
+   makes cost deltas the *expected* behavior). Red → ERROR log (the
+   alert channel) + `parity_healthy=false` + reads serve raw within one
+   tick, automatically, recovering on green.
+4. **October 1 runbook:** the ledger starts Sep 1 and rollups have never
+   crossed a month boundary. On Oct 1 (UTC): run
+   `GET /api/v1/admin/rollups?parity=7d` and eyeball per-shape notes,
+   then the MTD panels + a quota decision against expectations. The
+   standing check's `per_day` shape crosses the boundary the moment the
+   data does, so a month-truncation bug surfaces as red within a tick,
+   not as a wrong invoice.
+
+**Cost semantics change (sign-off here, not in the code):** switched
+panels serve cost FROZEN at event time (stored `cost_usd`), where raw
+re-prices at read with the current `model_pricing` — and pricing is
+re-seeded every boot. Spend stops drifting under catalog edits; a price
+change no longer rewrites last month. Parity's count gate is unaffected
+(both sides frozen for counts); cost deltas become expected notes.
+
+**Admin state:** `GET /api/v1/admin/rollups` → `ready`, `use_rollups`,
+`parity_healthy`, `serving: raw|rollup`, `?parity=<window>` report.
+**Preflight:** `preflight_test.go` PREPAREs every write AND rollup-read
+statement against the live schema, executes nothing.
 
 ## Deliberately NOT in this plan
 

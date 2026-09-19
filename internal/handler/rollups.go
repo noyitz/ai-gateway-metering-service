@@ -23,7 +23,15 @@ func NewRollupHandler(store *storage.Store) *RollupHandler {
 // the window is clamped to 90 days so it can't be weaponized into a
 // full-table re-pricing on every page refresh.
 func (h *RollupHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
-	resp := map[string]any{"ready": h.store.RollupsReady()}
+	resp := map[string]any{
+		"ready":          h.store.RollupsReady(),
+		"use_rollups":    h.store.RollupFlag(),
+		"parity_healthy": h.store.ParityHealthy(),
+		"serving":        "raw",
+	}
+	if h.store.RollupServing() {
+		resp["serving"] = "rollup"
+	}
 	if p := r.URL.Query().Get("parity"); p != "" {
 		window, ok := parseTimeWindowNamed(p)
 		if !ok {

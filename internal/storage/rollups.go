@@ -53,23 +53,56 @@ const upsertRollupSQL = `
 		cache_creation_tokens = usage_hourly.cache_creation_tokens + EXCLUDED.cache_creation_tokens,
 		cost_usd = usage_hourly.cost_usd + EXCLUDED.cost_usd`
 
+const (
+	metaCostWatermark   = "cost_backfill_max_id"
+	metaRollupWatermark = "rollup_rebuilt_through_hour" // last fully rebuilt hour, inclusive
+	metaRollupsReady    = "rollups_ready"
+	metaParityHealthy   = "parity_healthy"
+	metaParityCheckedAt = "parity_checked_at"
+	costBackfillStep    = 50000
+)
+
+// ---- Hour locks (part B) ----
+//
+// A periodic refreshRecentHours rewrites an hour from raw and, done naively,
+// can overwrite a live insert-path upsert that commits while the rebuild's
+// aggregate snapshot was already taken (the rebuild's INSERT..SELECT never
+// saw the row; its DELETE+INSERT then drops the live +1). One-shot during
+// part A's backfill and parity-gated; continuous in part B with reads
+// depending on it, so both writers on an hour bucket must serialize on an
+// advisory transaction lock keyed to that bucket:
+//
+//   - upsertRollup takes the lock for its own hour, inside the event's tx;
+//   - rebuild/refresh take the locks for their whole [from,to) range, in
+//     ascending hour order, inside their tx.
+//
+// Deadlock-freedom: upserters hold exactly one hour lock; refreshers
+// acquire multiple strictly ascending. A cycle would need some upser to
+// wait for a lock a refresher holds while the refresher waits further up
+// the same ascending chain past that upser's single lock — impossible.
+// The bucket is rendered in UTC explicitly ("AT TIME ZONE 'UTC'") so the
+// key can never depend on a session TimeZone; both statements below must
+// keep the identical render expression (a test guards the drift).
+
+const upsertHourLockSQL = `SELECT pg_advisory_xact_lock(hashtext('usage_hourly:' || to_char(date_trunc('hour', $1::timestamptz) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24')))`
+
+const rebuildHourLockSQL = `SELECT pg_advisory_xact_lock(hashtext('usage_hourly:' || to_char(h AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24'))) FROM generate_series($1::timestamptz, $2::timestamptz - interval '1 hour', interval '1 hour') h ORDER BY h`
+
 // upsertRollup adds one event's contribution to its hour bucket. costUSD
 // is the NUMERIC text the insert statement returned (or "0" for denial
 // rows) — passing it as text keeps exact NUMERIC semantics end to end.
+// Must be called inside a transaction (both insert sites do): the hour
+// lock is transaction-scoped and would be a no-op on the autocommit pool.
 func upsertRollup(ctx context.Context, ex execer, ts time.Time, username, group, model, provider string,
 	requests, prompt, completion, total, cached, cacheCreation int, costUSD string) error {
+	if _, err := ex.ExecContext(ctx, upsertHourLockSQL, ts); err != nil {
+		return err
+	}
 	_, err := ex.ExecContext(ctx, upsertRollupSQL,
 		ts, username, group, model, provider,
 		requests, prompt, completion, total, cached, cacheCreation, costUSD)
 	return err
 }
-
-const (
-	metaCostWatermark   = "cost_backfill_max_id"
-	metaRollupWatermark = "rollup_rebuilt_through_hour" // last fully rebuilt hour, inclusive
-	metaRollupsReady    = "rollups_ready"
-	costBackfillStep    = 50000
-)
 
 // costBackfillSQL fills cost_usd for one id window. The inner SELECT uses
 // costUSDExpr verbatim with the canonical e/p aliases; the UPDATE target
@@ -262,6 +295,10 @@ func (s *Store) rebuildStep(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if _, err := tx.ExecContext(ctx, rebuildHourLockSQL, hour, hour.Add(time.Hour)); err != nil {
+		_ = tx.Rollback()
+		return false, fmt.Errorf("lock hour %s: %w", hour.Format(time.RFC3339), err)
+	}
 	if _, err := tx.ExecContext(ctx, rebuildHourSQL, hour, hour.Add(time.Hour)); err != nil {
 		_ = tx.Rollback()
 		return false, fmt.Errorf("rebuild hour %s: %w", hour.Format(time.RFC3339), err)
@@ -278,10 +315,11 @@ func (s *Store) rebuildStep(ctx context.Context) (bool, error) {
 	return hour.Add(time.Hour).After(cutoff) || hour.Add(time.Hour).Equal(cutoff), nil
 }
 
-// refreshRecentHours rewrites the last three hours from raw as the final
-// pre-ready step: it catches anything that raced the hour-by-hour
-// rebuild, in one serialized transaction. After the ready flag lands,
-// live insert-path upserts alone maintain the current hour.
+// refreshRecentHours rewrites the last three hours from raw. It closes
+// the final backfill gap before the ready flag lands, and part B runs it
+// on the maintenance ticker to keep recent buckets exactly reconciled.
+// The range lock (ascending hour order) serializes it against live
+// insert-path upserts so a rebuild can never drop a concurrent increment.
 func (s *Store) refreshRecentHours(ctx context.Context) error {
 	now := time.Now().UTC()
 	from := now.Add(-3 * time.Hour).Truncate(time.Hour)
@@ -291,13 +329,131 @@ func (s *Store) refreshRecentHours(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, rebuildHourLockSQL, from, to); err != nil {
+		return fmt.Errorf("lock recent hours: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, rebuildHourSQL, from, to); err != nil {
 		return fmt.Errorf("refresh recent hours: %w", err)
 	}
 	return tx.Commit()
 }
 
-// ---- Parity gate (plan rev2 pt.5): run before the read switch. ----
+// ---- Read gating and standing parity (part B) ----
+
+// UseRollups applies the DASHBOARD_USE_ROLLUPS read switch. It is
+// deliberately independent of deployment: maintenance keeps the table
+// reconciled and parity warm while the flag is off, so enabling is a
+// one-knob flip over a table that has been green all along — and the
+// one-knob rollback (plan rev2, Noy's two-decisions rule).
+func (s *Store) UseRollups(on bool) {
+	s.useRollups.Store(on)
+	slog.Info("rollup read switch set", "enabled", on)
+}
+
+// rollupsLive is the read path's single decision point: flag on, backfill
+// complete, standing parity green. Any of the three failing serves raw —
+// the conservative source — and a change while the flag is on is logged
+// once, not per request. Readiness is the CACHED flag, never metaGet:
+// this runs on every dashboard request, and the maintenance loop (and
+// the backfill landing) keep the flag true within one tick of a restart.
+func (s *Store) rollupsLive() bool {
+	flag := s.useRollups.Load()
+	ready := s.rollupsReadyNow.Load()
+	healthy := s.parityHealthy.Load()
+	live := flag && ready && healthy
+	if s.servingRollups.Swap(live) != live {
+		switch {
+		case live:
+			slog.Info("dashboard aggregations serving from usage_hourly")
+		case flag:
+			slog.Warn("dashboard rollup reads inactive — serving raw", "ready", ready, "parity_healthy", healthy)
+		}
+	}
+	return live
+}
+
+// RollupServing / ParityHealthy / RollupFlag report live state for the
+// admin status endpoint.
+func (s *Store) RollupServing() bool { return s.servingRollups.Load() }
+func (s *Store) ParityHealthy() bool { return s.parityHealthy.Load() }
+func (s *Store) RollupFlag() bool    { return s.useRollups.Load() }
+
+// RunRollupMaintenance runs the part B loop: reconcile recent hours, then
+// the standing parity check (plan rev2, Noy's conditions 2 and 3). It runs
+// REGARDLESS of the read flag — the table stays exactly reconciled and the
+// parity signal stays warm so the flag flip is risk-free and a red check
+// falls reads back to raw within one tick, without anyone touching a knob.
+// The first pass runs immediately; deep (7d) parity runs hourly.
+func (s *Store) RunRollupMaintenance(ctx context.Context, interval time.Duration) {
+	if interval < time.Minute {
+		interval = time.Minute
+	}
+	deepTicks := int(time.Hour / interval)
+	if deepTicks < 1 {
+		deepTicks = 1
+	}
+	s.maintainOnce(ctx, true)
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	ticks := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			ticks++
+			s.maintainOnce(ctx, ticks%deepTicks == 0)
+		}
+	}
+}
+
+func (s *Store) maintainOnce(ctx context.Context, deep bool) {
+	if !s.RollupsReady() {
+		return // the backfill goroutine owns the table until it lands ready
+	}
+	if err := s.refreshRecentHours(ctx); err != nil {
+		slog.Error("rollup refresh failed", "error", err)
+		return
+	}
+	window := 24 * time.Hour
+	if deep {
+		window = 7 * 24 * time.Hour
+	}
+	// Until excludes the in-flight hour: live traffic and replication are
+	// still moving it, and red there would be measurement, not drift.
+	until := time.Now().UTC().Truncate(time.Hour)
+	report, err := s.ParityReport(ctx, until.Add(-window), until)
+	if err != nil {
+		slog.Error("rollup parity check failed", "window", window, "error", err)
+		return
+	}
+	red := false
+	for _, ps := range report {
+		if !ps.Match && !red {
+			red = true
+		}
+		if ps.Note != "" && deep {
+			slog.Warn("rollup parity cost note", "shape", ps.Shape, "key", ps.Key,
+				"raw_cost", ps.RawCostUSD, "rollup_cost", ps.RollCostUSD)
+		}
+	}
+	prev := s.parityHealthy.Swap(!red)
+	healthyStr, checkedAt := "false", time.Now().UTC().Format(time.RFC3339)
+	if !red {
+		healthyStr = "true"
+	}
+	_ = s.metaSet(ctx, metaParityHealthy, healthyStr)
+	_ = s.metaSet(ctx, metaParityCheckedAt, checkedAt)
+	if red {
+		slog.Error("ROLLUP PARITY RED — dashboard aggregations falling back to raw", "window", window, "shapes", report)
+	} else if deep {
+		slog.Info("rollup parity green", "window", window)
+	} else if !prev {
+		slog.Info("rollup parity recovered — dashboard reads return to usage_hourly")
+	}
+}
+
+// ---- Parity gate (plan rev2 pt.5): pre-switch gate AND standing check. ----
 
 type ParityShape struct {
 	Shape        string  `json:"shape"`
@@ -311,12 +467,22 @@ type ParityShape struct {
 }
 
 // ParityReport diffs raw (today's read path: costUSDExpr over
-// usage_events) against usage_hourly for a window, at two keyings: one
-// total and per-model. Request counts must match exactly — that is the
-// gate. A cost-only difference is the expected signature of a
-// model_pricing change inside the window (raw re-prices at today's
-// table, the rollup holds insert-time prices); it is reported, not
-// hidden, and must be read by a human before the read switch.
+// usage_events) against usage_hourly for a window, at several keyings:
+// one total, per-model, per-group, per-user and per-day. Request counts
+// must match exactly — that is the automatic gate, and in part B it is
+// standing: a red check flips reads back to raw until it recovers. A
+// cost-only difference is the expected signature of a model_pricing
+// change inside the window (raw re-prices at today's table, the rollup
+// holds insert-time prices); it is reported as a note, not a red, and a
+// human reads it — auto-falling-back on every catalog change would keep
+// the table permanently switched off. The per-group keying intentionally
+// renders raw's NULL→'unknown'/'empty' labels and the rollup's
+// collapse-to-empty differently; if legacy ”-versus-NULL group rows
+// ever make that shape red, it is a real divergence to look at, not to
+// paper over. The whole report runs inside ONE REPEATABLE READ
+// transaction on the reader connection: the invariant only holds within
+// one snapshot — a raw query at WAL position P and the rollup query at
+// a later P' would diff every event that replicated in between.
 func (s *Store) ParityReport(ctx context.Context, since, until time.Time) ([]ParityShape, error) {
 	// Both sides must share HOUR boundaries: usage_hourly buckets are
 	// hour-aligned, so raw must be truncated to the same boundaries or a
@@ -325,12 +491,18 @@ func (s *Store) ParityReport(ctx context.Context, since, until time.Time) ([]Par
 	since = since.Truncate(time.Hour)
 	until = until.Truncate(time.Hour).Add(time.Hour)
 
+	tx, err := s.reader().BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("parity snapshot: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
 	type acc struct {
 		rawReq, rollReq   int64
 		rawCost, rollCost float64
 	}
 	collect := func(query string, raw bool, into map[string]*acc) error {
-		rows, err := s.reader().QueryContext(ctx, query, since, until)
+		rows, err := tx.QueryContext(ctx, query, since, until)
 		if err != nil {
 			return err
 		}
@@ -372,6 +544,28 @@ func (s *Store) ParityReport(ctx context.Context, since, until time.Time) ([]Par
 				WHERE e.timestamp >= $1 AND e.timestamp < $2 GROUP BY e.model`, costUSDExpr),
 			`SELECT model, COALESCE(SUM(requests),0), COALESCE(ROUND(SUM(cost_usd)::numeric,2),0)::float8
 				FROM usage_hourly WHERE hour >= $1 AND hour < $2 GROUP BY model`},
+		{"per_group",
+			fmt.Sprintf(`SELECT COALESCE(e.group_name, 'unknown'), COUNT(*), COALESCE(ROUND(SUM(%s)::numeric,2),0)::float8
+				FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+				WHERE e.timestamp >= $1 AND e.timestamp < $2
+				GROUP BY COALESCE(e.group_name, 'unknown')`, costUSDExpr),
+			`SELECT COALESCE(NULLIF(group_name, ''), 'unknown'), COALESCE(SUM(requests),0), COALESCE(ROUND(SUM(cost_usd)::numeric,2),0)::float8
+				FROM usage_hourly WHERE hour >= $1 AND hour < $2
+				GROUP BY COALESCE(NULLIF(group_name, ''), 'unknown')`},
+		{"per_user",
+			fmt.Sprintf(`SELECT e.username, COUNT(*), COALESCE(ROUND(SUM(%s)::numeric,2),0)::float8
+				FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+				WHERE e.timestamp >= $1 AND e.timestamp < $2 GROUP BY e.username`, costUSDExpr),
+			`SELECT username, COALESCE(SUM(requests),0), COALESCE(ROUND(SUM(cost_usd)::numeric,2),0)::float8
+				FROM usage_hourly WHERE hour >= $1 AND hour < $2 GROUP BY username`},
+		{"per_day",
+			fmt.Sprintf(`SELECT date_trunc('day', e.timestamp)::text, COUNT(*), COALESCE(ROUND(SUM(%s)::numeric,2),0)::float8
+				FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+				WHERE e.timestamp >= $1 AND e.timestamp < $2
+				GROUP BY date_trunc('day', e.timestamp)::text`, costUSDExpr),
+			`SELECT date_trunc('day', hour)::text, COALESCE(SUM(requests),0), COALESCE(ROUND(SUM(cost_usd)::numeric,2),0)::float8
+				FROM usage_hourly WHERE hour >= $1 AND hour < $2
+				GROUP BY date_trunc('day', hour)::text`},
 	}
 
 	out := make([]ParityShape, 0)
@@ -408,3 +602,107 @@ func minInt64(a, b int64) int64 {
 	}
 	return b
 }
+
+// ---- Rollup read variants (part B) ----
+//
+// Each constant below is the exact raw-query shape with three swaps and
+// nothing else: the source (usage_hourly, alias e preserved), the window
+// column (e.hour, so bucket and window are the same value — no trunc()
+// per row), and cost (the stored cost_usd instead of the live-priced
+// expression). Counts are SUM(requests), never COUNT(*) — one hourly row
+// is N events. The switch is invisible except for the two known,
+// documented deltas: cost is frozen at event-time instead of re-priced
+// at read, and recent hours lag by the refresh interval; both fall back
+// automatically when parity goes red. The raw variants in postgres.go
+// are untouched text — grep-guarded by tests in both directions.
+
+const rollupOverviewSQL = `
+	SELECT COALESCE(SUM(e.requests),0),
+		COALESCE(SUM(e.prompt_tokens),0),
+		COALESCE(SUM(e.completion_tokens),0),
+		COALESCE(SUM(e.total_tokens),0),
+		COUNT(DISTINCT e.username),
+		COALESCE(ROUND(SUM(e.cost_usd)::numeric, 2), 0)
+	FROM usage_hourly e
+	WHERE e.hour >= $1 AND e.hour < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)`
+
+const rollupGroupsSQL = `
+	SELECT COALESCE(NULLIF(e.group_name, ''), 'unknown'),
+		COALESCE(SUM(e.requests),0),
+		COALESCE(SUM(e.total_tokens),0),
+		COUNT(DISTINCT e.username),
+		COALESCE(ROUND(SUM(e.cost_usd)::numeric, 2), 0)
+	FROM usage_hourly e
+	WHERE e.hour >= $1 AND e.hour < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
+	GROUP BY COALESCE(NULLIF(e.group_name, ''), 'unknown')
+	ORDER BY SUM(e.total_tokens) DESC`
+
+const rollupTeamUsageSQL = `
+	SELECT e.username, e.model, e.provider,
+		SUM(e.requests),
+		SUM(e.prompt_tokens),
+		SUM(e.completion_tokens),
+		SUM(e.total_tokens),
+		ROUND(SUM(e.cost_usd)::numeric, 4)
+	FROM usage_hourly e
+	WHERE e.group_name = $1
+	GROUP BY e.username, e.model, e.provider
+	ORDER BY e.username, SUM(e.total_tokens) DESC`
+
+// rollupModelsSQL must go through Sprintf: hostedProviderCond carries a
+// doubled LIKE wildcard that only un-doubles when the text passes through
+// a format pass, exactly like the raw variant's Sprintf.
+var rollupModelsSQL = fmt.Sprintf(`
+	SELECT e.model, COALESCE(e.provider, ''),
+		COALESCE(SUM(e.requests),0),
+		COALESCE(SUM(e.total_tokens),0),
+		COALESCE(SUM(e.prompt_tokens),0),
+		COALESCE(SUM(e.completion_tokens),0),
+		COALESCE(SUM(e.cached_input_tokens),0),
+		COALESCE(SUM(e.cache_creation_tokens),0),
+		COALESCE(ROUND(SUM(e.cost_usd)::numeric, 2), 0),
+		bool_or(%s),
+		COALESCE(MAX(p.input_cost_per_mtok), 0),
+		COALESCE(MAX(p.output_cost_per_mtok), 0),
+		COALESCE(MAX(p.cache_read_cost_per_mtok), 0),
+		COALESCE(MAX(p.cache_write_cost_per_mtok), 0)
+	FROM usage_hourly e
+	LEFT JOIN model_pricing p ON e.model = p.model
+	WHERE e.hour >= $1 AND e.hour < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
+	GROUP BY e.model, COALESCE(e.provider, '')
+	ORDER BY SUM(e.total_tokens) DESC`, hostedProviderCond)
+
+// rollupTimelineSQL mirrors the raw timeline shape: bucket truncation and
+// series column are interpolated the same way the raw builder does.
+func rollupTimelineSQL(truncInterval, seriesCol string) string {
+	return fmt.Sprintf(`
+		SELECT date_trunc('%s', e.hour) as bucket,
+			%s as series,
+			COALESCE(SUM(e.total_tokens),0),
+			COALESCE(SUM(e.requests),0)
+		FROM usage_hourly e
+		WHERE e.hour >= $1 AND e.hour < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
+		GROUP BY bucket, series
+		ORDER BY bucket, series`, truncInterval, seriesCol)
+}
+
+// rollupUsersSelect is the GetDashboardUsers tail SELECT over the same
+// savings CTE (rendered rollup-side by hostedSavingsWithSQL), mirroring
+// the raw tail's columns, display-name and sort handling exactly.
+var rollupUsersSelect = `
+		SELECT e.username,
+			%s,
+			COALESCE(e.group_name, ''),
+			COALESCE(SUM(e.requests),0) as requests,
+			COALESCE(SUM(e.prompt_tokens),0) as prompt_tokens,
+			COALESCE(SUM(e.completion_tokens),0) as completion_tokens,
+			COALESCE(SUM(e.total_tokens),0) as total_tokens,
+			COALESCE(ROUND(SUM(e.cost_usd)::numeric, 2), 0) as cost_usd,
+			COALESCE(ROUND(MAX(sv.saved)::numeric, 2), 0) as saved_usd
+		FROM usage_hourly e
+		LEFT JOIN user_profiles up ON up.username = e.username
+		LEFT JOIN sv ON sv.username = e.username
+		WHERE e.hour >= $1 AND e.hour < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
+		GROUP BY e.username, %s, COALESCE(e.group_name, '')
+		ORDER BY %s %s
+		LIMIT $6`

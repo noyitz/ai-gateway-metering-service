@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"testing"
 
@@ -42,12 +43,25 @@ func TestWritePathSQLParsesAgainstLiveSchema(t *testing.T) {
 	// those are the pre-flight contract. Parity is read-only and gets
 	// exercised by its own endpoint after backfill.
 	stmts := map[string]string{
-		"insert_event":  insertEventSQL,
-		"upsert_rollup": upsertRollupSQL,
-		"cost_backfill": costBackfillSQL,
-		"rebuild_hour":  rebuildHourSQL,
-		"meta_get":      `SELECT value FROM rollup_meta WHERE key = $1`,
-		"meta_set":      `INSERT INTO rollup_meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+		"insert_event":         insertEventSQL,
+		"upsert_rollup":        upsertRollupSQL,
+		"hour_lock_up":         upsertHourLockSQL,
+		"hour_lock_rng":        rebuildHourLockSQL,
+		"cost_backfill":        costBackfillSQL,
+		"rebuild_hour":         rebuildHourSQL,
+		"meta_get":             `SELECT value FROM rollup_meta WHERE key = $1`,
+		"meta_set":             `INSERT INTO rollup_meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+		"rollup_overview":      rollupOverviewSQL,
+		"rollup_groups":        rollupGroupsSQL,
+		"rollup_team":          rollupTeamUsageSQL,
+		"rollup_models":        rollupModelsSQL,
+		"rollup_timeline":      rollupTimelineSQL("day", "e.model"),
+		"rollup_timeline_hour": rollupTimelineSQL("hour", "e.username"),
+		"rollup_users": hostedSavingsWithSQL(7, true) +
+			fmt.Sprintf(rollupUsersSelect, displayNameExpr, displayNameExpr, "total_tokens", "DESC"),
+		"rollup_savings": hostedSavingsWithSQL(6, true) + `,
+		sa AS (SELECT COALESCE(SUM(saved), 0) as saved FROM sv)
+		SELECT COALESCE(ROUND((SELECT saved FROM sa)::numeric, 2), 0)::float8, (SELECT r FROM rat)`,
 		"denial_insert": `
 		INSERT INTO usage_events (event_id, username, model, provider, group_name, status_code, source, cost_usd)
 		VALUES ('deny-' || gen_random_uuid()::text, $1, $2, 'gateway',
