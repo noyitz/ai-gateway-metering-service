@@ -13,6 +13,22 @@ A development metering backend for AI inference gateways — provides CloudEvent
 | `GET /api/v1/team-usage` | Team-level usage aggregation |
 | `GET /health`, `GET /ready` | Liveness and readiness probes |
 
+## Architecture
+
+- **[docs/dashboard-architecture.md](docs/dashboard-architecture.md)** —
+  the full data path with diagrams and measured numbers: how a request
+  becomes a frozen-cost ledger row, the transactionally-maintained
+  hourly rollups, the replica + cache + read-switch layers, the standing
+  consistency check that auto-falls back on drift, and the ops knobs.
+  Panel reads: 19.8 ms → 1.2 ms, flat in ledger size.
+- [docs/dashboard-scaling-plan.md](docs/dashboard-scaling-plan.md) — the
+  plan of record and review history behind those layers.
+- Production Postgres: [deploy/cnpg/README.md](deploy/cnpg/README.md)
+  (HA, backups, restore) and
+  [deploy/readonly-replica/README.md](deploy/readonly-replica/README.md)
+  (read-path grants). Fresh-cluster bring-up:
+  [docs/openshift-deploy-guide.md](docs/openshift-deploy-guide.md).
+
 ## Quick Start
 
 ### Docker Compose (local)
