@@ -1,0 +1,63 @@
+# The real database: 3 instances (one per worker in this cluster), streaming
+# replication, automatic failover, WAL archiving + backups straight to IBM
+# COS via barman. Replaces the single postgresql-0 StatefulSet once the
+# cutover (docs/db-backup.md) is done.
+#
+# aigateway-db-app (username/password keys) must exist before applying this —
+# the cutover runbook creates it with a generated password, so the app
+# DSNs change host AND drop the CHANGE-ME placeholder they've carried so far.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: aigateway-pg
+  namespace: ai-gateway-dogfood
+spec:
+  instances: 3
+
+  # Pinned, not the operator's default major (CNPG drifts it between minor
+  # releases). 16.12 = latest 16.x build, same major as the server this
+  # replaced and the postgres:16-alpine clients doing dumps/restores.
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.12
+
+  bootstrap:
+    initdb:
+      database: aigateway          # same db + owner as the old single pod
+      secret:
+        name: aigateway-db-app
+
+  storage:
+    size: 10Gi                     # matches the old PVC; DB sits at ~18MB
+    storageClassName: ibmc-vpc-block-10iops-tier
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi                  # headroom over the old 512Mi: WAL + barman run in-pod
+
+  # barman-cloud signs with SigV4 scoped to a region; boto won't infer
+  # us-south from the IBM endpoint hostname, so pin it for the in-pod CLI.
+  env:
+    - name: AWS_REGION
+      value: us-south
+
+  backup:
+    barmanObjectStore:
+      # Provisioned + round-trip verified by deploy/provision-cos-backup-target.sh
+      destinationPath: s3://aigateway-dogfood-backups-b6bd93
+      endpointURL: https://s3.us-south.cloud-object-storage.appdomain.cloud
+      # CNPG's own {name, key} selector shape — NOT corev1's nested
+      # secretKeyRef; unknown fields get silently pruned server-side and
+      # archiving dies later with "resource name may not be empty".
+      s3Credentials:
+        accessKeyId:
+          name: cnpg-backup-cos
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: cnpg-backup-cos
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+        maxParallel: 4

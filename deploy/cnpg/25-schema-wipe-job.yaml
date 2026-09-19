@@ -1,0 +1,50 @@
+# One-shot job: empties the aigateway database on aigateway-pg so
+# 30-restore-job.yaml can load a fresh dump into it. Needed because
+# pg_restore --exit-on-error refuses a non-empty target (the cutover
+# redo hit exactly that with a stale first restore).
+#
+# Runs as the aigateway app user over TCP against aigateway-pg-rw
+# (it owns the DB, so it may drop/recreate schema public; the recreated
+# schema comes back owned by aigateway, which the restore then needs).
+# `oc exec` into an instance can't do this — OpenShift SCC gives exec a
+# random uid and Postgres peer auth rejects it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cnpg-schema-wipe
+  namespace: ai-gateway-dogfood
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: wipe
+          image: postgres:16-alpine
+          command:
+            - psql
+            - -h
+            - aigateway-pg-rw
+            - -p
+            - "5432"
+            - -U
+            - aigateway
+            - -d
+            - aigateway
+            - -v
+            - ON_ERROR_STOP=1
+            - -c
+            - DROP SCHEMA public CASCADE; CREATE SCHEMA public;
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aigateway-db-app
+                  key: password
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

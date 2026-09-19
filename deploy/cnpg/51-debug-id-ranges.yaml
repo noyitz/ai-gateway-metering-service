@@ -1,0 +1,46 @@
+# Debug (read-only): find the two contiguous id blocks the two bad
+# backfill COPYs consumed (38 and 76 consecutive ids, inserted while
+# writers were frozen). Prints all rows with ts lag > 60s (id, ts, lag)
+# plus a gap scan of >60s-lagged ids, so the exact ranges pop out.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cnpg-dbg-ranges
+  namespace: ai-gateway-dogfood
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: dbg
+          image: postgres:16-alpine
+          env:
+            - name: PW_NEW
+              valueFrom:
+                secretKeyRef:
+                  name: aigateway-db-app
+                  key: password
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              PGPASSWORD="$PW_NEW" psql -h aigateway-pg-rw -p 5432 -U aigateway -d aigateway -c "
+                WITH t AS (
+                  SELECT id, timestamp,
+                         max(timestamp) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS pm
+                  FROM usage_events
+                ), lagged AS (
+                  SELECT id FROM t WHERE pm - timestamp > interval '60 seconds'
+                )
+                SELECT min(id) AS block_start, max(id) AS block_end, count(*) AS rows
+                FROM (SELECT id, id - row_number() OVER (ORDER BY id) AS grp FROM lagged) x
+                GROUP BY grp ORDER BY 1"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

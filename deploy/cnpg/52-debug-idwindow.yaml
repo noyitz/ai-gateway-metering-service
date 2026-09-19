@@ -1,0 +1,35 @@
+# Debug (read-only): raw id/timestamp window to locate the contiguous
+# junk block (two frozen COPYs = one contiguous run of 114 ids).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cnpg-dbg-window
+  namespace: ai-gateway-dogfood
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: dbg
+          image: postgres:16-alpine
+          env:
+            - name: PW_NEW
+              valueFrom:
+                secretKeyRef:
+                  name: aigateway-db-app
+                  key: password
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              PGPASSWORD="$PW_NEW" psql -h aigateway-pg-rw -p 5432 -U aigateway -d aigateway -At -F ' ' \
+                -c "SELECT id, timestamp FROM usage_events WHERE id BETWEEN 32820 AND 33000 ORDER BY id" | cut -c1-45
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

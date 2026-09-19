@@ -1,0 +1,94 @@
+# REPAIR job for 2026-09-16 cutover incident #2 (self-inflicted):
+# 40-backfill-usage-events.yaml had its awk multiset-diff INVERTED (it
+# emitted rows NEW has more of than OLD — CNPG's own live rows — and
+# re-inserted them into CNPG). Two runs: +38 and +76 rows = 114 exact
+# duplicates of live events, each holding a fresh sequence id but the
+# original (older) event timestamp.
+#
+# Detection rule, safe because event rows arrive in timestamp order:
+# a row whose timestamp lags the running max timestamp of all SMALLER
+# ids by > 180s is a late-id copy, never a live arrival (metering
+# reports events near-real-time; observed skew < 2s, legit doublets
+# like the 03:50:30.936246 pair skew 0).
+#
+# Phase 2 then does the OLD→CNPG backfill the original job meant to do
+# (awk direction fixed: old.tsv first), picking up the ~17 real
+# maas-api-leak rows with fresh ids from CNPG's sequence.
+#
+# APPLY=no  → preview only (read-only).
+# APPLY=yes → DELETE lagged-dupes + COPY old-only rows. One-shot.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cnpg-repair-usage
+  namespace: ai-gateway-dogfood
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: repair
+          image: postgres:16-alpine
+          env:
+            - name: APPLY
+              value: "no"
+            - name: PW_NEW
+              valueFrom:
+                secretKeyRef:
+                  name: aigateway-db-app
+                  key: password
+            - name: PW_OLD
+              valueFrom:
+                secretKeyRef:
+                  # old pod authenticates with the pre-cutover password
+                  secretKeyRef:
+                  name: postgresql-credentials-pre-cnpg
+                  key: POSTGRES_PASSWORD
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              NEW="psql -h aigateway-pg-rw -p 5432 -U aigateway -d aigateway"
+              OLD="psql -h postgresql -p 5432 -U aigateway -d aigateway"
+              # Junk boundary, established by inspecting the id/timestamp
+              # window (see this file's header + 52-debug-idwindow.yaml):
+              # id 32851 ts 03:52:05 = last live pre-freeze row (monotonic
+              # run); 32852 ts 03:45:14 breaks monotonicity (run-1 shuffled
+              # copy); 32890..32965 = run-2 consecutive identical-ts pairs
+              # re-copying run-1's rows; 32966 ts 03:55:16 resumes the live
+              # monotonic stream. Range is exactly 38+76=114 ids.
+              # NOTE: a lag-threshold DELETE would be WRONG — live metering
+              # reports run minutes behind event time; only the id range is
+              # provable.
+              echo "== deleting junk ids 32852..32965 =="
+              if [ "$APPLY" = "yes" ]; then
+                PGPASSWORD="$PW_NEW" $NEW -c "DELETE FROM usage_events WHERE id BETWEEN 32852 AND 32965"
+              else
+                echo "(APPLY=no, skipping)"
+              fi
+              echo "== old→new backfill (fixed direction) =="
+              COLS=$(PGPASSWORD="$PW_OLD" $OLD -At -c \
+                "SELECT string_agg(quote_ident(attname), ',') FROM pg_attribute WHERE attrelid='usage_events'::regclass AND attnum>0 AND NOT attisdropped AND attname<>'id'")
+              PGPASSWORD="$PW_OLD" $OLD -c "COPY (SELECT $COLS FROM usage_events) TO STDOUT" > /tmp/old.tsv
+              PGPASSWORD="$PW_NEW" $NEW -c "COPY (SELECT $COLS FROM usage_events) TO STDOUT" > /tmp/cnpg.tsv
+              # c[old-row]++ first file, -- for cnpg rows; c>0 ⇒ row exists on OLD but not (enough) on CNPG
+              awk 'NR==FNR{c[$0]++;next}{c[$0]--}END{for(l in c) if(c[l]>0) for(i=0;i<c[l];i++) print l}' \
+                /tmp/old.tsv /tmp/cnpg.tsv > /tmp/oldonly.tsv
+              N=$(wc -l < /tmp/oldonly.tsv)
+              echo "rows on OLD missing from CNPG: $N"
+              if [ "$APPLY" = "yes" ] && [ "$N" -gt 0 ]; then
+                PGPASSWORD="$PW_NEW" $NEW -c "COPY usage_events ($COLS) FROM STDIN" < /tmp/oldonly.tsv
+                echo "backfilled $N rows"
+              fi
+              echo "== final state =="
+              PGPASSWORD="$PW_NEW" $NEW -At -c "SELECT count(*), max(id) FROM usage_events"
+              PGPASSWORD="$PW_NEW" $NEW -c "ANALYZE usage_events"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

@@ -1,0 +1,78 @@
+# !!! SUPERSEDED — DO NOT RUN (2026-09-16). !!!
+# The awk multiset-diff below is INVERTED: it emits rows CNPG has MORE
+# of than old (its own live rows) and re-inserts them into CNPG. Two
+# runs duplicated 114 rows; repaired by 50-repair-usage-events.yaml
+# (deleted ids 32852..32965, backfilled the real 17 old-only rows).
+# Kept only as a record of the incident. The real job is 50-repair.
+#
+# --- original header below ---
+# One-shot merge job for the cutover's split-plumbing window
+# (2026-09-16 03:30-03:48 UTC): maas-api loads its DSN from the
+# maas-db-config secret (NOT postgresql-credentials/MAAS_DB_URL) and so
+# wrote ~17 usage_events to the OLD db while metering-service wrote its
+# fresh events to CNPG. Append-only, different producers, disjoint sets.
+#
+# usage_events ids are NOT dense (observed 7907..32830 with gaps), so
+# no id threshold can separate "rows from the dump" from "rows after
+# it". Instead: multiset diff by full row CONTENT (COPY both tables
+# minus the surrogate id — COPY's TSV encoding makes rows comparable
+# strings), then COPY the missing rows into CNPG letting its own
+# sequence assign fresh ids. Exact, no dedupe heuristics.
+#
+# Run with writers frozen so the counts are provable. NOT idempotent
+# (a rerun re-inserts); backoffLimit 0, run once.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cnpg-backfill-usage
+  namespace: ai-gateway-dogfood
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: backfill
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              COLS=$(PGPASSWORD="$PW_OLD" psql -h postgresql -p 5432 -U aigateway -d aigateway -At -c \
+                "SELECT string_agg(quote_ident(attname), ',') FROM pg_attribute WHERE attrelid='usage_events'::regclass AND attnum>0 AND NOT attisdropped AND attname<>'id'")
+              PGPASSWORD="$PW_OLD" psql -h postgresql -p 5432 -U aigateway -d aigateway -c \
+                "COPY (SELECT $COLS FROM usage_events) TO STDOUT" > /tmp/old.tsv
+              PGPASSWORD="$PW_NEW" psql -h aigateway-pg-rw -p 5432 -U aigateway -d aigateway -c \
+                "COPY (SELECT $COLS FROM usage_events) TO STDOUT" > /tmp/new.tsv
+              # multiset difference: rows in old not accounted for in new
+              awk 'NR==FNR{c[$0]++;next}{c[$0]--}END{for(l in c) if(c[l]>0) for(i=0;i<c[l];i++) print l}' \
+                /tmp/new.tsv /tmp/old.tsv > /tmp/missing.tsv
+              N=$(wc -l < /tmp/missing.tsv)
+              echo "rows present on old but missing on CNPG: $N"
+              if [ "$N" -gt 0 ]; then
+                PGPASSWORD="$PW_NEW" psql -h aigateway-pg-rw -p 5432 -U aigateway -d aigateway -c \
+                  "COPY usage_events ($COLS) FROM STDIN" < /tmp/missing.tsv
+                echo "backfill done: $N rows inserted"
+              else
+                echo "nothing to backfill"
+              fi
+          env:
+            - name: PW_NEW
+              valueFrom:
+                secretKeyRef:
+                  name: aigateway-db-app
+                  key: password
+            - name: PW_OLD
+              valueFrom:
+                # old pod still authenticates with the pre-cutover password
+                secretKeyRef:
+                  name: postgresql-credentials-pre-cnpg
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

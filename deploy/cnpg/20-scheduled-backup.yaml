@@ -1,0 +1,16 @@
+# Physical base backup to the COS bucket every day at 02:15 UTC.
+# This is the recovery anchor; WAL archiving (configured on the Cluster)
+# fills in everything between anchors, enabling restore to any point in
+# time. Complements, doesn't replace, the object-store lifecycle rules —
+# retention in the bucket itself still needs to be set (see docs/db-backup.md).
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: aigateway-daily
+  namespace: ai-gateway-dogfood
+spec:
+  schedule: "15 2 * * *"
+  immediate: false
+  suspend: false
+  cluster:
+    name: aigateway-pg

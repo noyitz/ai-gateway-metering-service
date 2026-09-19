@@ -1,0 +1,53 @@
+# One-shot cutover loader: pg_restore the newest stopgap dump (from the
+# postgres-backups PVC — take a fresh one via the runbook so the data-loss
+# window is minutes, not "since 03:00") into the CNPG cluster over its -rw
+# service. --exit-on-error so a half-loaded database fails loudly.
+# Delete the job before re-running; it's not idempotent by design (the
+# target database must be empty).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cnpg-restore
+  namespace: ai-gateway-dogfood
+  labels:
+    app.kubernetes.io/name: postgres-backup
+spec:
+  activeDeadlineSeconds: 1800
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pg-restore
+          # Same major (16) as both the source server and CNPG's default image.
+          image: postgres:16-alpine
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              F=$(ls -t /backups/aigateway-*.dump | head -1)
+              echo "restoring $F into aigateway-pg-rw"
+              pg_restore -h aigateway-pg-rw -U aigateway -d aigateway \
+                --no-owner --no-privileges --exit-on-error -j 2 "$F"
+              echo "restore ok: $F"
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: aigateway-db-app
+                  key: password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+              readOnly: true
+      volumes:
+        - name: backups
+          persistentVolumeClaim:
+            claimName: postgres-backups
