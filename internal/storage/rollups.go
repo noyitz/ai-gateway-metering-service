@@ -476,10 +476,10 @@ type ParityShape struct {
 // holds insert-time prices); it is reported as a note, not a red, and a
 // human reads it — auto-falling-back on every catalog change would keep
 // the table permanently switched off. The per-group keying intentionally
-// renders raw's NULL→'unknown'/'empty' labels and the rollup's
-// collapse-to-empty differently; if legacy ”-versus-NULL group rows
-// ever make that shape red, it is a real divergence to look at, not to
-// paper over. The whole report runs inside ONE REPEATABLE READ
+// renders raw's NULL-to-'unknown'/empty labels and the rollup's
+// collapse-to-empty differently; if legacy empty-string-versus-NULL group
+// rows ever make that shape red, it is a real divergence to look at, not
+// to paper over. The whole report runs inside ONE REPEATABLE READ
 // transaction on the reader connection: the invariant only holds within
 // one snapshot — a raw query at WAL position P and the rollup query at
 // a later P' would diff every event that replicated in between.
@@ -527,17 +527,59 @@ func (s *Store) ParityReport(ctx context.Context, since, until time.Time) ([]Par
 		}
 		return rows.Err()
 	}
-	shapes := []struct {
-		name    string
-		rawSQL  string
-		rollSQL string
-	}{
+	shapes := parityShapes()
+
+	out := make([]ParityShape, 0)
+	for _, sh := range shapes {
+		side := map[string]*acc{}
+		if err := collect(sh.RawSQL, true, side); err != nil {
+			return nil, fmt.Errorf("parity raw %s: %w", sh.Name, err)
+		}
+		if err := collect(sh.RollSQL, false, side); err != nil {
+			return nil, fmt.Errorf("parity rollup %s: %w", sh.Name, err)
+		}
+		keys := make([]string, 0, len(side))
+		for k := range side {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			a := side[k]
+			ps := ParityShape{Shape: sh.Name, Key: k, RawRequests: a.rawReq, RollRequests: a.rollReq,
+				RawCostUSD: a.rawCost, RollCostUSD: a.rollCost, Match: a.rawReq == a.rollReq}
+			d := a.rawCost - a.rollCost
+			if d > 0.005 || d < -0.005 {
+				ps.Note = "cost differs beyond cents tolerance — expected only if model_pricing changed inside the window (rollup holds insert-time prices)"
+			}
+			out = append(out, ps)
+		}
+	}
+	return out, nil
+}
+
+// parityShapes returns the raw-vs-rollup query pairs for every keying the
+// switched readers use. Package-level so the live-schema pre-flight can
+// PREPARE every one of them — the part-B first boot found
+// "GROUP BY 'total'" (Postgres rejects a non-integer constant in GROUP
+// BY) shipped in part A's ParityReport unexecuted: the endpoint was never
+// hit and the pre-flight had deliberately skipped parity SQL. Parity SQL
+// is now READ-PATH-CRITICAL code and must parse before any of it ships.
+// The total key groups by OUTPUT POSITION (1), not by a string literal,
+// on both sides.
+type parityShapeSQL struct {
+	Name    string
+	RawSQL  string
+	RollSQL string
+}
+
+func parityShapes() []parityShapeSQL {
+	return []parityShapeSQL{
 		{"total",
 			fmt.Sprintf(`SELECT 'total', COUNT(*), COALESCE(ROUND(SUM(%s)::numeric,2),0)::float8
 				FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
 				WHERE e.timestamp >= $1 AND e.timestamp < $2 GROUP BY 1`, costUSDExpr),
 			`SELECT 'total', COALESCE(SUM(requests),0), COALESCE(ROUND(SUM(cost_usd)::numeric,2),0)::float8
-				FROM usage_hourly WHERE hour >= $1 AND hour < $2 GROUP BY 'total'`},
+				FROM usage_hourly WHERE hour >= $1 AND hour < $2 GROUP BY 1`},
 		{"per_model",
 			fmt.Sprintf(`SELECT e.model, COUNT(*), COALESCE(ROUND(SUM(%s)::numeric,2),0)::float8
 				FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
@@ -567,33 +609,6 @@ func (s *Store) ParityReport(ctx context.Context, since, until time.Time) ([]Par
 				FROM usage_hourly WHERE hour >= $1 AND hour < $2
 				GROUP BY date_trunc('day', hour)::text`},
 	}
-
-	out := make([]ParityShape, 0)
-	for _, sh := range shapes {
-		side := map[string]*acc{}
-		if err := collect(sh.rawSQL, true, side); err != nil {
-			return nil, fmt.Errorf("parity raw %s: %w", sh.name, err)
-		}
-		if err := collect(sh.rollSQL, false, side); err != nil {
-			return nil, fmt.Errorf("parity rollup %s: %w", sh.name, err)
-		}
-		keys := make([]string, 0, len(side))
-		for k := range side {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			a := side[k]
-			ps := ParityShape{Shape: sh.name, Key: k, RawRequests: a.rawReq, RollRequests: a.rollReq,
-				RawCostUSD: a.rawCost, RollCostUSD: a.rollCost, Match: a.rawReq == a.rollReq}
-			d := a.rawCost - a.rollCost
-			if d > 0.005 || d < -0.005 {
-				ps.Note = "cost differs beyond cents tolerance — expected only if model_pricing changed inside the window (rollup holds insert-time prices)"
-			}
-			out = append(out, ps)
-		}
-	}
-	return out, nil
 }
 
 func minInt64(a, b int64) int64 {

@@ -83,4 +83,24 @@ func TestWritePathSQLParsesAgainstLiveSchema(t *testing.T) {
 			t.Errorf("DEALLOCATE %s: %v", name, err)
 		}
 	}
+	// Parity SQL is read-path-critical code: the standing check runs it
+	// on a ticker and the whole read switch trusts its verdict. Part A
+	// shipped "GROUP BY 'total'" (rejected by Postgres) because this
+	// list deliberately skipped parity and the endpoint was never hit.
+	// Every shape, both sides, every time.
+	for _, sh := range parityShapes() {
+		for _, side := range []struct {
+			tag string
+			sql string
+		}{{"raw", sh.RawSQL}, {"rollup", sh.RollSQL}} {
+			name := "parity_" + side.tag + "_" + sh.Name
+			if _, err := conn.ExecContext(ctx, "PREPARE preflight_"+name+" AS "+side.sql); err != nil {
+				t.Errorf("PREPARE %s: %v", name, err)
+				continue
+			}
+			if _, err := conn.ExecContext(ctx, "DEALLOCATE preflight_"+name); err != nil {
+				t.Errorf("DEALLOCATE %s: %v", name, err)
+			}
+		}
+	}
 }
