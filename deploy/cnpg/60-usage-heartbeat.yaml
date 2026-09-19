@@ -1,0 +1,34 @@
+# Read-only heartbeat: is live traffic still landing on CNPG?
+# Prints usage_events count + newest event timestamp.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cnpg-heartbeat
+  namespace: ai-gateway-dogfood
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: heartbeat
+          image: postgres:16-alpine
+          env:
+            - name: PW_NEW
+              valueFrom:
+                secretKeyRef:
+                  name: aigateway-db-app
+                  key: password
+          command:
+            - sh
+            - -c
+            - |
+              PGPASSWORD="$PW_NEW" psql -h aigateway-pg-rw -p 5432 -U aigateway -d aigateway -At -c \
+                "SELECT count(*), max(timestamp) FROM usage_events"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
