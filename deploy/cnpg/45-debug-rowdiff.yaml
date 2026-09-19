@@ -1,0 +1,52 @@
+# Debug job (cutover 2026-09-16): why did the 40-backfill content diff
+# report 38 missing, then 76 after inserting those 38?
+# Read-only — copies both tables (minus id), prints dup stats and two
+# example old-only rows for eyeball comparison.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cnpg-dbg-rowdiff
+  namespace: ai-gateway-dogfood
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: dbg
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              COLS=$(PGPASSWORD="$PW_OLD" psql -h postgresql -p 5432 -U aigateway -d aigateway -At -c \
+                "SELECT string_agg(quote_ident(attname), ',') FROM pg_attribute WHERE attrelid='usage_events'::regclass AND attnum>0 AND NOT attisdropped AND attname<>'id'")
+              echo "COLS=$COLS"
+              PGPASSWORD="$PW_OLD" psql -h postgresql -p 5432 -U aigateway -d aigateway -c "COPY (SELECT $COLS FROM usage_events) TO STDOUT" > /tmp/old.tsv
+              PGPASSWORD="$PW_NEW" psql -h aigateway-pg-rw -p 5432 -U aigateway -d aigateway -c "COPY (SELECT $COLS FROM usage_events) TO STDOUT" > /tmp/new.tsv
+              wc -l /tmp/old.tsv /tmp/new.tsv
+              echo "--- most duplicated row text on OLD side (count + first 200 chars) ---"
+              sort /tmp/old.tsv | uniq -c | sort -rn | head -3 | cut -c1-220
+              echo "--- old-only rows (first 2) ---"
+              awk 'NR==FNR{c[$0]++;next}{c[$0]--}END{for(l in c) if(c[l]>0) print l}' /tmp/new.tsv /tmp/old.tsv | head -2 | cut -c1-300
+              echo "--- same rows searched in new.tsv (expect: if present, matcher broken) ---"
+              PGPASSWORD="$PW_NEW" psql -h aigateway-pg-rw -p 5432 -U aigateway -d aigateway -At -c "SELECT count(*) FROM usage_events"
+          env:
+            - name: PW_NEW
+              valueFrom:
+                secretKeyRef:
+                  name: aigateway-db-app
+                  key: password
+            - name: PW_OLD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-credentials-pre-cnpg
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

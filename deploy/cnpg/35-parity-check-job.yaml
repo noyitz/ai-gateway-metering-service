@@ -1,0 +1,58 @@
+# One-shot job: true count(*) parity between the old postgresql-0 and
+# CNPG, over every table in schema public (built dynamically from
+# pg_tables so nothing is forgotten). n_live_tup is an estimate and
+# lies; this is the number the cutover decision is made on.
+#
+# usage_events is written live, so a small old > new delta there is
+# expected — it's the rows that landed after the dump's snapshot.
+# Any OTHER table differing means the restore is not done.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cnpg-parity-check
+  namespace: ai-gateway-dogfood
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: parity
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              Q=$(PGPASSWORD="$PW_OLD" psql -h postgresql -p 5432 -U aigateway -d aigateway -At -c \
+                "SELECT string_agg(format('SELECT %L AS t, count(*) AS n FROM %I', tablename, tablename), ' UNION ALL ') FROM pg_tables WHERE schemaname='public'")
+              echo "== old (postgresql-0) =="
+              PGPASSWORD="$PW_OLD" psql -h postgresql -p 5432 -U aigateway -d aigateway -At -F'|' -c "$Q" | sort | tee /tmp/old.txt
+              echo "== new (aigateway-pg) =="
+              PGPASSWORD="$PW_NEW" psql -h aigateway-pg-rw -p 5432 -U aigateway -d aigateway -At -F'|' -c "$Q" | sort | tee /tmp/new.txt
+              echo "== diff (old vs new) =="
+              diff -u /tmp/old.txt /tmp/new.txt && echo "PARITY OK" || echo "PARITY MISMATCH — inspect above"
+          env:
+            - name: PW_NEW
+              valueFrom:
+                secretKeyRef:
+                  name: aigateway-db-app
+                  key: password
+            - name: PW_OLD
+              valueFrom:
+                secretKeyRef:
+                  # Reads the OLD password from the pre-cutover backup
+                  # secret: after the repoint, postgresql-credentials
+                  # holds the new one, but the old pod still authenticates
+                  # with the old. Keeps parity checks working through the
+                  # rollback window (expect only usage_events to diverge,
+                  # upward on the new side — live writes no longer reach old).
+                  name: postgresql-credentials-pre-cnpg
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

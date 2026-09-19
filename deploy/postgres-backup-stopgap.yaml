@@ -1,0 +1,81 @@
+# Stopgap logical backup for the dogfood PriceTag cluster while the real
+# answer (CloudNativePG + barman object-store PITR, see
+# docs/db-backup.md) is stood up. Nightly pg_dump of the single aigateway
+# database to its own PVC, verified before rotation, 14-day retention.
+#
+# This is a seatbelt, not the solution: single-zone block storage, no PITR.
+# Deliberately self-contained so it survives alongside the CNPG migration
+# until object-store backups are verified end-to-end.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+  namespace: ai-gateway-dogfood
+  labels:
+    app.kubernetes.io/name: postgres-backup
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: ibmc-vpc-block-10iops-tier
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup-dump
+  namespace: ai-gateway-dogfood
+  labels:
+    app.kubernetes.io/name: postgres-backup
+spec:
+  schedule: "0 3 * * *"  # 03:00 UTC nightly — quiet hour for dogfood
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 1800
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: pgdump
+              # Same image as the server itself: the pg_dump client can
+              # never be older than the server it dumps.
+              image: postgres:16-alpine
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  TS=$(date -u +%Y%m%dT%H%M%SZ)
+                  F=/backups/aigateway-$TS.dump
+                  pg_dump -h postgresql -U aigateway -d aigateway -Fc -f "$F"
+                  # Verify the archive is readable before touching retention
+                  # — an unreadable dump must fail the job, not rotate good
+                  # backups out from under us.
+                  pg_restore --list "$F" >/dev/null
+                  sha256sum "$F" > "$F.sha256"
+                  find /backups -name 'aigateway-*.dump' -mtime +14 ! -name "$TS*" -delete
+                  find /backups -name 'aigateway-*.sha256' -mtime +14 -delete
+                  echo "backup ok: $F ($(du -h "$F" | cut -f1))"
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-credentials
+                      key: POSTGRES_PASSWORD
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: postgres-backups
