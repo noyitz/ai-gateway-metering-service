@@ -214,3 +214,19 @@ func TestParityGatesOnCountsAndReportsCostNotes(t *testing.T) {
 		t.Error("parity must run in one snapshot — two queries across a WAL replay boundary diff red on live traffic")
 	}
 }
+
+// The part-A hotfix tripwire: Postgres rejects a string constant in
+// GROUP BY ("non-integer constant in GROUP BY"), and that exact query
+// shipped in part A unexecuted because the parity endpoint was never hit
+// and the pre-flight skipped parity SQL. GROUP BY either an expression,
+// an output position, or nothing — never a literal.
+func TestParityShapesAvoidIllegalGroupBy(t *testing.T) {
+	for _, sh := range parityShapes() {
+		for _, q := range []string{sh.RawSQL, sh.RollSQL} {
+			i := strings.Index(q, "GROUP BY '")
+			if i >= 0 {
+				t.Errorf("shape %s groups by a string constant (illegal in Postgres): %.60s", sh.Name, q[i:])
+			}
+		}
+	}
+}
