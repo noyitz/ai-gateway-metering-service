@@ -80,6 +80,15 @@ type Store struct {
 	// rollupsReadyNow caches the rollup backfill completion flag; the
 	// authoritative value lives in rollup_meta. See rollups.go.
 	rollupsReadyNow atomic.Bool
+
+	// Part B read gating (rollups.go): useRollups is the config flag,
+	// parityHealthy the standing-check verdict maintained by
+	// RunRollupMaintenance, servingRollups the last decision made — used
+	// only to log transitions once. Enforcement and the Recent feed never
+	// consult these; they stay on raw for freshness and detail.
+	useRollups     atomic.Bool
+	parityHealthy  atomic.Bool
+	servingRollups atomic.Bool
 }
 
 func New(databaseURL string, tokenQuota int64) (*Store, error) {
@@ -279,6 +288,14 @@ func (s *Store) GetTeamUsage(ctx context.Context, groupName string) ([]TeamUserU
 		WHERE e.group_name = $1
 		GROUP BY e.username, e.model, e.provider
 		ORDER BY e.username, total_tokens DESC`, costUSDExpr)
+	if s.rollupsLive() {
+		// All-time scan of a whole group is exactly the query class the
+		// rollup exists for (1071 buckets vs the full event ledger).
+		// Deliberately still served on the primary: a group owner's
+		// freshness bound stays the refresh interval, without replica lag
+		// stacked on top.
+		query = rollupTeamUsageSQL
+	}
 	rows, err := s.db.QueryContext(ctx, query, groupName)
 	if err != nil {
 		return nil, err
@@ -465,7 +482,7 @@ type TimelineBucket struct {
 
 func (s *Store) GetDashboardOverview(ctx context.Context, since, until time.Time, group, user, model string) (DashboardOverview, error) {
 	var o DashboardOverview
-	err := s.reader().QueryRowContext(ctx, fmt.Sprintf(`
+	query := fmt.Sprintf(`
 		SELECT COUNT(*),
 			COALESCE(SUM(e.prompt_tokens),0),
 			COALESCE(SUM(e.completion_tokens),0),
@@ -474,7 +491,11 @@ func (s *Store) GetDashboardOverview(ctx context.Context, since, until time.Time
 			COALESCE(ROUND(SUM(%s)::numeric, 2), 0)
 		FROM usage_events e
 		LEFT JOIN model_pricing p ON e.model = p.model
-		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)`, costUSDExpr),
+		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)`, costUSDExpr)
+	if s.rollupsLive() {
+		query = rollupOverviewSQL
+	}
+	err := s.reader().QueryRowContext(ctx, query,
 		since, until, group, user, model).Scan(
 		&o.TotalRequests, &o.TotalPromptTokens, &o.TotalCompletionTokens,
 		&o.TotalTokens, &o.ActiveUsers, &o.TotalCostUSD)
@@ -482,7 +503,7 @@ func (s *Store) GetDashboardOverview(ctx context.Context, since, until time.Time
 }
 
 func (s *Store) GetDashboardGroups(ctx context.Context, since, until time.Time, group, user, model string) ([]GroupSummary, error) {
-	rows, err := s.reader().QueryContext(ctx, fmt.Sprintf(`
+	query := fmt.Sprintf(`
 		SELECT COALESCE(e.group_name, 'unknown'),
 			COUNT(*),
 			COALESCE(SUM(e.total_tokens),0),
@@ -492,7 +513,11 @@ func (s *Store) GetDashboardGroups(ctx context.Context, since, until time.Time, 
 		LEFT JOIN model_pricing p ON e.model = p.model
 		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 		GROUP BY COALESCE(e.group_name, 'unknown')
-		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr), since, until, group, user, model)
+		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr)
+	if s.rollupsLive() {
+		query = rollupGroupsSQL
+	}
+	rows, err := s.reader().QueryContext(ctx, query, since, until, group, user, model)
 	if err != nil {
 		return nil, err
 	}
@@ -539,7 +564,12 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 		limit = 100
 	}
 
-	query := hostedSavingsWithSQL(7) + fmt.Sprintf(`
+	rollup := s.rollupsLive()
+	query := hostedSavingsWithSQL(7, rollup)
+	if rollup {
+		query += fmt.Sprintf(rollupUsersSelect, displayNameExpr, displayNameExpr, sortExpr, direction)
+	} else {
+		query += fmt.Sprintf(`
 		SELECT e.username,
 			%s,
 			COALESCE(e.group_name, ''),
@@ -557,6 +587,7 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 		GROUP BY e.username, %s, COALESCE(e.group_name, '')
 		ORDER BY %s %s
 		LIMIT $6`, displayNameExpr, costUSDExpr, displayNameExpr, sortExpr, direction)
+	}
 
 	rows, err := s.reader().QueryContext(ctx, query, since, until, group, user, model, limit, refModel)
 	if err != nil {
@@ -642,8 +673,18 @@ func (s *Store) GetDashboardUsers(ctx context.Context, since, until time.Time, g
 // placeholder number that never appears in the query text at all makes
 // Postgres refuse the query outright ("could not determine data type of
 // parameter"), which is why this can't just always say $7.
-func hostedSavingsWithSQL(refParamNum int) string {
+func hostedSavingsWithSQL(refParamNum int, rollup bool) string {
 	ref := fmt.Sprintf("$%d", refParamNum)
+	// Source swap (part B): same CTE math, three tokens changed — the
+	// event table (usage_hourly carries every column this uses, plus the
+	// stored cost_usd), the window column (e.hour), and the per-row cost
+	// (stored insert-time cost instead of the live-priced expression —
+	// savings measured against what was actually billed). Raw-side text
+	// must come out identical to the pre-part-B query; grep-guarded.
+	from, mcFrom, when, cost := "usage_events e LEFT JOIN model_pricing p ON e.model = p.model", "usage_events e", "e.timestamp >= $1 AND e.timestamp < $2", costUSDExpr
+	if rollup {
+		from, mcFrom, when, cost = "usage_hourly e LEFT JOIN model_pricing p ON e.model = p.model", "usage_hourly e", "e.hour >= $1 AND e.hour < $2", "e.cost_usd"
+	}
 	// Inlined as a literal (not a %v verb) so it can never land in the
 	// wrong Sprintf slot the way a positional argument can — Sprintf
 	// matches args to verbs in the order the verbs appear in the format
@@ -653,14 +694,14 @@ func hostedSavingsWithSQL(refParamNum int) string {
 	return fmt.Sprintf(`
 		WITH r_ref AS (
 			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
-			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
-			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND e.model = `+ref+` AND (%s) > 0
+			FROM `+from+`
+			WHERE `+when+` AND e.model = `+ref+` AND (%s) > 0
 			  AND NOT (`+hostedProviderCond+`)
 		),
 		r_all AS (
 			SELECT COALESCE(SUM(e.cached_input_tokens)::float / NULLIF(SUM(e.prompt_tokens), 0), 0) as r
-			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
-			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND (%s) > 0
+			FROM `+from+`
+			WHERE `+when+` AND (%s) > 0
 			  AND NOT (`+hostedProviderCond+`)
 		),
 		rat AS (
@@ -677,8 +718,8 @@ func hostedSavingsWithSQL(refParamNum int) string {
 			SELECT e.model,
 			       (SUM(COALESCE(e.cached_input_tokens, 0) + COALESCE(e.cache_creation_tokens, 0))::float
 			         / NULLIF(SUM(e.prompt_tokens), 0)) > `+cacheNoiseThresholdSQL+` AS has_cache
-			FROM usage_events e
-			WHERE e.timestamp >= $1 AND e.timestamp < $2
+			FROM `+mcFrom+`
+			WHERE `+when+`
 			GROUP BY e.model
 		),
 		fm AS (
@@ -688,9 +729,9 @@ func hostedSavingsWithSQL(refParamNum int) string {
 				SUM(e.total_tokens) as tot, SUM(%s) as cost,
 				bool_or(`+hostedProviderCond+`) as hosted,
 				COALESCE(bool_and(COALESCE(mc.has_cache, false)), false) as model_has_cache
-			FROM usage_events e LEFT JOIN model_pricing p ON e.model = p.model
+			FROM `+from+`
 			LEFT JOIN model_cache mc ON mc.model = e.model
-			WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
+			WHERE `+when+` AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 			GROUP BY e.username, e.model
 		),
 		sv AS (
@@ -710,7 +751,7 @@ func hostedSavingsWithSQL(refParamNum int) string {
 			FROM fm CROSS JOIN pr CROSS JOIN rat
 			WHERE (fm.hosted OR fm.cost = 0) AND fm.tot > 0
 			GROUP BY fm.username
-		)`, costUSDExpr, costUSDExpr, costUSDExpr)
+		)`, cost, cost, cost)
 }
 
 // GetHostedSavings returns the org-wide "Saved · Hosted Models" KPI: the
@@ -723,7 +764,7 @@ func (s *Store) GetHostedSavings(ctx context.Context, since, until time.Time, gr
 	if refModel == "" {
 		refModel = "claude-opus-4-8"
 	}
-	query := hostedSavingsWithSQL(6) + `,
+	query := hostedSavingsWithSQL(6, s.rollupsLive()) + `,
 		sa AS (SELECT COALESCE(SUM(saved), 0) as saved FROM sv),
 		ra AS (SELECT COALESCE(bool_or(cached = 0 AND cwrite = 0 AND prompt > 0 AND (SELECT r FROM rat) > 0), false) as applied
 		       FROM fm WHERE (hosted OR cost = 0) AND tot > 0)
@@ -734,7 +775,7 @@ func (s *Store) GetHostedSavings(ctx context.Context, since, until time.Time, gr
 }
 
 func (s *Store) GetDashboardModels(ctx context.Context, since, until time.Time, group, user, model string) ([]ModelSummary, error) {
-	rows, err := s.reader().QueryContext(ctx, fmt.Sprintf(`
+	query := fmt.Sprintf(`
 		SELECT e.model, COALESCE(e.provider, ''),
 			COUNT(*),
 			COALESCE(SUM(e.total_tokens),0),
@@ -752,7 +793,11 @@ func (s *Store) GetDashboardModels(ctx context.Context, since, until time.Time, 
 		LEFT JOIN model_pricing p ON e.model = p.model
 		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 		GROUP BY e.model, COALESCE(e.provider, '')
-		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr), since, until, group, user, model)
+		ORDER BY SUM(e.total_tokens) DESC`, costUSDExpr)
+	if s.rollupsLive() {
+		query = rollupModelsSQL
+	}
+	rows, err := s.reader().QueryContext(ctx, query, since, until, group, user, model)
 	if err != nil {
 		return nil, err
 	}
@@ -794,6 +839,9 @@ func (s *Store) GetDashboardTimeline(ctx context.Context, since, until time.Time
 		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 		GROUP BY bucket, series
 		ORDER BY bucket, series`, truncInterval, seriesCol)
+	if s.rollupsLive() {
+		query = rollupTimelineSQL(truncInterval, seriesCol)
+	}
 
 	rows, err := s.reader().QueryContext(ctx, query, since, until, group, user, model)
 	if err != nil {

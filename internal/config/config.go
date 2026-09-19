@@ -87,6 +87,22 @@ type Config struct {
 	// see the readDB allowlist in internal/storage/postgres.go.
 	ReadDatabaseURL string
 
+	// DashboardUseRollups switches the dashboard/report aggregation reads
+	// from raw usage_events to the hourly usage_hourly rollup (Phase 3
+	// part B). Default OFF — same two-decisions rule as the cache flag:
+	// deploying the code and enabling the behavior are separate events,
+	// and the go signal is a green parity report. The read path only
+	// honors this while rollups are backfilled AND the standing parity
+	// check is green; either failing serves raw (see rollups.go).
+	// Enforcement, quota and the Recent feed never read rollups.
+	DashboardUseRollups bool
+
+	// RollupRefreshSeconds is how often the maintenance loop refreshes
+	// recent hours from raw and runs the standing parity check. Bounds
+	// the self-heal window for the (locked) refresh-vs-insert race and
+	// the standing-parity detection latency.
+	RollupRefreshSeconds int
+
 	KeyService KeyService
 	Kubernetes Kubernetes
 	Welcome    Welcome
@@ -202,6 +218,8 @@ func Load() Config {
 		DashboardCacheTTLSeconds: envInt("DASHBOARD_CACHE_TTL_SECONDS", 60),
 		DashboardCacheEnabled:    envBool("DASHBOARD_CACHE_ENABLED", false),
 		ReadDatabaseURL:          os.Getenv("READ_DATABASE_URL"),
+		DashboardUseRollups:      envBool("DASHBOARD_USE_ROLLUPS", false),
+		RollupRefreshSeconds:     envInt("ROLLUP_REFRESH_SECONDS", 300),
 		KeyService: KeyService{
 			URL:                strings.TrimSuffix(os.Getenv("KEY_SERVICE_URL"), "/"),
 			UserHeader:         envDefault("KEY_SERVICE_USER_HEADER", "X-Auth-Username"),
