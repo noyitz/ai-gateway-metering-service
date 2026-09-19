@@ -1,0 +1,17 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: DatabaseRole
+metadata:
+  name: metering-reader
+  # Read-only identity for dashboard/report reads (scaling plan Phase 2).
+  # The app's READ_DATABASE_URL points this role at the CNPG read
+  # service (aigateway-pg-r). Table-level SELECT lives in 20-grants.sql —
+  # CNPG DatabaseRole creates/controls LOGIN only, not table privileges.
+spec:
+  cluster:
+    name: aigateway-pg
+  name: metering_reader
+  ensure: present
+  login: true
+  inherit: true
+  connectionLimit: 10
+  databaseRoleReclaimPolicy: retain
