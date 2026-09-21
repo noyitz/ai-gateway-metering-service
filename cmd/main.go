@@ -24,6 +24,13 @@ func main() {
 		slog.Error("DATABASE_URL is required")
 		os.Exit(1)
 	}
+	if err := cfg.CloudEvents.Validate(); err != nil {
+		slog.Error("invalid CloudEvents configuration", "error", err)
+		os.Exit(1)
+	}
+	if cfg.CloudEvents.AuthToken == "" {
+		slog.Warn("CloudEvents ingestion is unauthenticated — development mode only")
+	}
 
 	// MonthlyTokenQuota is the per-user monthly token budget the entitlement
 	// endpoint reports against. Enforcement of actual traffic belongs in the
@@ -129,7 +136,7 @@ func main() {
 		}
 	}
 
-	eventsHandler := handler.NewEventsHandler(store)
+	eventsHandler := handler.NewEventsHandler(store, cfg.CloudEvents)
 	entitlementsHandler := handler.NewEntitlementsHandler(store, cfg)
 	dashboardHandler := handler.NewDashboardHandler(store, cfg)
 

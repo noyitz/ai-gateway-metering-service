@@ -182,12 +182,30 @@ var insertEventSQL = fmt.Sprintf(`
 // usage_hourly is never reachable in a state that disagrees with raw.
 // The rollup rides the cost the database just computed (returned as
 // text to keep NUMERIC exact — no float round-trip).
-func (s *Store) InsertEvent(ctx context.Context, e UsageEvent) error {
+func (s *Store) InsertEvent(ctx context.Context, e UsageEvent) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	// Serialize duplicate checks for the same producer event across all
+	// service instances. The advisory lock avoids a schema rewrite on older
+	// databases that may already contain duplicate event IDs.
+	if _, err := tx.ExecContext(ctx,
+		`SELECT pg_advisory_xact_lock(hashtextextended($1 || '|' || $2, 0))`, e.Source, e.EventID,
+	); err != nil {
+		return false, err
+	}
+	var exists bool
+	if err := tx.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM usage_events WHERE source = $1 AND event_id = $2)`, e.Source, e.EventID,
+	).Scan(&exists); err != nil {
+		return false, err
+	}
+	if exists {
+		return false, nil
+	}
 
 	var costUSD string
 	err = tx.QueryRowContext(ctx, insertEventSQL,
@@ -195,13 +213,16 @@ func (s *Store) InsertEvent(ctx context.Context, e UsageEvent) error {
 		e.PromptTokens, e.CompletionTokens, e.TotalTokens, e.CachedInputTokens, e.CacheCreationTokens, e.ReasoningTokens, e.Source, e.UserAgent, e.StatusCode,
 	).Scan(&costUSD)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := upsertRollup(ctx, tx, e.Timestamp, e.Username, e.GroupName, e.Model, e.Provider,
 		1, e.PromptTokens, e.CompletionTokens, e.TotalTokens, e.CachedInputTokens, e.CacheCreationTokens, costUSD); err != nil {
-		return err
+		return false, err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 type TeamUserUsage struct {

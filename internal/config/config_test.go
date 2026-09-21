@@ -41,3 +41,35 @@ func TestRollupReadSwitchDefaults(t *testing.T) {
 		t.Errorf("RollupRefreshSeconds default = %d, want 300 (bounds refresh and parity-check latency)", cfg.RollupRefreshSeconds)
 	}
 }
+
+func TestCloudEventsMaxBytes(t *testing.T) {
+	t.Setenv("CLOUDEVENTS_MAX_BYTES", "32768")
+	if got := Load().CloudEvents.MaxBytes; got != 32768 {
+		t.Fatalf("CloudEventsMaxBytes = %d, want 32768", got)
+	}
+
+	for _, raw := range []string{"0", "-1", "not-a-number", "1048577"} {
+		t.Setenv("CLOUDEVENTS_MAX_BYTES", raw)
+		if got := Load().CloudEvents.MaxBytes; got != DefaultCloudEventsMaxBytes {
+			t.Errorf("CLOUDEVENTS_MAX_BYTES=%q: got %d, want default %d", raw, got, DefaultCloudEventsMaxBytes)
+		}
+	}
+}
+
+func TestCloudEventsAuthToken(t *testing.T) {
+	t.Setenv("CLOUDEVENTS_AUTH_TOKEN", "secret")
+	if got := Load().CloudEvents.AuthToken; got != "secret" {
+		t.Fatalf("CloudEventsAuthToken = %q, want secret", got)
+	}
+}
+
+func TestCloudEventsRequiresExplicitUnauthenticatedAgreement(t *testing.T) {
+	cfg := CloudEvents{}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected unauthenticated CloudEvents configuration to fail")
+	}
+	cfg.AllowUnauthenticated = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("explicit development mode rejected: %v", err)
+	}
+}

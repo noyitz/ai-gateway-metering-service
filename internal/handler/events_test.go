@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/noyitz/ai-gateway-metering-service/internal/config"
 )
 
 func TestHandleEvent_ParsesCloudEvent(t *testing.T) {
@@ -84,11 +87,74 @@ func TestHandleEvent_RejectsGet(t *testing.T) {
 func TestHandleEvent_RejectsInvalidJSON(t *testing.T) {
 	h := &EventsHandler{}
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader([]byte("not json")))
+	req.Header.Set("Content-Type", "application/cloudevents+json")
 	w := httptest.NewRecorder()
 	h.HandleEvent(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("status: got %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleEvent_RejectsInvalidEnvelope(t *testing.T) {
+	h := &EventsHandler{}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", strings.NewReader(`{"specversion":"0.3","id":"evt","source":"urn:test","type":"test","data":{"user":"u","model":"m"}}`))
+	req.Header.Set("Content-Type", "application/cloudevents+json")
+	w := httptest.NewRecorder()
+	h.HandleEvent(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleEvent_RejectsWrongContentType(t *testing.T) {
+	h := &EventsHandler{}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.HandleEvent(w, req)
+
+	if w.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusUnsupportedMediaType)
+	}
+}
+
+func TestHandleEvent_RequiresBearerTokenWhenConfigured(t *testing.T) {
+	h := &EventsHandler{authToken: "secret"}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/cloudevents+json")
+	w := httptest.NewRecorder()
+	h.HandleEvent(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestHandleEventAcceptsBearerTokenWhenConfigured(t *testing.T) {
+	h := &EventsHandler{authToken: "secret"}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", strings.NewReader(`{"specversion":"1.0","id":"evt","source":"urn:test","type":"test","data":{"user":"u","model":"m"}}`))
+	req.Header.Set("Content-Type", "application/cloudevents+json")
+	req.Header.Set("Authorization", "Bearer secret")
+	w := httptest.NewRecorder()
+	h.HandleEvent(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusNoContent)
+	}
+}
+
+func TestHandleEvent_RejectsOversizedBody(t *testing.T) {
+	h := &EventsHandler{maxBytes: 64}
+	body := `{"specversion":"1.0","id":"evt","source":"urn:test","type":"test","data":{"user":"u","model":"m","padding":"` + strings.Repeat("x", config.DefaultCloudEventsMaxBytes) + `"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/cloudevents+json")
+	w := httptest.NewRecorder()
+	h.HandleEvent(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }
 
@@ -108,7 +174,7 @@ func TestHandleEvent_AcceptsValidEvent_NoStore(t *testing.T) {
 	}
 	body, _ := json.Marshal(event)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/cloudevents+json")
 	w := httptest.NewRecorder()
 	h.HandleEvent(w, req)
 

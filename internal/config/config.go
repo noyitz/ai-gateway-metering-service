@@ -1,12 +1,11 @@
 // Package config resolves runtime settings from the environment.
 //
-// Only DATABASE_URL is required. Every other setting has a working
-// default, and every optional integration stays switched off until it is
-// explicitly configured, so the service runs unmodified against any
-// gateway that speaks the CloudEvents contract.
+// DATABASE_URL is always required. CloudEvents authentication is also
+// required unless unauthenticated development mode is explicitly enabled.
 package config
 
 import (
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -17,10 +16,35 @@ import (
 // when MONTHLY_TOKEN_QUOTA is unset.
 const DefaultMonthlyTokenQuota = 100_000_000
 
+// DefaultCloudEventsMaxBytes matches the native Praxis cloud_events filter's
+// 64 KiB serialized-event limit.
+const DefaultCloudEventsMaxBytes = 64 << 10
+
+// MaxCloudEventsBytes prevents a deployment typo from disabling request-body
+// protection entirely while still allowing a receiver to accept larger
+// events from another producer when explicitly configured.
+const MaxCloudEventsBytes = 1 << 20
+
+// CloudEvents contains the ingestion endpoint's transport and access policy.
+type CloudEvents struct {
+	MaxBytes             int
+	AuthToken            string
+	AllowUnauthenticated bool
+}
+
+func (c CloudEvents) Validate() error {
+	if c.AuthToken == "" && !c.AllowUnauthenticated {
+		return errors.New("CLOUDEVENTS_AUTH_TOKEN is required unless CLOUDEVENTS_ALLOW_UNAUTHENTICATED=true")
+	}
+	return nil
+}
+
 // Config is the resolved runtime configuration.
 type Config struct {
 	// DatabaseURL is the PostgreSQL connection string. Required.
 	DatabaseURL string
+
+	CloudEvents CloudEvents
 
 	// Port is the HTTP listen port.
 	Port string
@@ -191,7 +215,12 @@ func (k Kubernetes) Enabled() bool {
 // Load resolves configuration from the environment.
 func Load() Config {
 	return Config{
-		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		DatabaseURL: os.Getenv("DATABASE_URL"),
+		CloudEvents: CloudEvents{
+			MaxBytes:             envBoundedInt("CLOUDEVENTS_MAX_BYTES", DefaultCloudEventsMaxBytes, MaxCloudEventsBytes),
+			AuthToken:            os.Getenv("CLOUDEVENTS_AUTH_TOKEN"),
+			AllowUnauthenticated: envBool("CLOUDEVENTS_ALLOW_UNAUTHENTICATED", false),
+		},
 		Port:              envDefault("PORT", "8080"),
 		MonthlyTokenQuota: envFloat("MONTHLY_TOKEN_QUOTA", DefaultMonthlyTokenQuota),
 		EventSource:       envDefault("EVENT_SOURCE", "ai-gateway"),
@@ -283,7 +312,15 @@ func envList(key string) []string {
 }
 
 func envInt(key string, fallback int) int {
-	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v >= 0 {
+	return envIntRange(key, fallback, 0, int(^uint(0)>>1))
+}
+
+func envBoundedInt(key string, fallback, maximum int) int {
+	return envIntRange(key, fallback, 1, maximum)
+}
+
+func envIntRange(key string, fallback, minimum, maximum int) int {
+	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v >= minimum && v <= maximum {
 		return v
 	}
 	return fallback

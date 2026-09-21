@@ -37,6 +37,9 @@ A development metering backend for AI inference gateways — provides CloudEvent
 docker compose up
 ```
 
+Compose explicitly enables unauthenticated CloudEvents ingestion for local
+testing. Set `CLOUDEVENTS_AUTH_TOKEN` to test the authenticated path instead.
+
 ### Kubernetes
 
 ```bash
@@ -49,6 +52,9 @@ kubectl apply -f deploy/
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
 | `PORT` | No | `8080` | HTTP listen port |
+| `CLOUDEVENTS_MAX_BYTES` | No | `65536` | Maximum structured CloudEvent request body; native Praxis defaults to 64 KiB. Values above 1 MiB are rejected and use the default. |
+| `CLOUDEVENTS_AUTH_TOKEN` | Conditional | — | Bearer token for `POST /api/v1/events`; required unless unauthenticated development mode is explicitly enabled. |
+| `CLOUDEVENTS_ALLOW_UNAUTHENTICATED` | No | `false` | Explicit development-only agreement to run ingestion without an auth token. Compose sets this to `true` for local testing. |
 | `TOKEN_QUOTA` | No | `0` (unlimited) | Per-user monthly token budget for the entitlement endpoint. `0` reports usage without gating access; enforcement belongs in the gateway. |
 
 ## CloudEvents Format

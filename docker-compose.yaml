@@ -7,6 +7,11 @@ services:
       POSTGRES_DB: metering
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metering -d metering"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
 
   metering-service:
     build: .
@@ -14,5 +19,9 @@ services:
       - "8080:8080"
     environment:
       DATABASE_URL: postgres://metering:metering-dev@postgres:5432/metering?sslmode=disable
+      CLOUDEVENTS_MAX_BYTES: ${CLOUDEVENTS_MAX_BYTES:-65536}
+      CLOUDEVENTS_AUTH_TOKEN: ${CLOUDEVENTS_AUTH_TOKEN:-}
+      CLOUDEVENTS_ALLOW_UNAUTHENTICATED: ${CLOUDEVENTS_ALLOW_UNAUTHENTICATED:-true}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
