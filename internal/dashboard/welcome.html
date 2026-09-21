@@ -316,7 +316,11 @@ footer .mono{font-size:12px}
         <div class="r"><span class="n">3. Sonnet 5</span><span class="d">Claude Sonnet 5 · $2/$10 per Mtok</span></div>
         <div class="r"><span class="n">4. Haiku</span><span class="d">Haiku 4.5 · Fastest for quick answers · $1/$5 per Mtok</span></div>
         <div class="r sel"><span class="n">▸ 5. Qwen 3.8 Flash Next (NVFP4) ✓</span><span class="d">Hosted-Model vLLM via PriceTag gateway · $0.15/$0.47 per Mtok</span></div>
+<<<<<<< HEAD
         <div class="r"><span class="n">6. GLM 5.3</span><span class="d">Hosted-Model via PriceTag gateway · Free — $0.00/$0.00 per Mtok</span></div>
+=======
+        <div class="r"><span class="n">6. GLM 5.3</span><span class="d">Curvebender-hosted via PriceTag gateway · beta · pricing TBC</span></div>
+>>>>>>> 76e7996 (welcome: add GLM 5.3 (beta) across the harness setup guides)
       </div>
       <p class="eff"><i>◐</i> Medium effort <i>←/→</i> to adjust</p>
     </div>
@@ -367,7 +371,7 @@ claude</pre></div>
 <!-- ============ CLAUDE CODE ============ -->
 <section id="claude">
   <h2><span class="no">03</span>Set up Claude Code, properly</h2>
-  <p class="lede">Make it permanent in <span class="mono">~/.claude/settings.json</span> and teach the <span class="mono">/model</span> picker about the hosted model.</p>
+  <p class="lede">Make it permanent in <span class="mono">~/.claude/settings.json</span> and teach the <span class="mono">/model</span> picker about the hosted models.</p>
 
   <div class="steps">
     <div class="step"><div class="body">
@@ -384,7 +388,11 @@ claude</pre></div>
     </div></div>
 
     <div class="step"><div class="body">
+<<<<<<< HEAD
       <h3>Add the hosted models to the picker</h3>
+=======
+      <h3>Add the hosted model to the picker</h3>
+>>>>>>> 76e7996 (welcome: add GLM 5.3 (beta) across the harness setup guides)
       <p>Claude Code's model filter only keeps <em>claude/anthropic</em> ids, so discovery alone never shows the hosted models. Pin them explicitly (needs Claude Code ≥ 2.1.242):</p>
       <div class="codebox hasname"><div class="fname">~/.claude/settings.json — add</div><button class="copy">copy</button><pre>{
   <span class="k">"modelPicker"</span>: {
@@ -394,7 +402,11 @@ claude</pre></div>
         <span class="k">"description"</span>: <span class="s">"Hosted vLLM via PriceTag — $0.15/$0.47 per MTok"</span> },
       { <span class="k">"model"</span>: <span class="s">"rits/zai-org/glm-5-3"</span>,
         <span class="k">"label"</span>: <span class="s">"GLM 5.3"</span>,
+<<<<<<< HEAD
         <span class="k">"description"</span>: <span class="s">"Hosted via PriceTag — free"</span> }
+=======
+        <span class="k">"description"</span>: <span class="s">"Curvebender-hosted via PriceTag — beta, pricing TBC"</span> }
+>>>>>>> 76e7996 (welcome: add GLM 5.3 (beta) across the harness setup guides)
     ]
   },
   <span class="k">"modelSettings"</span>: {
@@ -443,6 +455,7 @@ model_provider = <span class="s">"qwen"</span>
 model_context_window = 262144</pre></div>
   <div class="codebox"><button class="copy">copy</button><pre>codex --profile qwen   <span class="c"># or: codex --profile glm</span></pre></div>
   <div class="callout good"><span class="glyph">✓</span><p>One catch: Codex only shows its own built-in models in the <span class="mono">/model</span> picker, so pin the hosted model id in the profile as above — it works, it just won't appear in the list. The <span class="mono">model_context_window</span> line is what silences the "Model metadata not found" warning on start.</p></div>
+  <div class="callout warn"><span class="glyph">!</span><p><strong>GLM 5.3 is not on the Codex menu yet.</strong> Its Responses-dialect support through the unified route hasn't been verified against the curvebender endpoint, and we won't publish a profile we haven't run. Until this note is replaced: GLM rides Claude Code, OpenCode, Hermes, Pi and OpenClaw — same key, same model id.</p></div>
 </section>
 
 <!-- ============ OPENCODE ============ -->
@@ -502,7 +515,7 @@ model_context_window = 262144</pre></div>
 <!-- ============ HERMES CLI ============ -->
 <section id="hermes">
   <h2><span class="no">06</span>Set up Hermes CLI</h2>
-  <p class="lede"><a href="https://github.com/NousResearch/hermes-agent" target="_blank">Hermes</a> takes the gateway as one provider per dialect, same rule as everywhere else: the GPT lineup on a <em>custom</em> OpenAI-compatible endpoint, the hosted models (Qwen or GLM) on the built-in <span class="mono">anthropic</span> provider re-aimed at the unified route. The choice is saved under <span class="mono">model:</span> in <span class="mono">~/.hermes/config.yaml</span> — the <span class="mono">hermes model</span> wizard writes it, or edit it directly:</p>
+  <p class="lede"><a href="https://github.com/NousResearch/hermes-agent" target="_blank">Hermes</a> takes the gateway as one provider per dialect, same rule as everywhere else: the GPT lineup on a <em>custom</em> OpenAI-compatible endpoint, the hosted models (Qwen, GLM 5.3) on the built-in <span class="mono">anthropic</span> provider re-aimed at the unified route. The choice is saved under <span class="mono">model:</span> in <span class="mono">~/.hermes/config.yaml</span> — the <span class="mono">hermes model</span> wizard writes it, or edit it directly:</p>
   <div class="codebox hasname"><div class="fname">~/.hermes/config.yaml — GPT lineup (OpenAI dialect)</div><button class="copy">copy</button><pre>model:
   provider: <span class="s">"custom"</span>
   default:  <span class="s">"gpt-5.3-codex"</span>
@@ -511,6 +524,10 @@ model_context_window = 262144</pre></div>
   provider: <span class="s">"anthropic"</span>
   default:  <span class="s">"Inferact/Qwen3.8-Flash-Next-NVFP4"</span>   <span class="c"># or "rits/zai-org/glm-5-3" for GLM 5.3</span>
   base_url: <span class="s">"{{UNIFIED_URL}}/v1"</span>   <span class="c"># the /v1 suffix is required</span></pre></div>
+  <div class="codebox hasname"><div class="fname">~/.hermes/config.yaml — hosted GLM (Anthropic dialect)</div><button class="copy">copy</button><pre>model:
+  provider: <span class="s">"anthropic"</span>
+  default:  <span class="s">"rits/zai-org/glm-5-3"</span>
+  base_url: <span class="s">"{{UNIFIED_URL}}/v1"</span>   <span class="c"># same route as Qwen — only the model id changes</span></pre></div>
   <div class="codebox hasname"><div class="fname">~/.hermes/.env — one key, used twice</div><button class="copy">copy</button><pre>OPENAI_API_KEY=<span class="s">pk-your-key</span>
 ANTHROPIC_API_KEY=<span class="s">pk-your-key</span></pre></div>
   <p>The same PriceTag key works on both lines — the <em>route</em> decides the dialect, not the key. The <span class="mono">anthropic</span> provider sends it as <span class="mono">x-api-key</span> natively, which is exactly what the unified route reads. Switch providers with <span class="mono">hermes model</span>; <span class="mono">/model</span> inside a session only switches between providers already set up.</p>
@@ -544,12 +561,27 @@ ANTHROPIC_API_KEY=<span class="s">pk-your-key</span></pre></div>
         },
         {
           <span class="k">"id"</span>: <span class="s">"rits/zai-org/glm-5-3"</span>,
+<<<<<<< HEAD
           <span class="k">"name"</span>: <span class="s">"GLM 5.3 (PriceTag hosted)"</span>,
           <span class="k">"reasoning"</span>: true,
           <span class="k">"input"</span>: [<span class="s">"text"</span>],
           <span class="k">"cost"</span>: { <span class="k">"input"</span>: 0, <span class="k">"output"</span>: 0, <span class="k">"cacheRead"</span>: 0, <span class="k">"cacheWrite"</span>: 0 },
           <span class="k">"contextWindow"</span>: 262144,
           <span class="k">"maxTokens"</span>: 262144
+=======
+          <span class="k">"name"</span>: <span class="s">"GLM 5.3 (PriceTag hosted, beta)"</span>,
+          <span class="k">"reasoning"</span>: true,
+          <span class="k">"thinkingLevelMap"</span>: {
+            <span class="c">// GLM's thinking params are unconfirmed — every level null
+            // until verified, so Pi never sends one it might reject</span>
+            "off": null, "minimal": null, "low": null,
+            "medium": null, "high": null, "xhigh": null, "max": null
+          },
+          <span class="k">"input"</span>: [<span class="s">"text"</span>],
+          <span class="k">"cost"</span>: { <span class="k">"input"</span>: 0, <span class="k">"output"</span>: 0, <span class="k">"cacheRead"</span>: 0, <span class="k">"cacheWrite"</span>: 0 },
+          <span class="k">"contextWindow"</span>: 200000,
+          <span class="k">"maxTokens"</span>: 200000
+>>>>>>> 76e7996 (welcome: add GLM 5.3 (beta) across the harness setup guides)
         }
       ]
     }
@@ -563,7 +595,11 @@ ANTHROPIC_API_KEY=<span class="s">pk-your-key</span></pre></div>
 
 <span class="c"># 3. plain env, matching the $PRICETAG_KEY reference above:</span>
 export PRICETAG_KEY=pk-your-key</pre></div>
+<<<<<<< HEAD
   <p>Pick the model with <span class="mono">/model</span> → <span class="mono">pricetag/Inferact/Qwen3.8-Flash-Next-NVFP4</span> (or <span class="mono">pricetag/rits/zai-org/glm-5-3</span>) — it stays hidden from the picker until one of the three auth paths is configured. Costs above are the live hosted rates; your dashboard meters the usage the same as every other tool.</p>
+=======
+  <p>Pick the model with <span class="mono">/model</span> → <span class="mono">pricetag/Inferact/Qwen3.8-Flash-Next-NVFP4</span> or <span class="mono">pricetag/rits/zai-org/glm-5-3</span> — they stay hidden from the picker until one of the three auth paths is configured. Costs above are the live hosted rates; GLM is beta-priced at $0 until launch pricing lands. Your dashboard meters the usage the same as every other tool.</p>
+>>>>>>> 76e7996 (welcome: add GLM 5.3 (beta) across the harness setup guides)
   <div class="callout warn"><span class="glyph">!</span><p>Two traps. <strong>No <code>/v1</code> suffix</strong> on the unified <span class="mono">baseUrl</span> — Pi appends <code>/v1/messages</code> itself (opposite of the OpenAI route, whose base URL must end in <code>/v1</code>). And <strong>map <span class="mono">high</span> to <span class="mono">null</span></strong> in <span class="mono">thinkingLevelMap</span>: Pi offers a <span class="mono">high</span> thinking level, the hosted endpoint rejects it outright, and the request dies — nulling it simply hides the level from the picker. Want to pin a level? <span class="mono">"enabledModels": ["pricetag/Inferact/Qwen3.8-Flash-Next-NVFP4:medium"]</span>.</p></div>
   <p class="cap"><span class="mono">maxTokens</span> is the <em>output</em> cap, not the context size. Pi clamps each request to <span class="mono">contextWindow − prompt − 4096</span>, so declaring the full window (as above) is safe — the served model reports a 262144-token window and enforces no separate output limit. This recipe was verified end-to-end against the live gateway.</p>
 </section>
@@ -598,11 +634,19 @@ curl "$PRICETAG_BASE_URL/v1/messages" \
           },
           {
             <span class="k">"id"</span>: <span class="s">"rits/zai-org/glm-5-3"</span>,
+<<<<<<< HEAD
             <span class="k">"name"</span>: <span class="s">"GLM 5.3"</span>,
             <span class="k">"reasoning"</span>: true,
             <span class="k">"input"</span>: [<span class="s">"text"</span>],
             <span class="k">"contextWindow"</span>: 262144,
             <span class="k">"maxTokens"</span>: 262144
+=======
+            <span class="k">"name"</span>: <span class="s">"GLM 5.3 (beta)"</span>,
+            <span class="k">"reasoning"</span>: true,
+            <span class="k">"input"</span>: [<span class="s">"text"</span>],
+            <span class="k">"contextWindow"</span>: 200000,
+            <span class="k">"maxTokens"</span>: 200000
+>>>>>>> 76e7996 (welcome: add GLM 5.3 (beta) across the harness setup guides)
           }
         ]
       }
@@ -627,14 +671,18 @@ curl "$PRICETAG_BASE_URL/v1/messages" \
       <div><div class="name">Unified route</div>
         <div class="dialect">Anthropic dialect · POST /v1/messages · no /v1 suffix</div>
         <div class="url">{{UNIFIED_URL}}</div></div>
+<<<<<<< HEAD
       <div class="note">Everything Claude Code and other Anthropic-dialect clients expect. Routes <em>claude-*</em> to the real Anthropic API and the hosted <em>Qwen</em> / <em>GLM</em> ids to our own serving — same URL, switch models freely. "Unified" means unified <em>backends</em>, not unified dialects: this route only speaks Anthropic format (<span class="mono">x-api-key</span>) — OpenAI-format clients with Bearer tokens belong on the OpenAI route below.</div>
+=======
+      <div class="note">Everything Claude Code and other Anthropic-dialect clients expect. Routes <em>claude-*</em> to the real Anthropic API and the hosted ids — <em>Qwen</em> (our own vLLM) and <em>GLM 5.3</em> (curvebender-hosted) — to their backends — same URL, switch models freely. "Unified" means unified <em>backends</em>, not unified dialects: this route only speaks Anthropic format (<span class="mono">x-api-key</span>) — OpenAI-format clients with Bearer tokens belong on the OpenAI route below.</div>
+>>>>>>> 76e7996 (welcome: add GLM 5.3 (beta) across the harness setup guides)
       <div class="auth">x-api-key: pk-…</div>
     </div>
     <div class="route">
       <div><div class="name">OpenAI route</div>
         <div class="dialect">OpenAI dialect · POST /v1/chat/completions · base URL ends in /v1</div>
         <div class="url">{{OPENAI_URL}}</div></div>
-      <div class="note">For Codex, OpenCode and any OpenAI-compatible client. Covers the GPT lineup (gpt-5.x) only — there are <strong>no <em>claude-*</em> or Qwen ids here</strong>, and asking for one gets "The model … does not exist or you do not have access to it" from upstream. Those models live on the unified route.</div>
+      <div class="note">For Codex, OpenCode and any OpenAI-compatible client. Covers the GPT lineup (gpt-5.x) only — there are <strong>no <em>claude-*</em>, Qwen or GLM ids here</strong>, and asking for one gets "The model … does not exist or you do not have access to it" from upstream. Those models live on the unified route.</div>
       <div class="auth">Authorization: Bearer pk-…</div>
     </div>
     <div class="route">
@@ -649,11 +697,16 @@ curl "$PRICETAG_BASE_URL/v1/messages" \
 
 <!-- ============ HOSTED ============ -->
 <section id="hosted">
+<<<<<<< HEAD
   <h2><span class="no">10</span>Hosted models — Qwen 3.8 Flash Next &amp; GLM 5.3</h2>
   <p class="lede">Models we serve ourselves, priced well under the vendors and tracked in your dashboard like everything else. Both ride the <strong>unified route</strong> — same key, switch freely.</p>
 
   <h3 style="margin-top:18px">Qwen 3.8 Flash Next <span class="mono">(Inferact/Qwen3.8-Flash-Next-NVFP4)</span></h3>
   <p class="lede">Self-hosted vLLM on our own hardware. FP4 quantisation, <strong>262K context</strong>, and the price per token is a rounding error — the default workhorse.</p>
+=======
+  <h2><span class="no">10</span>Hosted models — Qwen 3.8 Flash Next, and now GLM 5.3</h2>
+  <p class="lede">Self-hosted vLLM on our own hardware, exposed through the unified route under the id <span class="mono">Inferact/Qwen3.8-Flash-Next-NVFP4</span>. FP4 quantisation, <strong>262K context</strong>, and the price per token is a rounding error — billed honestly, tracked in your dashboard like everything else. Hosted models arrive the same way from now on: a new id on the same URL, no new key, no new endpoint.</p>
+>>>>>>> 76e7996 (welcome: add GLM 5.3 (beta) across the harness setup guides)
   <div class="rates">
     <div class="rate"><div class="top"><span class="v">$0.15</span><span class="per">/ MTok</span></div><div class="k">Input</div></div>
     <div class="rate"><div class="top"><span class="v">$0.47</span><span class="per">/ MTok</span></div><div class="k">Output</div></div>
@@ -688,6 +741,14 @@ curl "$PRICETAG_BASE_URL/v1/messages" \
       </ul>
     </div>
   </div>
+
+  <h3 style="margin-top:30px">GLM 5.3 — curvebender-hosted (beta)</h3>
+  <p class="cap">Our curvebender partners serve <span class="mono">zai-org/GLM-5.3</span> behind their LiteLLM endpoint; the gateway reaches it on the unified route under the id <span class="mono">rits/zai-org/glm-5-3</span>. Anthropic dialect, same key, metered like everything else — <strong>beta</strong>, booked at $0 until launch pricing lands, at which point the real numbers appear in the price list and your dashboard. Verified live end-to-end from Claude Code, prompt-cache reads included.</p>
+  <ul style="margin:10px 0 0;padding-left:18px;font-size:14px;color:var(--muted);line-height:1.7">
+    <li>Declared context window: <strong>200,000 tokens (conservative)</strong> — the provider's official figure is pending; until then, treat 200K as the safe ceiling.</li>
+    <li>It reasons out of the box (you'll see thinking blocks), but the client-side thinking/effort params aren't confirmed yet — don't force a thinking budget on it.</li>
+    <li>Ask for it by the exact id — like Qwen, an unknown id on the unified route falls through to Anthropic and 404s.</li>
+  </ul>
 </section>
 
 <!-- ============ DASHBOARD BAND ============ -->
