@@ -109,7 +109,7 @@ sequenceDiagram
     D->>R: "restore to 14:32 yesterday, before the bad migration"
     R->>COS: fetch base backup
     R->>COS: replay WAL up to recovery_target_time
-    Note over R: PITR cluster up; validate, then repoint apps
+    Note over R: PITR cluster up — validate, then repoint apps
 ```
 
 `backup.barmanObjectStore` is **deprecated in CNPG 1.30 and removed in
@@ -125,20 +125,21 @@ touch this database — was never scaled.
 
 ```mermaid
 timeline
-    03:22 fresh live dump (no freeze, snapshot-consistent)
-    03:24 wipe stale CNPG schema + restore (first load)
-    03:27 parity check : 10/11 tables exact, usage_events +35 live drift
-    03:28 freeze writers (maas-api + metering-service only)
-    03:30 FINAL dump — snapshot taken after writers drained
-    03:31 wipe + restore final dump : PARITY OK (11/11 exact)
-    03:36 repoint secrets + restart writers : ~50s writer downtime
-    03:44 manual base backup to COS — pipeline proven
-    03:47 incident #1 caught : maas-api still on old db (second DSN secret)
-    03:48 fixed + restarted : old db pg_stat_activity → 0 clients
-    03:50 incident #2 caught : repair job inverted-diff duplicated 114 rows
-    04:00 repair : delete exact 114-id junk block, backfill real 17 rows
-    04:05 containment proof : 0 rows on old missing from CNPG
-    04:10 old postgresql-0 scaled to 0 : writers clean, CNPG writes live
+    title Cutover clock, 2026-09-16 UTC
+    "03 : 22" : fresh live dump (no freeze, snapshot-consistent)
+    "03 : 24" : wipe stale CNPG schema + restore (first load)
+    "03 : 27" : parity check — 10/11 tables exact, usage_events +35 live drift
+    "03 : 28" : freeze writers (maas-api + metering-service only)
+    "03 : 30" : FINAL dump — snapshot taken after writers drained
+    "03 : 31" : wipe + restore final dump — PARITY OK (11/11 exact)
+    "03 : 36" : repoint secrets + restart writers — ~50s writer downtime
+    "03 : 44" : manual base backup to COS — pipeline proven
+    "03 : 47" : incident 1 caught — maas-api still on old db (second DSN secret)
+    "03 : 48" : fixed + restarted — old-db clients down to 0
+    "03 : 50" : incident 2 caught — repair job inverted-diff duplicated 114 rows
+    "04 : 00" : repair — delete exact 114-id junk block, backfill real 17 rows
+    "04 : 05" : containment proof — 0 rows on old missing from CNPG
+    "04 : 10" : old postgresql-0 scaled to 0 — writers clean, CNPG writes live
 ```
 
 ### Strategy: two snapshots instead of one long freeze
