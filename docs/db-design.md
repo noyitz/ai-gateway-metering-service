@@ -109,7 +109,7 @@ sequenceDiagram
     D->>R: "restore to 14:32 yesterday, before the bad migration"
     R->>COS: fetch base backup
     R->>COS: replay WAL up to recovery_target_time
-    Note over R: PITR cluster up; validate, then repoint apps
+    Note over R: PITR cluster up — validate, then repoint apps
 ```
 
 `backup.barmanObjectStore` is **deprecated in CNPG 1.30 and removed in
