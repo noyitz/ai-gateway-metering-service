@@ -1099,11 +1099,11 @@ function renderQuotaAllowance() {
         '<span class="ts">' + (quotaModelsObserved ? quotaModelsObserved.length + ' models observed in the last 7 days' : 'loading observed models…') + '</span>' +
       '</div>' +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
-        '<label style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3)">Over-cap monthly ceiling (USD)</label>' +
+        '<label style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3)">Soft monthly ceiling over the limit (USD)</label>' +
         '<input type="number" id="quota-ceiling" min="0" step="1" value="' + (ceiling != null ? esc(ceiling) : '') + '" placeholder="unlimited" style="width:120px">' +
         '<button class="btn btn-grn" style="padding:7px 18px;font-size:11px" onclick="saveQuotaAllowance()">Save allowance</button>' +
       '</div>' +
-      '<div class="ts">Names must match exactly what clients send, case included — pick from the observed list rather than typing. The ceiling bounds total monthly spend while riding the allowance (a month may exceed its limit by at most this much); empty = unlimited. Until the gateway reports each request’s model, requests arrive with no model and nothing here can match — blocked-request rows gaining model names is the signal it is live.</div>' +
+      '<div class="ts">Names must match exactly what clients send, case included — pick from the observed list rather than typing. The ceiling softly bounds total monthly spend while riding the allowance (a month may exceed its limit by at most this much); empty = unlimited. Requests already in flight and the 15-second decision cache can overshoot it slightly — it is a budget guardrail, not a hard cutoff. Until the gateway reports each request’s model, requests arrive with no model and nothing here can match — blocked-request rows gaining model names is the signal it is live.</div>' +
     '</div>';
 }
 

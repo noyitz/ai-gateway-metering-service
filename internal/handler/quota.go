@@ -123,23 +123,22 @@ func (h *QuotaHandler) HandleAdminPolicy(w http.ResponseWriter, r *http.Request)
 			http.Error(w, "nothing to change: set default_monthly_usd, enforced, allowed_over_limit_models and/or over_cap_ceiling_usd", http.StatusBadRequest)
 			return
 		}
-		if body.DefaultMonthlyUSD != nil && *body.DefaultMonthlyUSD <= 0 {
-			http.Error(w, "default_monthly_usd must be > 0", http.StatusBadRequest)
-			return
-		}
-		p, err := h.store.UpdateQuotaPolicy(r.Context(), actor(r, h.cfg), body.DefaultMonthlyUSD, body.Enforced)
+		p, err := h.store.UpdateQuotaPolicy(r.Context(), actor(r, h.cfg), storage.QuotaPolicyUpdate{
+			DefaultMonthlyUSD: body.DefaultMonthlyUSD,
+			Enforced:          body.Enforced,
+			Models:            body.AllowedOverLimitModels,
+			Ceiling:           body.OverCapCeilingUSD,
+		})
 		if err != nil {
-			h.quotaError(w, r, err)
-			return
-		}
-		if body.AllowedOverLimitModels != nil || body.OverCapCeilingUSD != nil {
-			if p, err = h.store.UpdateQuotaAllowance(r.Context(), actor(r, h.cfg),
-				body.AllowedOverLimitModels, body.OverCapCeilingUSD); err != nil {
-				// Validation failures (wildcards, oversize list) are the
-				// caller's fault, not ours: surface the reason verbatim.
+			// Allowance validation failures (wildcards, oversize list) are
+			// caller mistakes: surface the reason verbatim as a 400.
+			if strings.Contains(err.Error(), "exact identifiers") || strings.Contains(err.Error(), "allowance list") ||
+				strings.Contains(err.Error(), "identifier too long") || strings.Contains(err.Error(), "must be") {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+			h.quotaError(w, r, err)
+			return
 		}
 		writeJSON(w, p)
 	default:

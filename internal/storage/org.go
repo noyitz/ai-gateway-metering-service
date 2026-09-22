@@ -249,6 +249,21 @@ func (s *Store) Audit(ctx context.Context, actor, action, target string, detail 
 	return err
 }
 
+// auditTx is Audit inside the caller's transaction: policy writes and
+// their audit row commit or roll back together (issue #22 gate 3).
+func (s *Store) auditTx(ctx context.Context, ex execer, actor, action, target string, detail any) error {
+	b := []byte("{}")
+	if detail != nil {
+		if enc, err := json.Marshal(detail); err == nil {
+			b = enc
+		}
+	}
+	_, err := ex.ExecContext(ctx,
+		`INSERT INTO org_audit (actor, action, target, detail) VALUES ($1, $2, $3, $4)`,
+		actor, action, target, string(b))
+	return err
+}
+
 // ImportPeople upserts the roster directory in one transaction. Dry runs
 // compute the same diff and record the batch without writing any data.
 // Fill-only rules (see file header) apply to both.

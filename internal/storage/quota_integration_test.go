@@ -131,7 +131,7 @@ func TestQuotaDecision_LimitPrecedenceAndSpend(t *testing.T) {
 	// Enforce + tighten alice's own override below her spend. (The policy
 	// default deliberately stays at 300 — bob and ghost must still see it.)
 	enforced := true
-	if _, err := s.UpdateQuotaPolicy(ctx, "tester", nil, &enforced); err != nil {
+	if _, err := s.UpdateQuotaPolicy(ctx, "tester", QuotaPolicyUpdate{Enforced: &enforced}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.UpsertQuotaOverride(ctx, "tester", "user", "alice", 30); err != nil {
@@ -558,7 +558,7 @@ func TestQuotaDenialRows(t *testing.T) {
 }
 
 // Post-cap allowance end-to-end (issue #22): policy columns round-trip
-// through UpdateQuotaAllowance, the decision carries them, and the
+// through UpdateQuotaPolicy, the decision carries them, and the
 // entitlement answer passes an allowed model over cap while denying
 // others, respecting case and the ceiling.
 func TestQuotaOverCapAllowance(t *testing.T) {
@@ -570,8 +570,7 @@ func TestQuotaOverCapAllowance(t *testing.T) {
 		VALUES ('user','alice',20)`)
 	addSpendMtok(t, s, ctx, "alice", "unpriced-x", 3, 0) // 3 Mtok prompt, unpriced -> $45 > limit 20
 
-	if _, err := s.UpdateQuotaAllowance(ctx, "tester",
-		&[]string{"Inferact/Qwen3.8-Flash-Next-NVFP4", "gpt-5.6-luna"}, nil); err != nil {
+	if _, err := s.UpdateQuotaPolicy(ctx, "tester", QuotaPolicyUpdate{Models: &[]string{"Inferact/Qwen3.8-Flash-Next-NVFP4", "gpt-5.6-luna"}}); err != nil {
 		t.Fatal(err)
 	}
 	stats, err := s.GetMonthlyUsage(ctx, "alice", "gpt-5.6-luna", false)
@@ -598,14 +597,14 @@ func TestQuotaOverCapAllowance(t *testing.T) {
 	}
 
 	// Ceiling at $30 (limit 20 + 30 = 50 > 45 spend): still passes.
-	if _, err := s.UpdateQuotaAllowance(ctx, "tester", nil, ptrFloat(30)); err != nil {
+	if _, err := s.UpdateQuotaPolicy(ctx, "tester", QuotaPolicyUpdate{Ceiling: ptrFloat(30)}); err != nil {
 		t.Fatal(err)
 	}
 	if stats, _ := s.GetMonthlyUsage(ctx, "alice", "gpt-5.6-luna", false); !stats.HasAccess {
 		t.Fatal("ceiling 30 with spend 45 < 50: must still pass")
 	}
 	// Ceiling $10 (20+10=30 <= 45): exhausted, denies again.
-	if _, err := s.UpdateQuotaAllowance(ctx, "tester", nil, ptrFloat(10)); err != nil {
+	if _, err := s.UpdateQuotaPolicy(ctx, "tester", QuotaPolicyUpdate{Ceiling: ptrFloat(10)}); err != nil {
 		t.Fatal(err)
 	}
 	s.invalidateQuotaCache()
@@ -613,7 +612,7 @@ func TestQuotaOverCapAllowance(t *testing.T) {
 		t.Fatal("ceiling 10 with spend 45 >= 30: must deny")
 	}
 	// 0 removes the ceiling (unlimited again).
-	if _, err := s.UpdateQuotaAllowance(ctx, "tester", nil, ptrFloat(0)); err != nil {
+	if _, err := s.UpdateQuotaPolicy(ctx, "tester", QuotaPolicyUpdate{Ceiling: ptrFloat(0)}); err != nil {
 		t.Fatal(err)
 	}
 	s.invalidateQuotaCache()
@@ -621,11 +620,32 @@ func TestQuotaOverCapAllowance(t *testing.T) {
 		t.Fatal("ceiling removed: must pass")
 	}
 
+	// One combined policy+allowance PATCH lands as ONE audit row carrying
+	// both fields (issue #22 gate 3: atomic update, single audit record).
+	if _, err := s.UpdateQuotaPolicy(ctx, "atomic", QuotaPolicyUpdate{
+		Enforced: &[]bool{true}[0], Models: &[]string{"gpt-5.6-luna"}, Ceiling: ptrFloat(25)}); err != nil {
+		t.Fatal(err)
+	}
+	var auditDetails string
+	var auditRows int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT count(*), COALESCE(string_agg(detail::text, '|'), '') FROM org_audit
+		 WHERE actor = 'atomic' AND action = 'quota.policy_update'`).Scan(&auditRows, &auditDetails); err != nil {
+		t.Fatal(err)
+	}
+	if auditRows != 1 {
+		t.Fatalf("combined patch must produce exactly one audit row, got %d", auditRows)
+	}
+	if !strings.Contains(auditDetails, "gpt-5.6-luna") || !strings.Contains(auditDetails, "over_cap_ceiling_usd") ||
+		!strings.Contains(auditDetails, "enforced") {
+		t.Fatalf("audit row must carry every changed field: %s", auditDetails)
+	}
+
 	// Validation: wildcards rejected, whitespace trimmed, dupes collapsed.
-	if _, err := s.UpdateQuotaAllowance(ctx, "tester", &[]string{"qwen*"}, nil); err == nil {
+	if _, err := s.UpdateQuotaPolicy(ctx, "tester", QuotaPolicyUpdate{Models: &[]string{"qwen*"}}); err == nil {
 		t.Fatal("wildcard pattern must be rejected")
 	}
-	p, err := s.UpdateQuotaAllowance(ctx, "tester", &[]string{"  gpt-5.6-luna  ", "gpt-5.6-luna", "x"}, nil)
+	p, err := s.UpdateQuotaPolicy(ctx, "tester", QuotaPolicyUpdate{Models: &[]string{"  gpt-5.6-luna  ", "gpt-5.6-luna", "x"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -633,7 +653,7 @@ func TestQuotaOverCapAllowance(t *testing.T) {
 		t.Fatalf("dedup/trim: got %#v", p.AllowedOverLimitModels)
 	}
 	// Empty list = feature off.
-	if _, err := s.UpdateQuotaAllowance(ctx, "tester", &[]string{}, nil); err != nil {
+	if _, err := s.UpdateQuotaPolicy(ctx, "tester", QuotaPolicyUpdate{Models: &[]string{}}); err != nil {
 		t.Fatal(err)
 	}
 	s.invalidateQuotaCache()
