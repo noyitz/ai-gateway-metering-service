@@ -51,6 +51,11 @@ type UsageStats struct {
 	QuotaUSD  float64 `json:"quotaUsd"`
 	SpendUSD  float64 `json:"spendUsd"`
 	MonthEnds string  `json:"monthEnds"`
+
+	// OverLimitModel marks that this request passed via the post-cap model
+	// allowance (issue #22) rather than being under budget. Additive: the
+	// deployed gateway filter reads only hasAccess.
+	OverLimitModel bool `json:"overLimitModel,omitempty"`
 }
 
 type Store struct {
@@ -368,7 +373,16 @@ func (s *Store) GetMonthlyUsage(ctx context.Context, username, model string, exe
 	stats.QuotaUSD = decision.LimitUSD
 	stats.SpendUSD = decision.SpentUSD
 	stats.MonthEnds = decision.MonthEnds.UTC().Format(time.RFC3339)
-	stats.HasAccess = stats.HasAccess && decision.Allowed()
+	allowed := decision.Allowed()
+	if !allowed && decision.ModelAllowedOverLimit(model) {
+		// Post-cap allowance (issue #22): an admin-listed model passes
+		// despite the dollar gate. It is therefore NOT a denial (the
+		// recorder below keys off the final HasAccess), and its spend
+		// still accrues normally through the ledger and the rollups.
+		allowed = true
+		stats.OverLimitModel = true
+	}
+	stats.HasAccess = stats.HasAccess && allowed
 	return stats, nil
 }
 

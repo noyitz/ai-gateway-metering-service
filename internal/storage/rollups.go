@@ -721,3 +721,30 @@ var rollupUsersSelect = `
 		GROUP BY e.username, %s, COALESCE(e.group_name, '')
 		ORDER BY %s %s
 		LIMIT $6`
+
+// RecentModels returns the distinct model identifiers seen in the last 7
+// days. Reads the hourly rollup when it is ready (~1k rows) and falls back
+// to the raw ledger otherwise — the same gating the dashboard read switch
+// uses, for the allowance editor's candidate list (issue #22).
+func (s *Store) RecentModels(ctx context.Context) ([]string, error) {
+	query := `SELECT DISTINCT model FROM usage_events
+		WHERE timestamp >= NOW() - interval '7 days' AND model <> '' ORDER BY model`
+	if s.RollupsReady() {
+		query = `SELECT DISTINCT model FROM usage_hourly
+			WHERE hour >= date_trunc('hour', NOW()) - interval '7 days' AND model <> '' ORDER BY model`
+	}
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var m string
+		if err := rows.Scan(&m); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}

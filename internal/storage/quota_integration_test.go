@@ -556,3 +556,90 @@ func TestQuotaDenialRows(t *testing.T) {
 		t.Fatalf("block feed rows: got %d, want 4 (each block its own row, both logins)", blockRows)
 	}
 }
+
+// Post-cap allowance end-to-end (issue #22): policy columns round-trip
+// through UpdateQuotaAllowance, the decision carries them, and the
+// entitlement answer passes an allowed model over cap while denying
+// others, respecting case and the ceiling.
+func TestQuotaOverCapAllowance(t *testing.T) {
+	s, ctx := openTestStore(t)
+	seedQuotaRoster(t, s, ctx)
+	quotaExec(t, s, ctx, `UPDATE quota_policy SET enforced = true`)
+	// alice at $45 spend; drop her default below it via a user override.
+	quotaExec(t, s, ctx, `INSERT INTO quota_overrides (scope, principal, monthly_usd)
+		VALUES ('user','alice',20)`)
+	addSpendMtok(t, s, ctx, "alice", "unpriced-x", 3, 0) // 3 Mtok prompt, unpriced -> $45 > limit 20
+
+	if _, err := s.UpdateQuotaAllowance(ctx, "tester",
+		&[]string{"Inferact/Qwen3.8-Flash-Next-NVFP4", "gpt-5.6-luna"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := s.GetMonthlyUsage(ctx, "alice", "gpt-5.6-luna", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stats.HasAccess || !stats.OverLimitModel {
+		t.Fatalf("allowed model over cap: HasAccess=%v OverLimitModel=%v, want true/true",
+			stats.HasAccess, stats.OverLimitModel)
+	}
+	if stats.SpendUSD <= stats.QuotaUSD {
+		t.Fatalf("test setup: expected over-cap spend %v > limit %v", stats.SpendUSD, stats.QuotaUSD)
+	}
+
+	// Deny cases: other model, wrong case, empty model.
+	for _, m := range []string{"claude-opus-4-8", "GPT-5.6-LUNA", ""} {
+		stats, err := s.GetMonthlyUsage(ctx, "alice", m, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stats.HasAccess || stats.OverLimitModel {
+			t.Fatalf("model %q must be denied over cap: %+v", m, stats)
+		}
+	}
+
+	// Ceiling at $30 (limit 20 + 30 = 50 > 45 spend): still passes.
+	if _, err := s.UpdateQuotaAllowance(ctx, "tester", nil, ptrFloat(30)); err != nil {
+		t.Fatal(err)
+	}
+	if stats, _ := s.GetMonthlyUsage(ctx, "alice", "gpt-5.6-luna", false); !stats.HasAccess {
+		t.Fatal("ceiling 30 with spend 45 < 50: must still pass")
+	}
+	// Ceiling $10 (20+10=30 <= 45): exhausted, denies again.
+	if _, err := s.UpdateQuotaAllowance(ctx, "tester", nil, ptrFloat(10)); err != nil {
+		t.Fatal(err)
+	}
+	s.invalidateQuotaCache()
+	if stats, _ := s.GetMonthlyUsage(ctx, "alice", "gpt-5.6-luna", false); stats.HasAccess {
+		t.Fatal("ceiling 10 with spend 45 >= 30: must deny")
+	}
+	// 0 removes the ceiling (unlimited again).
+	if _, err := s.UpdateQuotaAllowance(ctx, "tester", nil, ptrFloat(0)); err != nil {
+		t.Fatal(err)
+	}
+	s.invalidateQuotaCache()
+	if stats, _ := s.GetMonthlyUsage(ctx, "alice", "gpt-5.6-luna", false); !stats.HasAccess {
+		t.Fatal("ceiling removed: must pass")
+	}
+
+	// Validation: wildcards rejected, whitespace trimmed, dupes collapsed.
+	if _, err := s.UpdateQuotaAllowance(ctx, "tester", &[]string{"qwen*"}, nil); err == nil {
+		t.Fatal("wildcard pattern must be rejected")
+	}
+	p, err := s.UpdateQuotaAllowance(ctx, "tester", &[]string{"  gpt-5.6-luna  ", "gpt-5.6-luna", "x"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.AllowedOverLimitModels) != 2 || p.AllowedOverLimitModels[0] != "gpt-5.6-luna" {
+		t.Fatalf("dedup/trim: got %#v", p.AllowedOverLimitModels)
+	}
+	// Empty list = feature off.
+	if _, err := s.UpdateQuotaAllowance(ctx, "tester", &[]string{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	s.invalidateQuotaCache()
+	if stats, _ := s.GetMonthlyUsage(ctx, "alice", "gpt-5.6-luna", false); stats.HasAccess {
+		t.Fatal("empty list must deny everything over cap")
+	}
+}
+
+func ptrFloat(v float64) *float64 { return &v }

@@ -1074,7 +1074,11 @@ function renderQuota(q){
     act=canc;
   }else if(over){
     bg=red;bc=redB;
-    msg='<b>Monthly budget reached</b> &mdash; '+qfmt(q.spent_usd)+' of '+qfmt(q.limit_usd)+' used. New requests are blocked until '+qday(q.month_ends)+'.'+(rejected?' Your '+qfmt(r.asked_usd)+' request was rejected'+(r.comment?': '+pmEsc(r.comment):'')+'.':'')+dl;
+    var still='';
+    if(q.over_limit_models&&q.over_limit_models.length){
+      still=' <span style="opacity:.85">These stay available: '+q.over_limit_models.map(pmEsc).join(', ')+'.</span>';
+    }
+    msg='<b>Monthly budget reached</b> &mdash; '+qfmt(q.spent_usd)+' of '+qfmt(q.limit_usd)+' used. New requests are blocked until '+qday(q.month_ends)+'.'+still+(rejected?' Your '+qfmt(r.asked_usd)+' request was rejected'+(r.comment?': '+pmEsc(r.comment):'')+'.':'')+dl;
     act=btn;
   }else if(rejected){
     bg=amb;bc=ambB;

@@ -739,6 +739,19 @@ td .tag{white-space:nowrap}
   <div class="card">
     <div class="card-hdr">
       <div>
+        <span class="card-title">Models That Still Work Over the Cap</span>
+        <span class="card-count" id="quota-allowance-meta"></span>
+      </div>
+    </div>
+    <div class="ts" style="margin:0 16px 8px">When someone is over their monthly limit, requests to these models still go through. Exact model names only — no wildcards — because the name comes from the user's request. An empty list means over-cap users are fully blocked, as before.</div>
+    <div id="quota-allowance-body">
+      <div class="loading"><div class="spinner"></div>Loading allowance...</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr">
+      <div>
         <span class="card-title">Blocked Requests</span>
         <span class="card-count" id="quota-denials-meta"></span>
       </div>
@@ -1009,9 +1022,11 @@ var quotaPolicy = null;
 
 function loadQuotaPolicy() {
   loadQuotaDenials();
+  loadQuotaModelOptions();
   fetchJSON('/api/v1/admin/quota/policy').then(function(p) {
     quotaPolicy = p;
     renderQuotaPolicy();
+    renderQuotaAllowance();
   }).catch(function(err) {
     document.getElementById('quota-policy-body').innerHTML = '<div class="err-msg">Policy: ' + esc(err.message) + '</div>';
   });
@@ -1048,6 +1063,80 @@ function renderQuotaPolicy() {
         '<div class="ts" style="margin-top:8px">Limits cover the calendar month (UTC). When on, a user at or over their limit is denied at the gateway from their next request; over-limit users request more from their dashboard and their manager approves. While this service is unreachable the gateway admits traffic (fail-open) — enforcement pauses, it never blocks on an outage.</div>' +
       '</div>' +
     '</div>';
+}
+
+var quotaModelsObserved = null;
+var quotaAllowDraft = null;
+
+function loadQuotaModelOptions() {
+  fetchJSON('/api/v1/admin/quota/models').then(function(m) {
+    quotaModelsObserved = m || [];
+    renderQuotaAllowance();
+  }).catch(function() { quotaModelsObserved = []; renderQuotaAllowance(); });
+}
+
+function renderQuotaAllowance() {
+  if (!quotaPolicy) return;
+  if (!quotaAllowDraft) quotaAllowDraft = (quotaPolicy.allowed_over_limit_models || []).slice();
+  var ceiling = quotaPolicy.over_cap_ceiling_usd;
+  var meta = document.getElementById('quota-allowance-meta');
+  if (meta) meta.textContent = quotaAllowDraft.length ? quotaAllowDraft.length + ' model' + (quotaAllowDraft.length > 1 ? 's' : '') : 'off';
+  var chips = quotaAllowDraft.length
+    ? quotaAllowDraft.map(function(m, i) {
+        return '<span class="badge badge-grn" style="font-size:10px;display:inline-flex;gap:6px;align-items:center;padding:5px 9px;margin:0 6px 6px 0">' + esc(m) +
+          '<span onclick="quotaAllowRemove(' + i + ')" style="cursor:pointer;font-weight:700">&times;</span></span>';
+      }).join('')
+    : '<span class="ts">None — over-cap users are fully blocked.</span>';
+  var opts = (quotaModelsObserved || []).filter(function(m) { return quotaAllowDraft.indexOf(m) < 0; })
+    .map(function(m) { return '<option value="' + esc(m) + '">'; }).join('');
+  document.getElementById('quota-allowance-body').innerHTML =
+    '<div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">' +
+      '<div>' + chips + '</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">' +
+        '<input id="quota-allow-add" list="quota-model-list" placeholder="Add exact model name…" style="width:320px">' +
+        '<datalist id="quota-model-list">' + opts + '</datalist>' +
+        '<button class="btn btn-outline" style="padding:6px 14px;font-size:11px" onclick="quotaAllowAdd()">Add</button>' +
+        '<span class="ts">' + (quotaModelsObserved ? quotaModelsObserved.length + ' models observed in the last 7 days' : 'loading observed models…') + '</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+        '<label style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--t3)">Over-cap monthly ceiling (USD)</label>' +
+        '<input type="number" id="quota-ceiling" min="0" step="1" value="' + (ceiling != null ? esc(ceiling) : '') + '" placeholder="unlimited" style="width:120px">' +
+        '<button class="btn btn-grn" style="padding:7px 18px;font-size:11px" onclick="saveQuotaAllowance()">Save allowance</button>' +
+      '</div>' +
+      '<div class="ts">Names must match exactly what clients send, case included — pick from the observed list rather than typing. The ceiling bounds total monthly spend while riding the allowance (a month may exceed its limit by at most this much); empty = unlimited. Until the gateway reports each request’s model, requests arrive with no model and nothing here can match — blocked-request rows gaining model names is the signal it is live.</div>' +
+    '</div>';
+}
+
+function quotaAllowAdd() {
+  var el = document.getElementById('quota-allow-add');
+  var v = (el.value || '').trim();
+  if (!v) { showToast('Type or pick a model name', 'error'); return; }
+  if (/[*?\[\] ]/.test(v)) { showToast('Exact identifiers only — no wildcards or spaces', 'error'); return; }
+  if (quotaAllowDraft.indexOf(v) >= 0) { showToast('Already on the list', 'error'); return; }
+  quotaAllowDraft.push(v);
+  renderQuotaAllowance();
+}
+
+function quotaAllowRemove(i) { quotaAllowDraft.splice(i, 1); renderQuotaAllowance(); }
+
+function saveQuotaAllowance() {
+  var body = { allowed_over_limit_models: quotaAllowDraft };
+  var cEl = document.getElementById('quota-ceiling');
+  body.over_cap_ceiling_usd = 0; // empty field = no ceiling
+  if (cEl.value !== '') {
+    body.over_cap_ceiling_usd = parseFloat(cEl.value);
+    if (!(body.over_cap_ceiling_usd >= 0)) { showToast('Ceiling must be 0 or more', 'error'); return; }
+  }
+  var cur = quotaPolicy.allowed_over_limit_models || [];
+  var curCeil = quotaPolicy.over_cap_ceiling_usd || 0;
+  if (JSON.stringify(quotaAllowDraft) === JSON.stringify(cur) && curCeil === body.over_cap_ceiling_usd) {
+    showToast('Allowance unchanged', 'error'); return;
+  }
+  updateJSON('/api/v1/admin/quota/policy', 'PATCH', body).then(function() {
+    showToast('Allowance saved', 'success');
+    quotaAllowDraft = null;
+    loadQuotaPolicy();
+  }).catch(function(err) { showToast('Save failed: ' + err.message, 'error'); });
 }
 
 function saveQuotaLimit() {

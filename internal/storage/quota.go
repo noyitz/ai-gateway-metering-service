@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"github.com/lib/pq"
 	"context"
 	"database/sql"
 	"errors"
@@ -103,6 +104,17 @@ var quotaMigrations = []string{
 	`ALTER TABLE quota_requests ADD COLUMN IF NOT EXISTS timeline TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE quota_requests ADD COLUMN IF NOT EXISTS feasible_within_base TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE quota_requests ADD COLUMN IF NOT EXISTS why_not_enough TEXT NOT NULL DEFAULT ''`,
+	// Post-cap model allowance (issue #22): exact, case-sensitive model
+	// identifiers that still pass the entitlement check when the dollar
+	// gate would deny, plus an optional ceiling on how far a month's
+	// spend may ride that allowance (NULL = unlimited). Exact matching is
+	// the security contract: the compared string is chosen by the capped
+	// user, so every entry must name the literal identifier that will be
+	// routed and billed. Empty list = feature off — which is also the
+	// provably-inert state until the gateway can report the model
+	// (upstream sends an empty one today, see the issue).
+	`ALTER TABLE quota_policy ADD COLUMN IF NOT EXISTS allowed_over_limit_models TEXT[] NOT NULL DEFAULT '{}'`,
+	`ALTER TABLE quota_policy ADD COLUMN IF NOT EXISTS over_cap_ceiling_usd NUMERIC(12,2)`,
 	// Approved extra budget for ONE calendar month, keyed by 'YYYY-MM'.
 	// Expiry is automatic — the effective-limit query only sums grants whose
 	// month key is the current month — no cron, no cleanup.
@@ -139,8 +151,15 @@ func (s *Store) migrateQuota(ctx context.Context) error {
 // --- Policy & overrides (admin surface) ---
 
 type QuotaPolicy struct {
-	DefaultMonthlyUSD float64   `json:"default_monthly_usd"`
-	Enforced          bool      `json:"enforced"`
+	DefaultMonthlyUSD float64 `json:"default_monthly_usd"`
+	Enforced          bool    `json:"enforced"`
+	// AllowedOverLimitModels: the post-cap allowance list (issue #22).
+	// Exact, case-sensitive model identifiers; empty disables the feature.
+	AllowedOverLimitModels []string `json:"allowed_over_limit_models"`
+	// OverCapCeilingUSD bounds a month's spend while riding the allowance:
+	// over-cap requests pass only while spend < limit + ceiling.
+	// nil (SQL NULL) = unlimited over-cap spend.
+	OverCapCeilingUSD *float64  `json:"over_cap_ceiling_usd"`
 	UpdatedBy         string    `json:"updated_by"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
@@ -155,9 +174,16 @@ type QuotaOverride struct {
 
 func (s *Store) GetQuotaPolicy(ctx context.Context) (QuotaPolicy, error) {
 	var p QuotaPolicy
+	var ceiling sql.NullFloat64
 	err := s.db.QueryRowContext(ctx,
-		`SELECT default_monthly_usd, enforced, updated_by, updated_at FROM quota_policy WHERE id = true`,
-	).Scan(&p.DefaultMonthlyUSD, &p.Enforced, &p.UpdatedBy, &p.UpdatedAt)
+		`SELECT default_monthly_usd, enforced, allowed_over_limit_models, over_cap_ceiling_usd,
+		        updated_by, updated_at FROM quota_policy WHERE id = true`,
+	).Scan(&p.DefaultMonthlyUSD, &p.Enforced, pq.Array(&p.AllowedOverLimitModels), &ceiling,
+		&p.UpdatedBy, &p.UpdatedAt)
+	if ceiling.Valid {
+		v := ceiling.Float64
+		p.OverCapCeilingUSD = &v
+	}
 	return p, err
 }
 
@@ -181,6 +207,71 @@ func (s *Store) UpdateQuotaPolicy(ctx context.Context, actor string, defaultUSD 
 	}
 	if err := s.Audit(ctx, actor, "quota.policy_update", "policy",
 		map[string]any{"default_monthly_usd": defaultUSD, "enforced": enforced}); err != nil {
+		return QuotaPolicy{}, err
+	}
+	s.invalidateQuotaCache()
+	return s.GetQuotaPolicy(ctx)
+}
+
+// quotaAllowanceMax caps the allowance list size; entries are model ids,
+// which never contain whitespace, and wildcards are rejected outright —
+// exact matching is the security contract (issue #22 review), a pattern
+// would gate billing on a user-chosen string prefix.
+const quotaAllowanceMax = 50
+
+// UpdateQuotaAllowance writes the post-cap model list and/or the over-cap
+// ceiling. Either argument may be nil to leave that field untouched.
+// A models slice non-nil (including empty) replaces the list; dedup keeps
+// first occurrence and preserves case. ceiling: 0 explicitly means
+// "remove the ceiling" (NULL / unlimited), >0 sets it.
+func (s *Store) UpdateQuotaAllowance(ctx context.Context, actor string, models *[]string, ceiling *float64) (QuotaPolicy, error) {
+	if models != nil {
+		seen := map[string]bool{}
+		clean := make([]string, 0, len(*models))
+		for _, m := range *models {
+			m = strings.TrimSpace(m)
+			if m == "" {
+				continue
+			}
+			if len(m) > 100 {
+				return QuotaPolicy{}, fmt.Errorf("model identifier too long: %s", m)
+			}
+			if strings.ContainsAny(m, "*?[ ") {
+				return QuotaPolicy{}, fmt.Errorf("exact identifiers only (no wildcards or spaces): %s", m)
+			}
+			if seen[m] {
+				continue
+			}
+			seen[m] = true
+			clean = append(clean, m)
+		}
+		if len(clean) > quotaAllowanceMax {
+			return QuotaPolicy{}, fmt.Errorf("at most %d models on the allowance list", quotaAllowanceMax)
+		}
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE quota_policy SET allowed_over_limit_models = $1, updated_by = $2, updated_at = NOW() WHERE id = true`,
+			pq.Array(clean), actor); err != nil {
+			return QuotaPolicy{}, err
+		}
+		*models = clean
+	}
+	if ceiling != nil {
+		if *ceiling < 0 {
+			return QuotaPolicy{}, fmt.Errorf("over_cap_ceiling_usd must be >= 0 (0 removes the ceiling)")
+		}
+		var val any
+		if *ceiling > 0 {
+			val = *ceiling
+		}
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE quota_policy SET over_cap_ceiling_usd = $1, updated_by = $2, updated_at = NOW() WHERE id = true`,
+			val, actor); err != nil {
+			return QuotaPolicy{}, err
+		}
+	}
+	if err := s.Audit(ctx, actor, "quota.allowance_update", "policy", map[string]any{
+		"allowed_over_limit_models": models, "over_cap_ceiling_usd": ceiling,
+	}); err != nil {
 		return QuotaPolicy{}, err
 	}
 	s.invalidateQuotaCache()
@@ -259,6 +350,11 @@ type QuotaDecision struct {
 	GrantUSD  float64   `json:"grant_usd"`
 	LimitUSD  float64   `json:"limit_usd"` // base + this month's grants
 	SpentUSD  float64   `json:"spent_usd"`
+	// Post-cap allowance (issue #22): admin-listed exact model identifiers
+	// that pass when the dollar gate denies, and the optional ceiling on
+	// how far a month may ride the allowance (0 = unlimited).
+	OverLimitModels   []string `json:"over_limit_models,omitempty"`
+	OverCapCeilingUSD float64  `json:"over_cap_ceiling_usd,omitempty"`
 	Month     string    `json:"month"`
 	MonthEnds time.Time `json:"month_ends"`
 }
@@ -271,6 +367,32 @@ func (d QuotaDecision) EffectiveEnforced() bool { return d.Enforced && !d.Exempt
 // like they already do for the whole endpoint.
 func (d QuotaDecision) Allowed() bool {
 	return !d.EffectiveEnforced() || d.SpentUSD < d.LimitUSD
+}
+
+// ModelAllowedOverLimit is the post-cap exception (issue #22), consulted
+// only when Allowed() would deny. Matching is exact and case-sensitive:
+// the compared string is chosen by the capped user, so every list entry
+// must name the literal identifier that will be routed and billed, and a
+// case mismatch denies (fail-closed). An empty or unresolvable model never
+// matches. The optional ceiling bounds the month's over-cap usage: pass
+// only while spend < limit + ceiling. The legacy token gate is NOT
+// bypassed here — callers AND it on top, so runaway loops stay guarded.
+func (d QuotaDecision) ModelAllowedOverLimit(model string) bool {
+	if !d.EffectiveEnforced() || model == "" || len(d.OverLimitModels) == 0 {
+		return false
+	}
+	if d.SpentUSD < d.LimitUSD {
+		return false // under limit: Allowed() already covers it
+	}
+	if d.OverCapCeilingUSD > 0 && d.SpentUSD >= d.LimitUSD+d.OverCapCeilingUSD {
+		return false
+	}
+	for _, m := range d.OverLimitModels {
+		if m == model {
+			return true
+		}
+	}
+	return false
 }
 
 // quotaDecision computes the full decision in two queries: one for policy +
@@ -299,13 +421,16 @@ func (s *Store) quotaDecision(ctx context.Context, username string, exempt bool)
 	}
 
 	var userOv, groupOv, grantUSD, defaultUSD float64
+	var overCapNull sql.NullFloat64
 	err = s.db.QueryRowContext(ctx, `
 		SELECT pol.default_monthly_usd, pol.enforced,
+			pol.allowed_over_limit_models, pol.over_cap_ceiling_usd,
 			COALESCE(ou.monthly_usd, -1), COALESCE(og.monthly_usd, -1),
 			g.grant,
 			to_char(date_trunc('month', NOW()), 'YYYY-MM'),
 			date_trunc('month', NOW()) + interval '1 month'
-		FROM (SELECT default_monthly_usd, enforced FROM quota_policy WHERE id = true) pol
+		FROM (SELECT default_monthly_usd, enforced, allowed_over_limit_models, over_cap_ceiling_usd
+			FROM quota_policy WHERE id = true) pol
 		LEFT JOIN quota_overrides ou ON ou.scope = 'user' AND ou.principal = $1
 		LEFT JOIN quota_overrides og ON og.scope = 'group' AND $2 <> '' AND og.principal = $2
 		LEFT JOIN LATERAL (
@@ -313,9 +438,13 @@ func (s *Store) quotaDecision(ctx context.Context, username string, exempt bool)
 			FROM quota_grants WHERE person_slug = $1 AND month = to_char(date_trunc('month', NOW()), 'YYYY-MM')
 		) g ON true`,
 		slugArg, groupName,
-	).Scan(&defaultUSD, &d.Enforced, &userOv, &groupOv, &grantUSD, &d.Month, &d.MonthEnds)
+		).Scan(&defaultUSD, &d.Enforced, pq.Array(&d.OverLimitModels), &overCapNull,
+		&userOv, &groupOv, &grantUSD, &d.Month, &d.MonthEnds)
 	if err != nil {
 		return d, fmt.Errorf("quota policy lookup: %w", err)
+	}
+	if overCapNull.Valid {
+		d.OverCapCeilingUSD = overCapNull.Float64
 	}
 
 	// Resolution order: user override → group override → policy default.

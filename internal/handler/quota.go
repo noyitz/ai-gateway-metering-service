@@ -110,12 +110,17 @@ func (h *QuotaHandler) HandleAdminPolicy(w http.ResponseWriter, r *http.Request)
 		var body struct {
 			DefaultMonthlyUSD *float64 `json:"default_monthly_usd"`
 			Enforced          *bool    `json:"enforced"`
+			// Post-cap allowance (issue #22): full-list replace of the
+			// exact model identifiers; ceiling 0 removes the ceiling.
+			AllowedOverLimitModels *[]string `json:"allowed_over_limit_models"`
+			OverCapCeilingUSD      *float64  `json:"over_cap_ceiling_usd"`
 		}
 		if !decodeJSON(w, r, &body) {
 			return
 		}
-		if body.DefaultMonthlyUSD == nil && body.Enforced == nil {
-			http.Error(w, "nothing to change: set default_monthly_usd and/or enforced", http.StatusBadRequest)
+		if body.DefaultMonthlyUSD == nil && body.Enforced == nil &&
+			body.AllowedOverLimitModels == nil && body.OverCapCeilingUSD == nil {
+			http.Error(w, "nothing to change: set default_monthly_usd, enforced, allowed_over_limit_models and/or over_cap_ceiling_usd", http.StatusBadRequest)
 			return
 		}
 		if body.DefaultMonthlyUSD != nil && *body.DefaultMonthlyUSD <= 0 {
@@ -126,6 +131,15 @@ func (h *QuotaHandler) HandleAdminPolicy(w http.ResponseWriter, r *http.Request)
 		if err != nil {
 			h.quotaError(w, r, err)
 			return
+		}
+		if body.AllowedOverLimitModels != nil || body.OverCapCeilingUSD != nil {
+			if p, err = h.store.UpdateQuotaAllowance(r.Context(), actor(r, h.cfg),
+				body.AllowedOverLimitModels, body.OverCapCeilingUSD); err != nil {
+				// Validation failures (wildcards, oversize list) are the
+				// caller's fault, not ours: surface the reason verbatim.
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 		writeJSON(w, p)
 	default:
@@ -448,4 +462,27 @@ func (h *QuotaHandler) mayDecide(w http.ResponseWriter, r *http.Request, user st
 		return false
 	}
 	return true
+}
+
+// HandleAdminQuotaModels lists model identifiers actually observed in the
+// last 7 days — the allowance editor's candidate set (issue #22). Exact
+// matching makes a typo a silent no-op, so the editor offers real ledger
+// values rather than free text alone.
+func (h *QuotaHandler) HandleAdminQuotaModels(w http.ResponseWriter, r *http.Request) {
+	if !h.requireSuperAdminJSON(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	models, err := h.store.RecentModels(r.Context())
+	if err != nil {
+		h.quotaError(w, r, err)
+		return
+	}
+	if models == nil {
+		models = []string{}
+	}
+	writeJSON(w, models)
 }

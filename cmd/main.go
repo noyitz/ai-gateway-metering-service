@@ -295,6 +295,7 @@ func main() {
 	mux.HandleFunc("/api/v1/admin/quota/policy", auth(quotaHandler.HandleAdminPolicy))
 	mux.HandleFunc("/api/v1/admin/quota/denials", auth(quotaHandler.HandleAdminDenials))
 	mux.HandleFunc("/api/v1/admin/quota/overrides", auth(quotaHandler.HandleAdminOverrides))
+	mux.HandleFunc("/api/v1/admin/quota/models", auth(quotaHandler.HandleAdminQuotaModels))
 	mux.HandleFunc("/api/v1/me/quota", auth(quotaHandler.HandleMe))
 	mux.HandleFunc("/api/v1/me/quota/request", auth(quotaHandler.HandleMeRequest))
 	mux.HandleFunc("/api/v1/org/quota-requests", auth(quotaHandler.HandleOrgRequests))
