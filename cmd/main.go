@@ -233,7 +233,7 @@ func main() {
 	// are the same numbers every request is billed at, no user data.
 	mux.HandleFunc("/api/v1/pricing", auth(handler.NewPricingRefreshHandler(store).HandleList))
 
-	// Operator pages (admin console, routing, compression) are SUPER-ADMIN
+	// Operator pages (admin console, routing) are SUPER-ADMIN
 	// only. Regular admins get the org-wide Usage view on /dashboard and
 	// nothing else — most of them only ever want to look at usage, and the
 	// pages below mutate platform state. Gated server-side, not just in the
@@ -241,7 +241,6 @@ func main() {
 	mux.HandleFunc("/admin", auth(handler.RequireSuperAdmin(cfg, adminHandler.ServeAdmin)))
 	mux.HandleFunc("/routing", auth(handler.RequireSuperAdmin(cfg, adminHandler.ServeRouting)))
 	mux.HandleFunc("/admin2", auth(handler.RequireSuperAdmin(cfg, adminHandler.ServeRouting)))
-	mux.HandleFunc("/compression", auth(handler.RequireSuperAdmin(cfg, adminHandler.ServeCompression)))
 	// Admin APIs are gated by RequireSuperAdmin (auth() alone is not enough —
 	// otherwise any signed-in user could change weights/config).
 	// Cache hit/miss counters — the Phase 1 verify step: hit ratio should

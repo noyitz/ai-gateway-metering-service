@@ -40,12 +40,12 @@ type Config struct {
 
 	// AdminUsers may see the org-wide Usage view (they see everyone's
 	// usage on the dashboard, not just their own). They do NOT get the
-	// Admin console, Routing, or Compression pages — those are
-	// SuperAdmin-only. Most admins only ever want the usage page.
+	// Admin console or Routing pages — those are SuperAdmin-only. Most
+	// admins only ever want the usage page.
 	AdminUsers []string
 
-	// SuperAdminUsers may reach the admin console, the routing pages, the
-	// compression page, and every admin-gated API. Membership in this list
+	// SuperAdminUsers may reach the admin console, the routing pages, and
+	// every admin-gated API. Membership in this list
 	// implies AdminUsers. The narrow blast radius is deliberate: only the
 	// gateway operators themselves should mutate platform state.
 	SuperAdminUsers []string

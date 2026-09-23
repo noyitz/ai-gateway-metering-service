@@ -101,7 +101,7 @@ func RequireAdmin(cfg config.Config, next http.HandlerFunc) http.HandlerFunc {
 }
 
 // RequireSuperAdmin gates the operator-only surface (admin console, routing,
-// compression, admin APIs). An admin who is not a super-admin lands on the
+// admin APIs). An admin who is not a super-admin lands on the
 // usage dashboard — the one page they should be looking at anyway.
 func RequireSuperAdmin(cfg config.Config, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -133,17 +133,6 @@ func (h *AdminHandler) ServeRouting(w http.ResponseWriter, r *http.Request) {
 	data, err := fs.ReadFile(dashboard.FS, "routing.html")
 	if err != nil {
 		http.Error(w, "routing page not found", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Write(data)
-}
-
-func (h *AdminHandler) ServeCompression(w http.ResponseWriter, r *http.Request) {
-	data, err := fs.ReadFile(dashboard.FS, "compression.html")
-	if err != nil {
-		http.Error(w, "compression page not found", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

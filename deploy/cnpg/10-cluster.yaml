@@ -35,7 +35,7 @@ spec:
       memory: 256Mi
     limits:
       cpu: "1"
-      memory: 1Gi                  # headroom over the old 512Mi: WAL + barman run in-pod
+      memory: 1Gi                  # above the old 512Mi: WAL + barman run in-pod
 
   # barman-cloud signs with SigV4 scoped to a region; boto won't infer
   # us-south from the IBM endpoint hostname, so pin it for the in-pod CLI.
