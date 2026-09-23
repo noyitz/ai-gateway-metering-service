@@ -17,6 +17,7 @@ import (
 
 	"github.com/noyitz/ai-gateway-metering-service/internal/config"
 	"github.com/noyitz/ai-gateway-metering-service/internal/dashboard"
+	"github.com/noyitz/ai-gateway-metering-service/internal/storage"
 )
 
 const (
@@ -42,7 +43,17 @@ type AuthHandler struct {
 	cfg        config.Config
 	secret     []byte
 	httpClient *http.Client
+	// orgStore backs the post-login manager redirect: people whose directory
+	// record has reports land on /manager, the view they actually came for.
+	// Optional — a nil store (or a lookup failure) keeps the old behaviour
+	// and lands everyone on /dashboard.
+	orgStore *storage.Store
 }
+
+// SetOrgStore wires the directory lookup used by the login redirect. Kept a
+// setter so login stays constructible without a database (tests, lite
+// deployments).
+func (h *AuthHandler) SetOrgStore(s *storage.Store) { h.orgStore = s }
 
 func NewAuthHandler(cfg config.Config) *AuthHandler {
 	secret := []byte(os.Getenv("SESSION_SECRET"))
@@ -183,7 +194,31 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("user logged in", "username", result.Username)
 	h.setCookie(w, result.Username, result.Groups, "")
-	http.Redirect(w, r, "/dashboard", http.StatusFound)
+	http.Redirect(w, r, h.loginDestination(r, result.Username), http.StatusFound)
+}
+
+// loginDestination is where a successful login lands. Admins and everyone
+// without a directory tree keep the Usage page; a manager — someone the
+// directory says has reports — goes straight to their team view, which is
+// what they came for. Fails closed to /dashboard on any lookup error.
+func (h *AuthHandler) loginDestination(r *http.Request, username string) string {
+	if h.orgStore == nil {
+		return "/dashboard"
+	}
+	for _, admin := range h.cfg.AdminUsers {
+		if username == admin {
+			return "/dashboard"
+		}
+	}
+	for _, admin := range h.cfg.SuperAdminUsers {
+		if username == admin {
+			return "/dashboard"
+		}
+	}
+	if _, isManager, _, err := h.orgStore.ScopeUsernames(r.Context(), username); err == nil && isManager {
+		return "/manager"
+	}
+	return "/dashboard"
 }
 
 // HandleImpersonate lets a super-admin open another user's view. With

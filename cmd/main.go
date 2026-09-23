@@ -92,6 +92,7 @@ func main() {
 			Model: p.Model, Provider: p.Provider,
 			InputCost: p.InputCost, OutputCost: p.OutputCost,
 			CacheWriteCost: p.CacheWriteCost, CacheReadCost: p.CacheReadCost,
+			Deprecated: p.Deprecated,
 		}
 	}
 	if updated, seedErr := store.SeedPricing(ctx, storeLocal); seedErr != nil {
@@ -167,6 +168,7 @@ func main() {
 
 	adminHandler := handler.NewAdminHandler(k8sClient, maasClient, cfg)
 	authHandler := handler.NewAuthHandler(cfg)
+	authHandler.SetOrgStore(store) // managers land on /manager after login
 	keysHandler := handler.NewKeysHandler(k8sClient, cfg, store)
 	profilesHandler := handler.NewProfilesHandler(store)
 	orgHandler := handler.NewOrgHandler(store, cfg, maasClient)
@@ -288,6 +290,7 @@ func main() {
 	mux.HandleFunc("/api/v1/org/tree", auth(orgHandler.HandleOrgTree))
 	mux.HandleFunc("/api/v1/org/usage", auth(orgHandler.HandleOrgUsage))
 	mux.HandleFunc("/api/v1/org/person", auth(orgHandler.HandleOrgPerson))
+	mux.HandleFunc("/api/v1/org/charts", auth(orgHandler.HandleOrgCharts))
 
 	// Monthly dollar quotas. The admin endpoints carry their own super-admin
 	// check that answers fetch() with a 403 instead of RequireSuperAdmin's

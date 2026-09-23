@@ -34,13 +34,26 @@ main{max-width:1080px;margin:0 auto;padding:22px 18px 48px}
 h1{margin:0;font-size:21px}
 .sub{color:var(--muted);margin:4px 0 18px}
 .team-filter{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:5px 9px;font-size:13px;max-width:280px}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:14px 0 20px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:14px 0 20px}
 .kpi{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:13px 15px}
 .kpi .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
 .kpi .v{font-size:23px;font-weight:700;margin-top:3px}
 .kpi .s{color:var(--muted);font-size:12px}
+/* Budget gauge bar: green at ease, yellow when close, red over. */
+.kbar{height:8px;background:var(--panel2);border:1px solid var(--border);border-radius:5px;margin:9px 0 7px;overflow:hidden}
+.kbar i{display:block;height:100%;width:0;border-radius:4px;background:var(--accent2);transition:width .3s}
+.kbar.warn i{background:var(--warn)}
+.kbar.over i{background:#e8554e}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:15px 16px;margin-bottom:18px}
 .panel h2{margin:0 0 10px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px}
+/* Usage-style pie row (Hosted vs Vendor / By Model / By User) */
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 14px}
+.charts .panel{min-width:0}
+.chart-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tlt{display:inline-flex;gap:2px;margin-left:auto}
+.tlt button{background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer}
+.tlt button.on{background:var(--panel2);color:var(--text);border-color:var(--accent)}
+.refsel{background:var(--panel2);color:var(--accent2);border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:11px;max-width:170px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{color:var(--muted);text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap}
 td{padding:7px 8px;border-bottom:1px solid var(--border)}
@@ -108,6 +121,7 @@ td.num{text-align:right}
 .pm-body table{font-size:12.5px}
 .pm-zero{color:var(--muted)}
 .pm-host{color:var(--accent2);font-size:10.5px;margin-left:6px;border:1px solid var(--border);border-radius:99px;padding:0 6px}
+.pm-free{color:#58a6ff;font-size:10.5px;margin-left:6px;border:1px solid var(--border);border-radius:99px;padding:0 6px}
 .pm-list{color:var(--muted);font-size:11px}
 </style>
 </head>
@@ -158,11 +172,9 @@ td.num{text-align:right}
   <p class="sub" id="scopeSub">Loading…</p>
   <div id="selfNote"></div>
   <div class="kpis">
-    <div class="kpi"><div class="l">Spend</div><div class="v" id="kSpend">–</div><div class="s" id="kSpendS"></div></div>
-    <div class="kpi"><div class="l">Tokens</div><div class="v" id="kTokens">–</div><div class="s">prompt + completion</div></div>
-    <div class="kpi"><div class="l">Requests</div><div class="v" id="kReqs">–</div></div>
-    <div class="kpi"><div class="l">Members</div><div class="v" id="kPeople">–</div><div class="s" id="kPeopleS"></div></div>
-    <div class="kpi"><div class="l" id="kBudgetL">Team budget</div><div class="v" id="kBudget">–</div><div class="s" id="kBudgetS"></div></div>
+    <div class="kpi" id="kpiBudgetTile"><div class="l" id="kBudgetL">Team budget</div><div class="v" id="kBudget">–</div><div class="kbar"><i id="kBudgetBar"></i></div><div class="s" id="kBudgetS"></div></div>
+    <div class="kpi"><div class="l">Saved · Hosted Models</div><div class="v saved-pos" id="kSaved">–</div><div class="s">vs <select class="refsel" id="refSel" onchange="savingsRef=this.value;loadCharts();"></select><span id="kSavedNote"></span></div></div>
+    <div class="kpi" id="kpiMembers"><div class="l">Members</div><div class="v" id="kPeople">–</div><div class="s" id="kPeopleS"></div></div>
   </div>
   <!-- Pending-decisions banner: same role as the user's "request pending"
        banner, mirrored for the approver side. Sits above the KPIs so it
@@ -176,7 +188,27 @@ td.num{text-align:right}
     <h2>Approval requests <span id="apprCount" class="dim" style="text-transform:none;letter-spacing:0;font-weight:400"></span> <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">— over-limit budget asks from your team</span></h2>
     <div id="apprBody"></div>
   </div>
-  <div class="panel"><h2>Daily tokens by member</h2><canvas id="tl" height="70"></canvas></div>
+  <div class="charts" id="chartsRow">
+    <div class="panel"><h2>Token Usage · Hosted vs Vendor</h2><canvas id="hvChart" height="170"></canvas></div>
+    <div class="panel">
+      <h2 class="chart-head"><span>By Model</span><span class="tlt" id="mmToggle">
+        <button data-mm="cost">Cost</button><button data-mm="tokens" class="on">Tokens</button><button data-mm="requests">Requests</button>
+      </span></h2>
+      <canvas id="modelChart" height="170"></canvas>
+    </div>
+    <div class="panel">
+      <h2 class="chart-head"><span>By User</span><span class="tlt" id="umToggle">
+        <button data-um="cost" class="on">Cost</button><button data-um="tokens">Tokens</button><button data-um="requests">Requests</button>
+      </span></h2>
+      <canvas id="userChart" height="170"></canvas>
+    </div>
+  </div>
+  <div class="panel">
+    <h2 class="chart-head"><span>Daily member usage</span><span class="tlt" id="tlToggle">
+      <button data-tm="tokens" class="on">Tokens</button><button data-tm="cost">Dollars</button>
+    </span></h2>
+    <canvas id="tl" height="70"></canvas>
+  </div>
   <div class="panel">
     <h2>Team members <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">— click a person for their per-model breakdown</span></h2>
     <div style="overflow-x:auto">
@@ -222,6 +254,7 @@ td.num{text-align:right}
 const fmt$=v=>'$'+Number(v||0).toLocaleString(undefined,{maximumFractionDigits:2});
 const fmtTok=v=>{v=Number(v||0);if(v>=1e9)return (v/1e9).toFixed(2)+'B';if(v>=1e6)return (v/1e6).toFixed(2)+'M';if(v>=1e3)return (v/1e3).toFixed(1)+'K';return ''+v};
 let range='mtd', rows=[], tlChart=null, sortKey='CostUSD', sortDir=-1, me={}, drillSlug='';
+let tlMetric='tokens'; // 'tokens' | 'cost' — the Daily member usage toggle
 
 document.getElementById('ranges').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return;
@@ -301,63 +334,237 @@ async function load(){
     rows=data;
     if(!drillSlug){rows0=data;drillRoot=scopeRootSlug;buildFilter();}
     renderRows();
-    const spend=rows.reduce((s,r)=>s+r.cost_usd,0);
-    const tok=rows.reduce((s,r)=>s+r.total_tokens,0);
-    const req=rows.reduce((s,r)=>s+r.requests,0);
     const active=rows.filter(r=>r.requests>0).length;
-    document.getElementById('kSpend').textContent=fmt$(spend);
-    document.getElementById('kTokens').textContent=fmtTok(tok);
-    document.getElementById('kReqs').textContent=req.toLocaleString();
     document.getElementById('kPeople').textContent=rows.length;
     document.getElementById('kPeopleS').textContent=active+' with usage this window';
+    // The boot subtitle counts directory identities; once the roster is in,
+    // restate it as people and key-holders so "46 in your tree" and the
+    // Members tile (113) can't look like they disagree.
+    const keyed=rows.filter(r=>r.username).length;
+    document.getElementById('scopeSub').textContent=
+      rows.length+' people in your tree · '+keyed+' with a gateway key · their spend and yours, this window';
     // Team budget: both sums cover the calendar month (quota_spent_usd is
     // deliberately month-to-date on the server, whatever range is shown).
     const lim=rows.reduce((s,r)=>s+(r.quota_usd||0),0);
     const mtd=rows.reduce((s,r)=>s+(r.quota_spent_usd||0),0);
     const over=rows.filter(r=>r.over_limit).length;
     setKBudget(mtd,lim,over);
-    loadTimeline();
+    loadCharts();
   }catch(e){document.getElementById('rows').innerHTML='<tr><td colspan="6" class="err">'+esc(e.message)+'</td></tr>';}
 }
 
-function setKBudget(spent,limit,over){
+// Budget gauge: one bar for spend-vs-limit. Green at ease, yellow only when
+// the team is actually close (>=80%), red over. No limit configured leaves
+// the tile empty rather than inventing a denominator.
+function setKBudget(spent,limit,overCount){
   const v=document.getElementById('kBudget'),s=document.getElementById('kBudgetS');
-  if(!limit){v.textContent='–';s.textContent='';s.style.color='';return;}
+  const bar=document.getElementById('kBudgetBar'),wrap=bar.parentElement;
+  if(!limit){v.textContent='–';v.style.color='';s.textContent='';s.style.color='';wrap.style.display='none';return;}
+  wrap.style.display='';
+  const pct=100*spent/limit;
+  const teamOver=pct>100;
   v.textContent=fmt$(spent);
-  v.style.color=over?'#f2777a':'';
-  s.textContent='of '+fmt$(limit)+' this month'+(over?' · '+over+' over limit':'');
-  s.style.color=over?'#f2777a':'';
+  v.style.color=teamOver?'#f2777a':'';
+  bar.style.width=Math.min(100,pct)+'%';
+  wrap.className='kbar'+(teamOver?' over':(pct>=80?' warn':''));
+  let sub='of '+fmt$(limit)+' this month';
+  if(teamOver)sub+=' · over budget';
+  else if(pct>=80)sub+=' · '+Math.round(pct)+'% used';
+  if(overCount>0)sub+=' · <b style="color:#f2777a">'+overCount+(overCount===1?' person over limit':' people over limit')+'</b>';
+  s.innerHTML=sub;
+  s.style.color=teamOver?'#f2777a':(pct>=80?'var(--warn)':'');
 }
 let drillRoot=''; // slug of the subtree currently shown (own slug for managers, '' for whole org)
 let scopeRootSlug='';
 let adminScope=false; // super-admins only: whole organisation, not a manager's branch
 
-async function loadTimeline(){
-  // scoped via the shared endpoint: non-admin callers get their own user
-  // filter applied server-side; when drilled into a manager's branch we pass
-  // that branch's usernames so the chart follows the table.
-  let url='/api/v1/dashboard/timeline?range='+range+'&group_by=user';
-  if(drillSlug){
-    const users=rows.map(r=>r.username).filter(Boolean);
-    if(!users.length){if(tlChart){tlChart.destroy();tlChart=null;}return;}
-    url+='&user='+encodeURIComponent(users.join(','));
-  }
-  const buckets=await (await fetch(url)).json();
-  const nameOf={};
-  rows.forEach(r=>{if(r.username)nameOf[r.username]=r.full_name||r.username;});
+// ── Team analytics: timeline + pies ───────────────────────────────────────
+// Same pie set as the Usage page, fed by /api/v1/org/charts: the server
+// scopes every number to the caller's subtree (or the drilled branch), so a
+// range button or team-filter change moves the timeline, the pies, the Saved
+// KPI and the table together. The old shared-dashboard timeline endpoint
+// scoped non-admins to themselves, which is why the chart used to sit empty
+// for a manager with a busy team.
+const PIE_COLORS=['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#39d2c0','#f778ba','#79c0ff','#7ee787','#e3b341','#ff9a8c','#d2a8ff','#56d4dd','#ffa657','#a5d6ff'];
+var savingsRef='claude-opus-4-8', modelMetric='tokens', userPieMetric='cost';
+var chartsCache=null, hvChart=null, modelChart=null, userChart=null;
+// Mirror of the Usage page's reference-model picklist and rate card, so the
+// "priced vs" choice means the same thing on both pages.
+var SAVINGS_REF_MODELS=['claude-opus-5','claude-fable-5','claude-opus-4-8','claude-sonnet-4-6','claude-haiku-4-5','gpt-5.5','gpt-5.4','gpt-4o'];
+var MODEL_PRICING_JS={
+  'claude-opus-5':{i:5,o:25},'claude-fable-5':{i:10,o:50},
+  'claude-opus-4-8':{i:5,o:25},'claude-opus-4-6':{i:5,o:25},
+  'claude-sonnet-4-6':{i:3,o:15},'claude-haiku-4-5':{i:1,o:5},
+  'gpt-5.5':{i:5,o:30},'gpt-5.4':{i:2.5,o:15},'gpt-4o':{i:2.5,o:10}
+};
+var HOSTED_PROVIDERS=['vllm','qwen'];
+// Same hosted test as the Usage page: trust the server's flag, the provider
+// list is the legacy fallback (the metered provider label drifts).
+function isHostedModel(m){return m.hosted===true||HOSTED_PROVIDERS.indexOf(m.provider||'')>=0;}
+function pieVal(d,m){return m==='cost'?d.cost_usd||0:m==='requests'?d.requests||0:d.total_tokens||0;}
+function pieFmt(v,m){return m==='cost'?fmt$(v):fmtTok(v);}
+
+async function loadCharts(){
+  try{
+    let url='/api/v1/org/charts?range='+range+'&ref='+encodeURIComponent(savingsRef);
+    if(drillSlug)url+='&root='+encodeURIComponent(drillSlug);
+    const d=await (await fetch(url)).json();
+    if(!d||!d.overview)throw new Error(d.error||'charts failed');
+    chartsCache=d;
+    renderTimeline(d.timeline||[]);
+    renderSavedKPI(d.overview);
+    renderPies();
+  }catch(e){/* the table reports real failures; charts just stay as-is */}
+}
+
+// Same endpoints, self-scoped by the server: a non-manager opening the page
+// sees their own pies, timeline and Saved card.
+async function loadSelfCharts(){
+  try{
+    const j=async u=>await (await fetch(u)).json();
+    const [ov,mo,us,tl]=await Promise.all([
+      j('/api/v1/dashboard/overview?range='+range+'&ref='+encodeURIComponent(savingsRef)),
+      j('/api/v1/dashboard/models?range='+range),
+      j('/api/v1/dashboard/users?range='+range+'&sort=cost_usd&order=desc&limit=10&ref='+encodeURIComponent(savingsRef)),
+      j('/api/v1/dashboard/timeline?range='+range+'&group_by=user')
+    ]);
+    chartsCache={overview:ov,models:mo,users:us,timeline:tl};
+    renderTimeline(tl||[]);
+    renderSavedKPI(ov);
+    renderPies();
+  }catch(e){}
+}
+
+function personName(username){
+  const r=rows.find(x=>x.username===username);
+  return (r&&(r.full_name||r.username))||username;
+}
+
+function renderTimeline(buckets){
   const byDay={}, names=new Set();
-  for(const b of buckets){const d=b.bucket.slice(0,10);byDay[d]=byDay[d]||{};byDay[d][b.series]=b.total_tokens;names.add(b.series);}
+  const val=b=>tlMetric==='cost'?(b.total_cost_usd||0):(b.total_tokens||0);
+  for(const b of buckets){const d=b.bucket.slice(0,10);byDay[d]=byDay[d]||{};byDay[d][b.series]=val(b);names.add(b.series);}
   const days=Object.keys(byDay).sort();
   const palette=['#4da0f8','#3dcc6e','#eba830','#a88cf8','#38d4c2','#e8554e','#8090a8'];
-  const ds=[...names].slice(0,7).map((n,i)=>({label:nameOf[n]||n,data:days.map(d=>byDay[d][n]||0),
+  const ds=[...names].slice(0,7).map((n,i)=>({label:personName(n),data:days.map(d=>byDay[d][n]||0),
     borderColor:palette[i%7],backgroundColor:palette[i%7]+'22',tension:.3,fill:false,pointRadius:2,borderWidth:2}));
   if(tlChart)tlChart.destroy();
   tlChart=new Chart(document.getElementById('tl'),{type:'line',
     data:{labels:days,datasets:ds},
     options:{plugins:{legend:{labels:{color:'#e2e6ec',boxWidth:10}}},
       scales:{x:{ticks:{color:'#8090a8'},grid:{color:'#1a2030'}},
-              y:{ticks:{color:'#8090a8',callback:v=>fmtTok(v)},grid:{color:'#1a2030'}}}}});
+              y:{ticks:{color:'#8090a8',callback:v=>tlMetric==='cost'?fmt$(v):fmtTok(v)},grid:{color:'#1a2030'}}}}});
 }
+
+// Tokens vs dollars on the same cached buckets — no refetch, the server
+// sends both columns with every timeline point.
+document.getElementById('tlToggle').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  tlMetric=b.dataset.tm;
+  document.querySelectorAll('#tlToggle button').forEach(x=>x.classList.toggle('on',x===b));
+  if(chartsCache)renderTimeline(chartsCache.timeline||[]);
+});
+
+function populateRefSel(){
+  const sel=document.getElementById('refSel');
+  if(!sel||sel.options.length)return;
+  const ordered=SAVINGS_REF_MODELS.slice().sort((a,b)=>{
+    const pa=MODEL_PRICING_JS[a]||{i:0,o:0},pb=MODEL_PRICING_JS[b]||{i:0,o:0};
+    return (pb.i+pb.o)-(pa.i+pa.o)||a.localeCompare(b);
+  });
+  sel.innerHTML=ordered.map(m=>'<option value="'+m+'"'+(m===savingsRef?' selected':'')+'>'+m+'</option>').join('');
+}
+
+function renderSavedKPI(ov){
+  populateRefSel();
+  document.getElementById('kSaved').textContent=typeof ov.saved_usd==='number'?fmt$(ov.saved_usd):'–';
+  document.getElementById('kSavedNote').textContent=ov.savings_ratio_applied?' · '+Math.round((ov.savings_ratio||0)*100)+'% input est. cached':'';
+}
+
+// Shared doughnut options: legend + "name: value (x%)" tooltips, built once
+// so the three pies can't drift apart (and can't hide a brace typo).
+function donutOpts(nameAt,vals,metric){
+  const total=vals.reduce((a,b)=>a+b,0);
+  return {responsive:true,plugins:{
+    legend:{position:'right',labels:{color:'#8090a8',font:{size:11},padding:8}},
+    tooltip:{callbacks:{label:c=>{
+      const raw=c.raw;
+      return nameAt(c.dataIndex)+': '+pieFmt(raw,metric)+(total>0?' ('+((raw/total)*100).toFixed(1)+'%)':'');
+    }}}
+  }};
+}
+
+function renderPies(){
+  if(!chartsCache)return;
+  const models=chartsCache.models||[];
+  // Hosted vs Vendor token split — same client-side arithmetic as the
+  // Usage page: a token count needs no pricing to agree.
+  let hosted=0,total=0;
+  models.forEach(m=>{const t=m.total_tokens||0;total+=t;if(isHostedModel(m)&&t>0)hosted+=t;});
+  const vendor=Math.max(total-hosted,0);
+  if(hvChart)hvChart.destroy();
+  hvChart=new Chart(document.getElementById('hvChart'),{
+    type:'doughnut',
+    data:{
+      labels:['Hosted — '+fmtTok(hosted),'Vendor — '+fmtTok(vendor)],
+      datasets:[{data:[hosted,vendor],backgroundColor:['#3fb950','#d29922'],borderWidth:0}]
+    },
+    options:donutOpts(i=>i===0?'Hosted':'Vendor',[hosted,vendor],'tokens')
+  });
+  // By Model — top 8 by the selected metric, the long tail folded into one
+  // grey "Other" slice: a 20-line legend makes the panel taller than the
+  // pie is worth. Toggling the metric re-ranks, so what surfaces as "top"
+  // always matches what's being measured.
+  const ranked=(models.map(d=>({name:d.model,val:pieVal(d,modelMetric),hosted:isHostedModel(d)})))
+    .sort((a,b)=>b.val-a.val);
+  const TOPN=8;
+  const topM=ranked.slice(0,TOPN), tail=ranked.slice(TOPN);
+  const pieM=topM.concat(tail.length?[{name:'Other — '+tail.length+' models',val:tail.reduce((s,d)=>s+d.val,0),other:true}]:[]);
+  const mv=pieM.map(d=>d.val);
+  const mColors=pieM.map((d,i)=>d.other?'#5b6b82':(d.hosted?'#3fb950':PIE_COLORS[i%PIE_COLORS.length]));
+  const mLabel=d=>{const n=d.name.length>26?d.name.slice(0,25)+'…':d.name;return n+' — '+pieFmt(d.val,modelMetric);};
+  if(modelChart)modelChart.destroy();
+  modelChart=new Chart(document.getElementById('modelChart'),{
+    type:'doughnut',
+    data:{
+      labels:pieM.map(mLabel),
+      datasets:[{data:mv,backgroundColor:mColors,borderWidth:0}]
+    },
+    options:donutOpts(i=>pieM[i].name,mv,modelMetric)
+  });
+  // By User — same top-8-plus-Other shape as By Model (the user list only
+  // grows). Ranks by the selected metric over the team's full list, folds
+  // the tail, and truncates long display names in the legend.
+  const uName=d=>d.display_name||personName(d.username);
+  const rankedU=(chartsCache.users||[]).map(d=>({name:uName(d),val:pieVal(d,userPieMetric)}))
+    .sort((a,b)=>b.val-a.val);
+  const topU=rankedU.slice(0,TOPN), tailU=rankedU.slice(TOPN);
+  const pieU=topU.concat(tailU.length?[{name:'Other — '+tailU.length+' users',val:tailU.reduce((s,d)=>s+d.val,0),other:true}]:[]);
+  const uv=pieU.map(d=>d.val);
+  const uLabel=d=>{const n=d.name.length>26?d.name.slice(0,25)+'…':d.name;return n+' — '+pieFmt(d.val,userPieMetric);};
+  if(userChart)userChart.destroy();
+  userChart=new Chart(document.getElementById('userChart'),{
+    type:'doughnut',
+    data:{
+      labels:pieU.map(uLabel),
+      datasets:[{data:uv,backgroundColor:pieU.map((d,i)=>d.other?'#5b6b82':PIE_COLORS[i%PIE_COLORS.length]),borderWidth:0}]
+    },
+    options:donutOpts(i=>pieU[i].name,uv,userPieMetric)
+  });
+}
+
+document.getElementById('mmToggle').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  modelMetric=b.dataset.mm;
+  document.querySelectorAll('#mmToggle button').forEach(x=>x.classList.toggle('on',x===b));
+  renderPies();
+});
+document.getElementById('umToggle').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  userPieMetric=b.dataset.um;
+  document.querySelectorAll('#umToggle button').forEach(x=>x.classList.toggle('on',x===b));
+  renderPies();
+});
 
 async function boot(){
   try{ me=await (await fetch('/api/v1/whoami')).json(); }catch(e){}
@@ -389,7 +596,7 @@ async function boot(){
     document.getElementById('scopeSub').textContent='You are not listed as a manager in the directory — showing your own usage.';
     document.getElementById('selfNote').innerHTML=
       '<div class="self-note">You are seeing only your own numbers. If you manage people and expected the team view, ask an admin to add your reporting lines to the <b>People</b> directory — the manager view turns on automatically the moment people report to you.</div>';
-    document.querySelectorAll('.kpis .kpi')[3].style.display='none';
+    document.getElementById('kpiMembers').style.display='none';
     // No team, but a budget of one: paint the tile from the caller's own quota.
     document.getElementById('kBudgetL').textContent='My budget';
     if(me.quota)setKBudget(me.quota.spent_usd,me.quota.limit_usd,me.quota.spent_usd>=me.quota.limit_usd);
@@ -496,10 +703,7 @@ async function loadSelf(){
   const users=await (await fetch('/api/v1/dashboard/users?range='+range)).json();
   rows=users.map(u=>({full_name:u.display_name||u.username,cost_usd:u.cost_usd,total_tokens:u.total_tokens,requests:u.requests,last_used:null,is_manager:false,no_identity:!u.requests}));
   renderRows();
-  document.getElementById('kSpend').textContent=fmt$(rows[0]?.cost_usd);
-  document.getElementById('kTokens').textContent=fmtTok(rows[0]?.total_tokens);
-  document.getElementById('kReqs').textContent=(rows[0]?.requests||0).toLocaleString();
-  loadTimeline();
+  loadSelfCharts();
 }
 
 // ── Person detail (per-model spend + hosted savings) ──────────────────────
@@ -567,11 +771,13 @@ function loadPricing(){
     var ms=j.models||[];
     if(!ms.length){body.innerHTML='<div class="pm-sub" style="padding:14px 0">No rates seeded yet.</div>';return;}
     body.innerHTML='<table><thead><tr><th>Model</th><th>Input</th><th>Output</th><th>Cache read</th><th>Cache write</th></tr></thead><tbody>'+
-      ms.map(function(m){
+      ms.sort(function(a,b){var r=function(m){return ((+m.input_cost_per_mtok||0)+(+m.output_cost_per_mtok||0)<=0)?0:(m.hosted?1:2);};return r(a)-r(b);}).map(function(m){
+        var free=(+m.input_cost_per_mtok||0)+(+m.output_cost_per_mtok||0)<=0;
+        var cell=function(v){return (+v||0)>0?pmPrice(v):(free?'$0':'<span class="pm-zero">–</span>');};
         var list=(m.list_input_cost_per_mtok||m.list_output_cost_per_mtok)?'<div class="pm-list">vendor list '+pmPrice(m.list_input_cost_per_mtok)+' / '+pmPrice(m.list_output_cost_per_mtok)+'</div>':'';
-        return '<tr><td>'+pmEsc(m.model)+(m.hosted?'<span class="pm-host">hosted</span>':'')+'<div class="pm-list">'+pmEsc(m.provider)+list+'</div></td>'
-          +'<td>'+pmPrice(m.input_cost_per_mtok)+'</td><td>'+pmPrice(m.output_cost_per_mtok)+'</td>'
-          +'<td>'+pmPrice(m.cache_read_cost_per_mtok)+'</td>'+pmPrice(m.cache_write_cost_per_mtok)+'</td></tr>';
+        return '<tr><td>'+pmEsc(m.model)+(m.hosted?'<span class="pm-host">hosted</span>':'')+(free?'<span class="pm-free">free</span>':'')+'<div class="pm-list">'+pmEsc(m.provider)+list+'</div></td>'
+          +'<td>'+cell(m.input_cost_per_mtok)+'</td><td>'+cell(m.output_cost_per_mtok)+'</td>'
+          +'<td>'+cell(m.cache_read_cost_per_mtok)+'</td><td>'+cell(m.cache_write_cost_per_mtok)+'</td></tr>';
       }).join('')+'</tbody></table>';
   }).catch(function(e){body.innerHTML='<div class="pm-sub" style="padding:14px 0;color:#f2777a">Could not load pricing ('+pmEsc(e.message)+').</div>';});
 }

@@ -278,6 +278,98 @@ func (h *OrgHandler) HandleOrgUsage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, rows)
 }
 
+// HandleOrgCharts: GET /api/v1/org/charts?range=&root=&ref= — the team page's
+// analytics bundle: dashboard overview (+ hosted savings), per-model totals,
+// top users, and the daily timeline grouped by member. Every number is the
+// same query the admin Usage endpoints run; the difference is scope — the
+// username allowlist comes from the caller's subtree root (or the drilled
+// branch), never from the request. Team aggregates only: unlike the admin
+// feed this never exposes per-request event rows, so manager visibility stops
+// at exactly what the team page shows.
+func (h *OrgHandler) HandleOrgCharts(w http.ResponseWriter, r *http.Request) {
+	root, ok := h.scopeRoot(w, r)
+	if !ok {
+		return
+	}
+	// The store reads an empty user filter as "everyone" — correct only for
+	// the super-admin whole-org view (empty root). A manager always gets
+	// their subtree's identities.
+	user := ""
+	if root != "" {
+		list, err := h.store.SubtreeUsernamesForSlug(r.Context(), root)
+		if err != nil {
+			slog.Error("subtree usernames failed", "root", root, "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if len(list) == 0 {
+			// A branch with no gateway identities answers zero, and must not
+			// fall through with the empty string — that would mean the whole
+			// organisation.
+			writeJSON(w, map[string]any{
+				"overview": storage.DashboardOverview{},
+				"models":   []storage.ModelSummary{},
+				"users":    []storage.UserSummary{},
+				"timeline": []storage.TimelineBucket{},
+			})
+			return
+		}
+		user = strings.Join(list, ",")
+	}
+	since, until := parseTimeWindow(r)
+	ref := r.URL.Query().Get("ref")
+
+	ov, err := h.store.GetDashboardOverview(r.Context(), since, until, "", user, "")
+	if err != nil {
+		slog.Error("org charts overview failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	// Same as HandleOverview: a savings failure zeroes the card, not the page.
+	if saved, ratio, applied, serr := h.store.GetHostedSavings(r.Context(), since, until, "", user, "", ref); serr != nil {
+		slog.Error("org hosted savings query failed", "error", serr)
+	} else {
+		ov.SavedUSD, ov.SavingsRatio, ov.RatioApplied = saved, ratio, applied
+	}
+	models, err := h.store.GetDashboardModels(r.Context(), since, until, "", user, "")
+	if err != nil {
+		slog.Error("org charts models failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	// The whole team (capped at the store's 200), ranked client-side: the
+	// pie shows a top slice per selected metric plus an "Other" for the
+	// rest, which needs the tail, not just a fixed top-10. Same reference
+	// model as the overview KPI so the pie and the Saved card agree.
+	topUsers, err := h.store.GetDashboardUsers(r.Context(), since, until, "", user, "", "cost_usd", "desc", 200, ref)
+	if err != nil {
+		slog.Error("org charts users failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	timeline, err := h.store.GetDashboardTimeline(r.Context(), since, until, "", user, "", "user")
+	if err != nil {
+		slog.Error("org charts timeline failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if models == nil {
+		models = []storage.ModelSummary{}
+	}
+	if topUsers == nil {
+		topUsers = []storage.UserSummary{}
+	}
+	if timeline == nil {
+		timeline = []storage.TimelineBucket{}
+	}
+	writeJSON(w, map[string]any{
+		"overview": ov,
+		"models":   models,
+		"users":    topUsers,
+		"timeline": timeline,
+	})
+}
+
 // HandleOrgPerson: GET /api/v1/org/person?slug=&range= — one person's
 // per-model breakdown, the drill-down behind a row in the team table. The
 // permission is the same one that governs the tree: a super-admin may open
