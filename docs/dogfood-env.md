@@ -235,7 +235,6 @@ The deployed image is built from a local `combined-build` directory that cherry-
 - PRs 169+170 (body mode framework) from llm-d
 - PRs 331, 332, 333 (migration, metering chunk processor, body mode declarations)
 - PR 301 (multi-provider passthrough)
-- Yossi's headroom branch as base
 - Body-based model resolution (header/body lookup instead of URL path)
 
 Image: `image-registry.openshift-image-registry.svc:5000/openshift-ingress/payload-processing-test:v2`

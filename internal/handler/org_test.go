@@ -92,7 +92,7 @@ func TestActor_ImpersonationAttribution(t *testing.T) {
 // The three-way split the role feature depends on: super-admin implies
 // admin (so the operators can still see the usage page their console links
 // to), but admin never implies super-admin (the many admins who only want
-// usage must not reach the console, routing, or compression).
+// usage must not reach the console or routing).
 func TestSuperAdminImpliesAdmin(t *testing.T) {
 	cfg := config.Config{
 		UserHeader:      "X-Forwarded-User",

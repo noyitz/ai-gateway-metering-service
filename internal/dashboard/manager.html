@@ -132,7 +132,6 @@ td.num{text-align:right}
     <a href="/dashboard">Usage</a>
     <a href="/manager" class="on" title="Usage for everyone on your team">My team</a>
     <a href="/routing" id="tab-routing" style="display:none">Routing</a>
-    <a href="/compression" id="tab-compression" style="display:none">Compression</a>
     <a href="/admin" id="tab-admin" style="display:none">Admin</a>
   </nav>
   <div class="ab-right">
@@ -578,7 +577,7 @@ async function boot(){
     ab.appendChild(role);
   }
   if(me.isSuperAdmin){
-    ['tab-routing','tab-compression','tab-admin'].forEach(id=>document.getElementById(id).style.display='');
+    ['tab-routing','tab-admin'].forEach(id=>document.getElementById(id).style.display='');
     const mvb=document.getElementById('my-view-btn');
     mvb.href='/admin/impersonate?as='+encodeURIComponent(me.user);
     mvb.style.display='';

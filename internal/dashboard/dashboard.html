@@ -164,7 +164,6 @@ tr.clickable{cursor:pointer}
     <a href="/dashboard" class="on">Usage</a>
     <a href="/manager" id="tab-team" style="display:none" title="Usage for everyone on your team">My team</a>
     <a href="/routing" id="tab-routing" style="display:none">Routing</a>
-    <a href="/compression" id="tab-compression" style="display:none">Compression</a>
     <a href="/admin" id="tab-admin" style="display:none">Admin</a>
   </nav>
   <div class="ab-right">
@@ -980,7 +979,7 @@ fetch('/api/v1/whoami').then(function(r){return r.json()}).then(function(d){
     // is this Usage page, not a team view.
     if(d.isSuperAdmin||d.isManager)document.getElementById('tab-team').style.display='';
     if(isSuperAdmin){
-      ['tab-routing','tab-compression','tab-admin'].forEach(function(id){document.getElementById(id).style.display='';});
+      ['tab-routing','tab-admin'].forEach(function(id){document.getElementById(id).style.display='';});
       var mvb=document.getElementById('my-view-btn');
       mvb.href='/admin/impersonate?as='+encodeURIComponent(d.user);
       mvb.style.display='';
