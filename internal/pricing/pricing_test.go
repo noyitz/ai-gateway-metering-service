@@ -235,10 +235,15 @@ func TestLocalPrices_OpenRouterParity(t *testing.T) {
 
 	// Rates are an OpenRouter parity snapshot (per MTok). If these drift the
 	// dashboard's hosted-vs-vendor comparison silently lies, so pin them.
+	// GLM is the deliberate exception: every rate 0 by design (free), and
+	// the retired 27B id is deprecated — priced for history, off the list.
 	want := map[string]ModelPrice{
-		"Qwen3.8-27B-FP8":                {InputCost: 0.214, OutputCost: 2.55, CacheReadCost: 0.15},
+		"Qwen3.8-27B-FP8":                   {InputCost: 0.214, OutputCost: 2.55, CacheReadCost: 0.15},
 		"Inferact/Qwen3.8-Flash-Next-NVFP4": {InputCost: 0.15, OutputCost: 0.47, CacheReadCost: 0.016},
-		"qwen": {InputCost: 0.214, OutputCost: 2.55, CacheReadCost: 0.15},
+		"rits/zai-org/glm-5-3":              {},
+	}
+	wantDeprecated := map[string]bool{
+		"Qwen3.8-27B-FP8": true,
 	}
 	seen := map[string]bool{}
 	for _, p := range prices {
@@ -254,6 +259,9 @@ func TestLocalPrices_OpenRouterParity(t *testing.T) {
 		if p.InputCost != w.InputCost || p.OutputCost != w.OutputCost ||
 			p.CacheReadCost != w.CacheReadCost || p.CacheWriteCost != 0 {
 			t.Errorf("local model %q off parity: got %+v want %+v", p.Model, p, w)
+		}
+		if p.Deprecated != wantDeprecated[p.Model] {
+			t.Errorf("local model %q deprecated = %v, want %v", p.Model, p.Deprecated, wantDeprecated[p.Model])
 		}
 	}
 	for m := range want {
@@ -345,18 +353,30 @@ func TestParseListRaw_NativeEntriesOnly(t *testing.T) {
 func TestLocalListPrices_MirrorsLocalModels(t *testing.T) {
 	l := LocalListPrices()
 	local := LocalPrices()
-	if len(l) != len(local) {
-		t.Fatalf("LocalListPrices has %d entries, LocalPrices has %d", len(l), len(local))
+
+	// Every local model with non-zero rates must carry a list baseline;
+	// free models (all rates 0) are skipped — a $0 model has no
+	// vendor-list counterfactual, so its saved column stays exactly 0.
+	want := map[string]bool{}
+	for _, m := range local {
+		if m.InputCost == 0 && m.OutputCost == 0 {
+			continue
+		}
+		want[m.Model] = true
 	}
-	for i := range local {
-		if l[i].Model != local[i].Model {
-			t.Errorf("entry %d: model %q, want %q", i, l[i].Model, local[i].Model)
+	if len(l) != len(want) {
+		t.Fatalf("LocalListPrices has %d entries, want %d (non-free local models)", len(l), len(want))
+	}
+	for _, p := range l {
+		if !want[p.Model] {
+			t.Errorf("unexpected list entry %q — free or unknown local model", p.Model)
+			continue
 		}
-		if l[i].InputCost != 0 || l[i].OutputCost != 0 {
-			t.Errorf("entry %d: list entry must not carry actual rates", i)
+		if p.InputCost != 0 || p.OutputCost != 0 {
+			t.Errorf("entry %q: list entry must not carry actual rates", p.Model)
 		}
-		if l[i].ListInputCost == 0 || l[i].ListOutputCost == 0 {
-			t.Errorf("entry %d: list entry needs non-zero list rates", i)
+		if p.ListInputCost == 0 || p.ListOutputCost == 0 {
+			t.Errorf("entry %q: list entry needs non-zero list rates", p.Model)
 		}
 	}
 }

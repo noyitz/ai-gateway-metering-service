@@ -131,6 +131,7 @@ body{background:var(--bg);color:var(--t);font-family:'Inter',-apple-system,sans-
 .pm-body td{padding:6px 8px;border-bottom:1px solid var(--bdr,#232b3b)}
 .pm-zero{color:var(--t2,#8090a8)}
 .pm-host{color:var(--grn,#3dcc6e);font-size:10.5px;margin-left:6px;border:1px solid var(--bdr,#232b3b);border-radius:99px;padding:0 6px}
+.pm-free{color:#58a6ff;font-size:10.5px;margin-left:6px;border:1px solid var(--bdr,#232b3b);border-radius:99px;padding:0 6px}
 .pm-list{color:var(--t2,#8090a8);font-size:11px}
 </style>
 </head>
@@ -446,11 +447,13 @@ function loadPricing(){
     var ms=j.models||[];
     if(!ms.length){body.innerHTML='<div class="pm-sub" style="padding:14px 0">No rates seeded yet.</div>';return;}
     body.innerHTML='<table><thead><tr><th>Model</th><th>Input</th><th>Output</th><th>Cache read</th><th>Cache write</th></tr></thead><tbody>'+
-      ms.map(function(m){
+      ms.sort(function(a,b){var r=function(m){return ((+m.input_cost_per_mtok||0)+(+m.output_cost_per_mtok||0)<=0)?0:(m.hosted?1:2);};return r(a)-r(b);}).map(function(m){
+        var free=(+m.input_cost_per_mtok||0)+(+m.output_cost_per_mtok||0)<=0;
+        var cell=function(v){return (+v||0)>0?pmPrice(v):(free?'$0':'<span class="pm-zero">–</span>');};
         var list=(m.list_input_cost_per_mtok||m.list_output_cost_per_mtok)?'<div class="pm-list">vendor list '+pmPrice(m.list_input_cost_per_mtok)+' / '+pmPrice(m.list_output_cost_per_mtok)+'</div>':'';
-        return '<tr><td>'+pmEsc(m.model)+(m.hosted?'<span class="pm-host">hosted</span>':'')+'<div class="pm-list">'+pmEsc(m.provider)+list+'</div></td>'
-          +'<td>'+pmPrice(m.input_cost_per_mtok)+'</td><td>'+pmPrice(m.output_cost_per_mtok)+'</td>'
-          +'<td>'+pmPrice(m.cache_read_cost_per_mtok)+'</td><td>'+pmPrice(m.cache_write_cost_per_mtok)+'</td></tr>';
+        return '<tr><td>'+pmEsc(m.model)+(m.hosted?'<span class="pm-host">hosted</span>':'')+(free?'<span class="pm-free">free</span>':'')+'<div class="pm-list">'+pmEsc(m.provider)+list+'</div></td>'
+          +'<td>'+cell(m.input_cost_per_mtok)+'</td><td>'+cell(m.output_cost_per_mtok)+'</td>'
+          +'<td>'+cell(m.cache_read_cost_per_mtok)+'</td><td>'+cell(m.cache_write_cost_per_mtok)+'</td></tr>';
       }).join('')+'</tbody></table>';
   }).catch(function(e){body.innerHTML='<div class="pm-sub" style="padding:14px 0;color:var(--red,#e8554e)">Could not load pricing ('+pmEsc(e.message)+').</div>';});
 }

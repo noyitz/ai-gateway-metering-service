@@ -491,7 +491,12 @@ type TimelineBucket struct {
 	Bucket      time.Time `json:"bucket"`
 	Series      string    `json:"series"`
 	TotalTokens int64     `json:"total_tokens"`
-	Requests    int       `json:"requests"`
+	// TotalCostUSD backs the team page's tokens/dollars toggle. Raw path
+	// re-infers cost at read time (same expression as the overview KPI);
+	// the rollup path carries the frozen-at-rollup cost, matching the
+	// documented quota=live / rollup=frozen semantics.
+	TotalCostUSD float64 `json:"total_cost_usd"`
+	Requests     int     `json:"requests"`
 }
 
 func (s *Store) GetDashboardOverview(ctx context.Context, since, until time.Time, group, user, model string) (DashboardOverview, error) {
@@ -848,11 +853,13 @@ func (s *Store) GetDashboardTimeline(ctx context.Context, since, until time.Time
 		SELECT date_trunc('%s', e.timestamp) as bucket,
 			%s as series,
 			COALESCE(SUM(e.total_tokens),0),
+			COALESCE(ROUND(SUM(%s)::numeric,2),0),
 			COUNT(*)
 		FROM usage_events e
+		LEFT JOIN model_pricing p ON e.model = p.model
 		WHERE e.timestamp >= $1 AND e.timestamp < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)
 		GROUP BY bucket, series
-		ORDER BY bucket, series`, truncInterval, seriesCol)
+		ORDER BY bucket, series`, truncInterval, seriesCol, costUSDExpr)
 	if s.rollupsLive() {
 		query = rollupTimelineSQL(truncInterval, seriesCol)
 	}
@@ -866,7 +873,7 @@ func (s *Store) GetDashboardTimeline(ctx context.Context, since, until time.Time
 	var result []TimelineBucket
 	for rows.Next() {
 		var t TimelineBucket
-		if err := rows.Scan(&t.Bucket, &t.Series, &t.TotalTokens, &t.Requests); err != nil {
+		if err := rows.Scan(&t.Bucket, &t.Series, &t.TotalTokens, &t.TotalCostUSD, &t.Requests); err != nil {
 			return nil, err
 		}
 		result = append(result, t)
@@ -1083,6 +1090,11 @@ var migrations = []string{
 	`ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS list_output_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0`,
 	`ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS list_cache_write_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0`,
 	`ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS list_cache_read_cost_per_mtok NUMERIC(10,4) NOT NULL DEFAULT 0`,
+	// deprecated=true hides a model_pricing row from the pricing list (the
+	// dashboard rate card) while keeping its rates — legacy model ids still
+	// price their historical usage_events, they just stop advertising
+	// themselves as bookable models.
+	`ALTER TABLE model_pricing ADD COLUMN IF NOT EXISTS deprecated BOOLEAN NOT NULL DEFAULT FALSE`,
 	// Human display names for dashboard users. Keyed by the same username
 	// string usage_events carries (the MaaS login identity). Empty names
 	// mean "unknown" — the UI falls back to the username.
@@ -1139,15 +1151,16 @@ func (s *Store) SeedPricing(ctx context.Context, prices []ModelPrice) (int, erro
 	updated := 0
 	for _, p := range prices {
 		_, err := tx.ExecContext(ctx, `
-			INSERT INTO model_pricing (model, provider, input_cost_per_mtok, output_cost_per_mtok, cache_write_cost_per_mtok, cache_read_cost_per_mtok)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO model_pricing (model, provider, input_cost_per_mtok, output_cost_per_mtok, cache_write_cost_per_mtok, cache_read_cost_per_mtok, deprecated)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			ON CONFLICT (model) DO UPDATE SET
 				provider = EXCLUDED.provider,
 				input_cost_per_mtok = EXCLUDED.input_cost_per_mtok,
 				output_cost_per_mtok = EXCLUDED.output_cost_per_mtok,
 				cache_write_cost_per_mtok = EXCLUDED.cache_write_cost_per_mtok,
-				cache_read_cost_per_mtok = EXCLUDED.cache_read_cost_per_mtok`,
-			p.Model, p.Provider, p.InputCost, p.OutputCost, p.CacheWriteCost, p.CacheReadCost)
+				cache_read_cost_per_mtok = EXCLUDED.cache_read_cost_per_mtok,
+				deprecated = EXCLUDED.deprecated`,
+			p.Model, p.Provider, p.InputCost, p.OutputCost, p.CacheWriteCost, p.CacheReadCost, p.Deprecated)
 		if err != nil {
 			return 0, fmt.Errorf("upsert %s: %w", p.Model, err)
 		}
@@ -1215,6 +1228,10 @@ type ModelPrice struct {
 	ListOutputCost     float64
 	ListCacheWriteCost float64
 	ListCacheReadCost  float64
+	// Deprecated hides the row from the pricing list without dropping its
+	// rates (legacy ids still price their historical events). Not part of
+	// pricesEqual: it is presentation, not a rate.
+	Deprecated bool
 }
 
 // GetCurrentPricing returns all model pricing from the database.
@@ -1223,7 +1240,9 @@ type ModelPrice struct {
 // self-hosted rows (hosted models always show, even before their first
 // event, so the table can explain the "hosted" badge from day one). Hosted
 // rows sort first; list_* rates ride along where seeded so the modal can
-// show the vendor-list baseline next to our rate.
+// show the vendor-list baseline next to our rate. Rows flagged deprecated
+// are excluded — they keep pricing historical events but are no longer
+// bookable models. GLM 5.3 (the free hosted model) leads the card.
 func (s *Store) GetPricingCatalog(ctx context.Context, usedOnly bool) ([]ModelPrice, error) {
 	q := `SELECT model, provider, input_cost_per_mtok, output_cost_per_mtok,
 	             cache_write_cost_per_mtok, cache_read_cost_per_mtok,
@@ -1231,9 +1250,13 @@ func (s *Store) GetPricingCatalog(ctx context.Context, usedOnly bool) ([]ModelPr
 	             list_cache_write_cost_per_mtok, list_cache_read_cost_per_mtok
 	      FROM model_pricing`
 	if usedOnly {
-		q += ` WHERE model IN (SELECT DISTINCT model FROM usage_events) OR provider IN ('vllm','qwen')`
+		q += ` WHERE NOT deprecated AND (model IN (SELECT DISTINCT model FROM usage_events) OR provider IN ('vllm','qwen'))`
+	} else {
+		q += ` WHERE NOT deprecated`
 	}
-	q += ` ORDER BY CASE WHEN provider IN ('vllm','qwen') THEN 0 ELSE 1 END, model`
+	q += ` ORDER BY CASE WHEN model = 'rits/zai-org/glm-5-3' THEN 0
+	                    WHEN provider IN ('vllm','qwen') THEN 1
+	                    ELSE 2 END, model`
 
 	rows, err := s.db.QueryContext(ctx, q)
 	if err != nil {

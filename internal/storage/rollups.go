@@ -694,6 +694,7 @@ func rollupTimelineSQL(truncInterval, seriesCol string) string {
 		SELECT date_trunc('%s', e.hour) as bucket,
 			%s as series,
 			COALESCE(SUM(e.total_tokens),0),
+			COALESCE(ROUND(SUM(e.cost_usd)::numeric,2),0),
 			COALESCE(SUM(e.requests),0)
 		FROM usage_hourly e
 		WHERE e.hour >= $1 AND e.hour < $2 AND ($3 = '' OR e.group_name = $3) AND ($4 = '' OR e.username = ANY(string_to_array($4, ','))) AND ($5 = '' OR e.model = $5)

@@ -130,6 +130,7 @@ tr.clickable{cursor:pointer}
 .pm-body th:first-child,.pm-body td:first-child{text-align:left}
 .pm-body .pm-zero{color:var(--text2)}
 .pm-host{display:inline-block;background:rgba(63,185,80,.12);border:1px solid rgba(63,185,80,.4);color:var(--green);border-radius:10px;font-size:9px;font-weight:700;padding:1px 7px;text-transform:uppercase;letter-spacing:.5px;margin-left:8px}
+.pm-free{display:inline-block;background:rgba(88,166,255,.12);border:1px solid rgba(88,166,255,.4);color:#58a6ff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 7px;text-transform:uppercase;letter-spacing:.5px;margin-left:8px}
 .pm-list{color:var(--text2);font-size:10px;margin-top:1px}
 .pm-open{background:var(--bg-card);color:var(--text2);border:1px solid var(--border);padding:6px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
 .pm-open:hover{color:var(--text);border-color:var(--text2)}
@@ -668,8 +669,9 @@ function populateSavingsRef(){
 }
 
 // "Hosted" = models we serve ourselves (provider vllm, plus the legacy qwen
-// alias). Hosted traffic bills at OpenRouter parity, not $0, so it can't be
-// detected by price -- only by provider. The cost==0 catch-all stays for any
+// alias). Hosted traffic is detected by provider, not price — Qwen bills at
+// OpenRouter parity and GLM is deliberately free, so a price probe can't
+// tell them apart from unpriced strays. The cost==0 catch-all stays for any
 // future deliberately-unpriced model.
 var HOSTED_PROVIDERS=['vllm','qwen'];
 // Server's hostedProviderCond verdict first: the metered provider label
@@ -1022,11 +1024,13 @@ function loadPricing(){
     var ms=j.models||[];
     if(!ms.length){body.innerHTML='<div class="pm-sub" style="padding:14px 0">No rates seeded yet.</div>';return;}
     body.innerHTML='<table><thead><tr><th>Model</th><th>Input</th><th>Output</th><th>Cache read</th><th>Cache write</th></tr></thead><tbody>'+
-      ms.map(function(m){
+      ms.sort(function(a,b){var r=function(m){return ((+m.input_cost_per_mtok||0)+(+m.output_cost_per_mtok||0)<=0)?0:(m.hosted?1:2);};return r(a)-r(b);}).map(function(m){
+        var free=(+m.input_cost_per_mtok||0)+(+m.output_cost_per_mtok||0)<=0;
+        var cell=function(v){return (+v||0)>0?pmPrice(v):(free?'$0':'<span class="pm-zero">–</span>');};
         var list=(m.list_input_cost_per_mtok||m.list_output_cost_per_mtok)?'<div class="pm-list">vendor list '+pmPrice(m.list_input_cost_per_mtok)+' / '+pmPrice(m.list_output_cost_per_mtok)+'</div>':'';
-        return '<tr><td>'+pmEsc(m.model)+(m.hosted?'<span class="pm-host">hosted</span>':'')+'<div class="pm-list">'+pmEsc(m.provider)+list+'</div></td>'
-          +'<td>'+pmPrice(m.input_cost_per_mtok)+'</td><td>'+pmPrice(m.output_cost_per_mtok)+'</td>'
-          +'<td>'+pmPrice(m.cache_read_cost_per_mtok)+'</td><td>'+pmPrice(m.cache_write_cost_per_mtok)+'</td></tr>';
+        return '<tr><td>'+pmEsc(m.model)+(m.hosted?'<span class="pm-host">hosted</span>':'')+(free?'<span class="pm-free">free</span>':'')+'<div class="pm-list">'+pmEsc(m.provider)+list+'</div></td>'
+          +'<td>'+cell(m.input_cost_per_mtok)+'</td><td>'+cell(m.output_cost_per_mtok)+'</td>'
+          +'<td>'+cell(m.cache_read_cost_per_mtok)+'</td><td>'+cell(m.cache_write_cost_per_mtok)+'</td></tr>';
       }).join('')+'</tbody></table>';
   }).catch(function(e){body.innerHTML='<div class="pm-sub" style="padding:14px 0;color:var(--red)">Could not load pricing ('+pmEsc(e.message)+').</div>';});
 }

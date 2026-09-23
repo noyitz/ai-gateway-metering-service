@@ -34,6 +34,10 @@ type ModelPrice struct {
 	ListOutputCost     float64 `json:"list_output_cost_per_mtok,omitempty"`
 	ListCacheWriteCost float64 `json:"list_cache_write_cost_per_mtok,omitempty"`
 	ListCacheReadCost  float64 `json:"list_cache_read_cost_per_mtok,omitempty"`
+	// Deprecated hides the row from the pricing list while keeping its
+	// rates for historical-event pricing. Presentation only — not part of
+	// pricesEqual.
+	Deprecated bool `json:"deprecated,omitempty"`
 }
 
 type liteLLMEntry struct {
@@ -83,12 +87,12 @@ func LoadPrices(ctx context.Context) ([]ModelPrice, string) {
 }
 
 // LocalPrices returns pricing for the self-hosted ("hosted") models that
-// LiteLLM's catalog does not carry. They run on our own GPUs but are billed
+// LiteLLM's catalog does not carry. They run on our own GPUs and are billed
 // at OpenRouter parity — the same per-token rates OpenRouter lists for the
 // equivalent hosted model — so a fair comparison against vendor APIs stays
-// possible and no traffic is silently $0. The dashboard identifies hosted
-// traffic by provider (vllm / legacy qwen), not by price, so the savings
-// view keeps working at nonzero rates.
+// possible and no traffic is silently $0 (GLM being the deliberate
+// exception below). The dashboard identifies hosted traffic by provider
+// (vllm / legacy qwen), not by price, so the savings view keeps working.
 //
 // Parity snapshot (OpenRouter, per MTok, 2026-09-14):
 //   - qwen/qwen3.8-27b:            in $0.214 · out $2.55 · cache read $0.15
@@ -106,20 +110,23 @@ func LoadPrices(ctx context.Context) ([]ModelPrice, string) {
 func LocalPrices() []ModelPrice {
 	return []ModelPrice{
 		// Self-hosted Qwen on vLLM — the model id billed traffic records.
-		// Priced at OpenRouter qwen/qwen3.8-27b parity.
-		{Model: "Qwen3.8-27B-FP8", Provider: "vllm",
+		// Priced at OpenRouter qwen/qwen3.8-27b parity. Deprecated: the 27B
+		// deployment was retired; the row survives only to price its
+		// historical events, and stays off the pricing list.
+		{Model: "Qwen3.8-27B-FP8", Provider: "vllm", Deprecated: true,
 			InputCost: 0.214, OutputCost: 2.55, CacheReadCost: 0.15},
 		// Qwen3.8-Flash-Next on external cluster, proxied via qwen-flash-proxy.
 		// Priced at OpenRouter qwen/qwen3.8-flash parity (closest listed match).
+		// The only active Qwen id.
 		{Model: "Inferact/Qwen3.8-Flash-Next-NVFP4", Provider: "vllm",
 			InputCost: 0.15, OutputCost: 0.47, CacheReadCost: 0.016},
-		// Legacy alias: older events recorded model="qwen" before the id above
-		// was adopted. Same model, so it carries the same 27B rates —
-		// historical rows price like current ones instead of repricing to
-		// the paid default. Safe to drop once no events with model="qwen"
-		// remain.
-		{Model: "qwen", Provider: "qwen",
-			InputCost: 0.214, OutputCost: 2.55, CacheReadCost: 0.15},
+		// GLM 5.3 on the curvebender cluster, proxied via the unified route.
+		// Deliberately free — every token type $0 (the cost expression only
+		// falls back to the paid default on a MISSING row; a seeded 0 is a
+		// real rate, so GLM traffic meters at exactly $0). LocalListPrices
+		// skips zero-rate models, keeping its list baseline — and therefore
+		// its "saved" column — at 0 too.
+		{Model: "rits/zai-org/glm-5-3", Provider: "vllm"},
 	}
 }
 
@@ -139,6 +146,14 @@ func LocalListPrices() []ModelPrice {
 	}
 	var out []ModelPrice
 	for _, m := range LocalPrices() {
+		// Free models carry no vendor-list baseline: list 0 falls back to
+		// the effective rate (also 0), so their "saved vs list" column is
+		// exactly $0 — a free model can't claim counterfactual savings
+		// against a Sonnet-class list price it was never a substitute bid
+		// for.
+		if m.InputCost == 0 && m.OutputCost == 0 {
+			continue
+		}
 		p := sonnetList
 		p.Model = m.Model
 		out = append(out, p)
