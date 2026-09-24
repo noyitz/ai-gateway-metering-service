@@ -168,7 +168,7 @@ tr.clickable{cursor:pointer}
   </nav>
   <div class="ab-right">
     <span class="ab-clock" id="last-refresh"></span>
-    <button id="refresh-btn" class="ab-btn" onclick="refresh()">Refresh</button>
+  <button id="refresh-btn" class="ab-btn" onclick="refresh(true)">Refresh</button>
     <a href="#" id="my-view-btn" class="ab-btn" style="display:none" title="See the dashboard as a regular user would">My view as user</a>
     <button class="ab-btn" onclick="openPricing()">Pricing</button>
     <span class="ab-user" id="abUser" style="display:none"></span>
@@ -387,9 +387,17 @@ function userCell(username,displayName){
   return esc(username);
 }
 
-async function api(path){const r=await fetch(path);if(!r.ok)throw new Error(r.statusText);return r.json()}
+async function api(path, fresh){
+  const opts={cache:'no-store'};
+  if(fresh)opts.headers={'Cache-Control':'no-cache'};
+  const r=await fetch(path,opts);
+  if(!r.ok)throw new Error(r.statusText);
+  return r.json();
+}
 
-async function refresh(){
+async function refresh(force){
+  var refreshBtn=document.getElementById('refresh-btn');
+  if(force&&refreshBtn){refreshBtn.disabled=true;refreshBtn.textContent='Refreshing…';}
   var r=range;
   if(r==='custom'&&customFrom&&customTo)r='custom&from='+customFrom+'&to='+customTo;
   var uf=userFilter.length?'&user='+encodeURIComponent(userFilter.join(',')):'';
@@ -400,16 +408,17 @@ async function refresh(){
   // Charts use the filtered set; the filter dropdowns/roster use
   // unfiltered "catalog" fetches so selecting a filter never shrinks
   // the list of things you can still pick.
-  const [ov,gr,us,mo,tl,rc,rosterCat,modelCat]=await Promise.all([
-    api('/api/v1/dashboard/overview?'+filters+'&ref='+encodeURIComponent(savingsRef)),
-    api('/api/v1/dashboard/groups?'+filters),
-    api('/api/v1/dashboard/users?'+filters+'&sort='+currentSort+'&order='+currentOrder+'&ref='+encodeURIComponent(savingsRef)),
-    api('/api/v1/dashboard/models?'+filters),
-    api('/api/v1/dashboard/timeline?'+filters+'&group_by='+tlGroupBy),
-    api('/api/v1/dashboard/recent?limit=20'+gf+uf+mf),
-    api('/api/v1/dashboard/users?'+rangeOnly+'&limit=200'),
-    api('/api/v1/dashboard/models?'+rangeOnly)
-  ]);
+  try {
+    const [ov,gr,us,mo,tl,rc,rosterCat,modelCat]=await Promise.all([
+      api('/api/v1/dashboard/overview?'+filters+'&ref='+encodeURIComponent(savingsRef),force),
+      api('/api/v1/dashboard/groups?'+filters,force),
+      api('/api/v1/dashboard/users?'+filters+'&sort='+currentSort+'&order='+currentOrder+'&ref='+encodeURIComponent(savingsRef),force),
+      api('/api/v1/dashboard/models?'+filters,force),
+      api('/api/v1/dashboard/timeline?'+filters+'&group_by='+tlGroupBy,force),
+      api('/api/v1/dashboard/recent?limit=20'+gf+uf+mf,force),
+      api('/api/v1/dashboard/users?'+rangeOnly+'&limit=200',force),
+      api('/api/v1/dashboard/models?'+rangeOnly,force)
+    ]);
   cachedOverview=ov;
   cachedGroups=gr;
   cachedModels=modelFilter?mo.filter(function(m){return m.model===modelFilter}):mo;
@@ -427,7 +436,10 @@ async function refresh(){
   renderUserCostChart();
   renderSavings();
   renderTimeline(tl);
-  document.getElementById('last-refresh').textContent=' • '+new Date().toLocaleTimeString();
+    document.getElementById('last-refresh').textContent=' • '+new Date().toLocaleTimeString();
+  } finally {
+    if(force&&refreshBtn){refreshBtn.disabled=false;refreshBtn.textContent='Refresh';}
+  }
 }
 
 function timeAgo(ts){
@@ -768,12 +780,19 @@ function userRosterNames(){
   return [...new Set(names)].sort(function(a,b){return a.localeCompare(b)});
 }
 
+function userMatchesSearch(username,q){
+  if(!q)return true;
+  if(username.toLowerCase().indexOf(q)>=0)return true;
+  var user=allUsers.find(function(u){return u.username===username;});
+  return !!(user&&user.display_name&&user.display_name.toLowerCase().indexOf(q)>=0);
+}
+
 function renderUserChecklist(){
   var list=document.getElementById('user-filter-list');
   if(!list)return;
   var s=document.getElementById('user-filter-search');
   var q=(s?s.value:'').toLowerCase();
-  var shown=userRosterNames().filter(function(n){return n.toLowerCase().indexOf(q)>=0;});
+  var shown=userRosterNames().filter(function(n){return userMatchesSearch(n,q);});
   if(!shown.length){list.innerHTML='<div style="padding:8px 10px;font-size:11px;color:var(--text2)">No users</div>';return;}
   var nameByUser={};
   allUsers.forEach(function(u){if(u.display_name)nameByUser[u.username]=u.display_name;});
@@ -799,7 +818,7 @@ function selectAllUsers(all){
   if(all){
     var s=document.getElementById('user-filter-search');
     var q=(s?s.value:'').toLowerCase();
-    userFilter=userRosterNames().filter(function(n){return n.toLowerCase().indexOf(q)>=0;});
+    userFilter=userRosterNames().filter(function(n){return userMatchesSearch(n,q);});
   }else{
     userFilter=[];
   }

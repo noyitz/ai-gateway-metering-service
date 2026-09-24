@@ -128,6 +128,13 @@ func (c *DashboardCache) Wrap(next http.HandlerFunc) http.HandlerFunc {
 		return next
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		// A manual dashboard refresh sends Cache-Control: no-cache.  Bypass
+		// the in-process response cache entirely so the refresh actually reads
+		// the newest usage_events rows instead of replaying the current TTL.
+		if bypassDashboardCache(r) {
+			next(w, r)
+			return
+		}
 		requestedUser := r.URL.Query().Get("user")
 
 		// Resolve (and enforce) the scope BEFORE any cache lookup: the
@@ -187,11 +194,19 @@ func writeCached(w http.ResponseWriter, entry cachedResponse) {
 	if entry.contentType != "" {
 		w.Header().Set("Content-Type", entry.contentType)
 	}
+	// Dashboard API responses are always live data; never let the browser
+	// add another cache layer on top of the server-side TTL.
+	w.Header().Set("Cache-Control", "no-store")
 	// writeJSON sets CORS on the live path; replay it so cached and fresh
 	// responses are byte-equivalent for any reader.
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(entry.status)
 	_, _ = w.Write(entry.body)
+}
+
+func bypassDashboardCache(r *http.Request) bool {
+	cacheControl := strings.ToLower(r.Header.Get("Cache-Control"))
+	return strings.Contains(cacheControl, "no-cache") || strings.Contains(cacheControl, "no-store")
 }
 
 // cacheKey hashes method + path + raw query + canonical scope. Raw query

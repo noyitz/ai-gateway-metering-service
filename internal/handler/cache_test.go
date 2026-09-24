@@ -98,6 +98,35 @@ func TestCacheHitExpiryRecompute(t *testing.T) {
 	}
 }
 
+func TestNoCacheHeaderBypassesCache(t *testing.T) {
+	var calls atomic.Int64
+	c := newTestCache(t, time.Minute, stubScope("alice", true))
+	h := c.Wrap(countingHandler(t, &calls, nil))
+
+	first := httptest.NewRecorder()
+	h(first, httptest.NewRequest("GET", "/api/v1/dashboard/recent", nil))
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("initial handler calls = %d, want 1", got)
+	}
+
+	freshReq := httptest.NewRequest("GET", "/api/v1/dashboard/recent", nil)
+	freshReq.Header.Set("Cache-Control", "no-cache")
+	fresh := httptest.NewRecorder()
+	h(fresh, freshReq)
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("handler calls after no-cache refresh = %d, want 2", got)
+	}
+	if !strings.Contains(fresh.Body.String(), `"call":2`) {
+		t.Fatalf("no-cache response reused the cached body: %s", fresh.Body.String())
+	}
+
+	third := httptest.NewRecorder()
+	h(third, httptest.NewRequest("GET", "/api/v1/dashboard/recent", nil))
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("normal request after bypass = %d, want 2 (original cache remains valid)", got)
+	}
+}
+
 func TestScopeKeyIsolation(t *testing.T) {
 	var calls atomic.Int64
 	c := newTestCache(t, time.Minute, func(w http.ResponseWriter, r *http.Request, _ *storage.Store, _ config.Config, requested string) (string, bool) {
