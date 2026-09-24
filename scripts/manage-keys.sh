@@ -6,7 +6,7 @@
 # this repo. (A stale copy existed under praxis-ai/scripts/ — removed.)
 #
 # Usage:
-#   ./scripts/manage-keys.sh create <username> [group] [--admin]
+#   ./scripts/manage-keys.sh create <username> [group] [--admin] [--name "First Last"]
 #   ./scripts/manage-keys.sh list [username]
 #   ./scripts/manage-keys.sh list-groups
 #   ./scripts/manage-keys.sh list-admins
@@ -24,6 +24,7 @@
 # Examples:
 #   ./scripts/manage-keys.sh create jane.doe@example.com
 #   ./scripts/manage-keys.sh create jane.doe@example.com executive --admin
+#   ./scripts/manage-keys.sh create jane.doe@example.com --name "Jane Doe"
 #   ./scripts/manage-keys.sh list
 #   ./scripts/manage-keys.sh list jane.doe@example.com
 #   ./scripts/manage-keys.sh revoke jane.doe@example.com dogfood-jane.doe
@@ -38,7 +39,9 @@ show_help() {
 Usage: ./scripts/manage-keys.sh <command> [options]
 
 Commands:
-  create <email> [group] [--admin]    Create an API key for a user
+  create <email> [group] [--admin] [--name "First Last"]
+                                      Create an API key for a user; --name
+                                      also records their dashboard display name
   list [email]                        List active keys (all or for one user)
   list-groups                         Show all groups and their member counts
   list-admins                         Show current dashboard admins
@@ -184,23 +187,37 @@ case "$ACTION" in
 
 create)
     if [[ -z "${1:-}" ]]; then
-        echo "Usage: $0 create <email> [group] [--admin]"
-        echo "  e.g.: $0 create noyitz@redhat.com"
+        echo "Usage: $0 create <email> [group] [--admin] [--name \"First Last\"]"
+        echo "  e.g.: $0 create noyitz@redhat.com --name 'Noy Itzikowitz'"
         exit 1
     fi
     USERNAME="$1"
     KEY_NAME="dogfood-${USERNAME%%@*}"
     MAKE_ADMIN=false
     GROUP="ai-eng"
-    for arg in "${@:2}"; do
-        if [[ "$arg" == "--admin" ]]; then
-            MAKE_ADMIN=true
-        else
-            GROUP="$arg"
-        fi
+    DISPLAY_NAME=""
+    shift
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --admin) MAKE_ADMIN=true; shift ;;
+            --name)
+                [[ -z "${2:-}" ]] && { echo "ERROR: --name requires a value" >&2; exit 1; }
+                DISPLAY_NAME="$2"; shift 2 ;;
+            *) GROUP="$1"; shift ;;
+        esac
     done
     require_email "$USERNAME"
     require_group "$GROUP"
+    if [[ -n "$DISPLAY_NAME" ]]; then
+        # Each token: letters with . - ' allowed inside (O'Brien, Jr.).
+        # One token = first name only; the rest is the last name (the
+        # profile schema allows an empty last). Pattern in a variable so
+        # the apostrophe doesn't break [[ ]] parsing; a SQL-escaped copy
+        # goes into the upsert below.
+        local_name_re="[A-Za-z][A-Za-z.'-]*"
+        [[ "$DISPLAY_NAME" =~ ^${local_name_re}([[:space:]]+${local_name_re})*$ ]] \
+            || { echo "ERROR: --name wants a plain 'First Last' display name (letters, ., -, '); got: '$DISPLAY_NAME'" >&2; exit 1; }
+    fi
 
     # Single identity header (the target user): maas-api mints on the
     # caller's behalf, and a stacked admin+target pair would rely on
@@ -220,13 +237,40 @@ create)
         exit 1
     fi
 
-    # Unified route is the Claude Code entry point: it serves the Claude
-    # models AND the self-hosted Qwen models (single catalog, model-based
-    # routing). The anthropic route is Claude-only — Qwen model IDs get
-    # "not found" there because its /v1/models is proxied to Anthropic.
-    ANTHROPIC_ROUTE=$(oc -n "$NAMESPACE" get route ai-gateway-unified -o jsonpath='{.spec.host}' 2>/dev/null)
-    [[ -z "$ANTHROPIC_ROUTE" ]] && ANTHROPIC_ROUTE=$(oc -n "$NAMESPACE" get route ai-gateway-anthropic -o jsonpath='{.spec.host}' 2>/dev/null)
-    OPENAI_ROUTE=$(oc -n "$NAMESPACE" get route ai-gateway-openai -o jsonpath='{.spec.host}' 2>/dev/null)
+    # Display name: capture it at the moment the admin knows who this is.
+    # The dashboard resolves "First Last" from user_profiles and falls back
+    # to the raw username, so an upsert here makes their usage show named
+    # from the first request — no follow-up visit to the Display Names card.
+    NAME_SET=false
+    if [[ -n "$DISPLAY_NAME" ]]; then
+        FIRST="${DISPLAY_NAME%%[[:space:]]*}"
+        LAST="${DISPLAY_NAME#*[[:space:]]}"
+        [[ "$LAST" == "$DISPLAY_NAME" ]] && LAST=""   # single token: first name only
+        # :var is psql's variable syntax — it quotes/escapes the value itself,
+        # so apostrophes (O'Brien) need no manual escaping here. Note psql -c
+        # sends its string to the server un-parsed (no interpolation), so the
+        # SQL goes in on stdin with oc exec -i.
+        if oc -n "$NAMESPACE" exec -i postgresql-0 -- psql -U aigateway -d aigateway -q \
+            -v uname="$USERNAME" -v fname="$FIRST" -v lname="$LAST" <<'SQL'
+INSERT INTO user_profiles (username, first_name, last_name, updated_at)
+VALUES (:'uname', :'fname', :'lname', NOW())
+ON CONFLICT (username) DO UPDATE SET
+    first_name = EXCLUDED.first_name,
+    last_name = EXCLUDED.last_name,
+    updated_at = NOW();
+SQL
+        then
+            NAME_SET=true
+        else
+            echo "WARN: key was created, but the display-name upsert failed — set it on the dashboard's Display Names card" >&2
+        fi
+    fi
+
+    # Setup instructions live on the welcome page — one source of truth,
+    # correct per-tool recipes (route, dialect, /v1 placement). Derive the
+    # URL from the cluster so this script never hardcodes a host that can
+    # drift. Override with WELCOME_URL=... if a deployment fronts a host.
+    WELCOME_URL="${WELCOME_URL:-https://$(oc -n "$NAMESPACE" get route dashboard -o jsonpath='{.spec.host}' 2>/dev/null)/welcome}"
 
     echo ""
     echo "=========================================="
@@ -234,24 +278,22 @@ create)
     echo "=========================================="
     echo ""
     echo "  User:    $USERNAME"
-    echo "  Name:    $KEY_NAME"
     echo "  Group:   $GROUP"
     echo "  Expires: $EXPIRES"
+    if [[ "$NAME_SET" == "true" ]]; then
+        echo "  Display: $DISPLAY_NAME (recorded)"
+    fi
     echo ""
-    echo "  Key: $KEY"
+    echo "  Send to the user — the key and one link:"
     echo ""
-    echo "  Claude Code:"
-    echo "export ANTHROPIC_BASE_URL=\"https://$ANTHROPIC_ROUTE\""
-    echo "export ANTHROPIC_API_KEY=\"$KEY\""
-    echo "claude --settings '{\"env\":{\"CLAUDE_CODE_USE_VERTEX\":\"\",\"ANTHROPIC_VERTEX_PROJECT_ID\":\"\",\"CLOUD_ML_REGION\":\"\"}}'"
+    echo "    $KEY"
+    echo "    $WELCOME_URL"
     echo ""
-    echo "  Codex:"
-    echo "export OPENAI_BASE_URL=\"https://${OPENAI_ROUTE}/v1\""
-    echo "export OPENAI_API_KEY=\"$KEY\""
-    echo "codex"
-    echo ""
-    echo "  Next: add their display name on the dashboard admin page (Display Names card)."
-    echo ""
+    if [[ "$NAME_SET" != "true" ]]; then
+        echo "  Next: add their display name on the dashboard admin page (Display Names card),"
+        echo "        or re-run with --name \"First Last\"."
+        echo ""
+    fi
 
     if [[ "$MAKE_ADMIN" == "true" ]]; then
         add_admin "$USERNAME"
