@@ -178,8 +178,8 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Machine-to-machine APIs — no session required
-	mux.HandleFunc("/api/v1/events", eventsHandler.HandleEvent)
-	mux.HandleFunc("/api/v1/customers/", entitlementsHandler.HandleEntitlement)
+	mux.HandleFunc("/api/v1/events", handler.RequireInternalAPI(cfg.InternalAPIToken, eventsHandler.HandleEvent))
+	mux.HandleFunc("/api/v1/customers/", handler.RequireInternalAPI(cfg.InternalAPIToken, entitlementsHandler.HandleEntitlement))
 	// /api/v1/team-usage was REMOVED on purpose: it sat outside auth, took
 	// the group from the query string, and defaulted to a hard-coded team.
 	// Its replacement is /api/v1/org/usage below, which is authenticated

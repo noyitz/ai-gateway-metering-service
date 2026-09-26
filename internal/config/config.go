@@ -29,6 +29,11 @@ type Config struct {
 	// report no access once a user exceeds it.
 	MonthlyTokenQuota float64
 
+	// InternalAPIToken authenticates machine-to-machine entitlement and
+	// usage-event calls from the gateway. It is required in deployed
+	// environments; an empty value makes those endpoints unavailable.
+	InternalAPIToken string
+
 	// EventSource labels ingested events that arrive without a
 	// CloudEvents `source` attribute.
 	EventSource string
@@ -194,6 +199,7 @@ func Load() Config {
 		DatabaseURL:       os.Getenv("DATABASE_URL"),
 		Port:              envDefault("PORT", "8080"),
 		MonthlyTokenQuota: envFloat("MONTHLY_TOKEN_QUOTA", DefaultMonthlyTokenQuota),
+		InternalAPIToken:  os.Getenv("INTERNAL_API_TOKEN"),
 		EventSource:       envDefault("EVENT_SOURCE", "ai-gateway"),
 		UserHeader:        envDefault("AUTH_USER_HEADER", "X-Forwarded-User"),
 		GroupsHeader:      envDefault("AUTH_GROUPS_HEADER", "X-Forwarded-Groups"),
