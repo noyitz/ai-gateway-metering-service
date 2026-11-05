@@ -1,3 +1,7 @@
+> **This repository is superseded.** Active development has moved to
+> [redhat-et/pricetag-metering](https://github.com/redhat-et/pricetag-metering).
+> This repository is kept for historical reference only.
+
 # AI Gateway Metering Service
 
 A development metering backend for AI inference gateways — provides CloudEvents-compatible token usage ingestion, per-user balance checks, and usage aggregation for testing an `external-metering` gateway filter.
