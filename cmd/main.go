@@ -16,10 +16,18 @@ import (
 	"github.com/noyitz/ai-gateway-metering-service/internal/maasapi"
 	"github.com/noyitz/ai-gateway-metering-service/internal/pricing"
 	"github.com/noyitz/ai-gateway-metering-service/internal/storage"
+	"github.com/noyitz/ai-gateway-metering-service/internal/tracing"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func main() {
 	cfg := config.Load()
+	shutdown, err := tracing.Init(context.Background(), "ai-gateway-metering-service", "dev")
+	if err != nil {
+		slog.Error("tracing init failed", "err", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdown(context.Background()) }()
 	if cfg.DatabaseURL == "" {
 		slog.Error("DATABASE_URL is required")
 		os.Exit(1)
@@ -316,7 +324,15 @@ func main() {
 	// the key is minted at claim time in the claimant's browser).
 	mux.HandleFunc("/invite/", orgHandler.HandleClaim)
 
-	server := &http.Server{Addr: ":" + cfg.Port, Handler: mux}
+	var handler http.Handler = mux
+	if tracing.Enabled() {
+		handler = otelhttp.NewHandler(mux, "",
+			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+				return r.Method + " " + r.URL.Path
+			}),
+		)
+	}
+	server := &http.Server{Addr: ":" + cfg.Port, Handler: handler}
 
 	go func() {
 		slog.Info("metering service starting", "port", cfg.Port)

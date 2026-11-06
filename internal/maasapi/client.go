@@ -12,6 +12,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/noyitz/ai-gateway-metering-service/internal/tracing"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type Client struct {
@@ -43,13 +46,17 @@ func NewClient(baseURL, tenant string) *Client {
 	return &Client{
 		baseURL: baseURL,
 		tenant:  tenant,
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
-		},
+		client:  newHTTPClient(),
 	}
+}
+
+func newHTTPClient() *http.Client {
+	base := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	var rt http.RoundTripper = base
+	if tracing.Enabled() {
+		rt = otelhttp.NewTransport(base)
+	}
+	return &http.Client{Timeout: 10 * time.Second, Transport: rt}
 }
 
 func (c *Client) CreateAPIKey(ctx context.Context, username, group, keyName string) (*APIKeyResponse, error) {

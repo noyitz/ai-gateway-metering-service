@@ -12,7 +12,17 @@ import (
 	"time"
 
 	_ "embed"
+
+	"github.com/noyitz/ai-gateway-metering-service/internal/tracing"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
+
+var httpClient = func() *http.Client {
+	if tracing.Enabled() {
+		return &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+	}
+	return http.DefaultClient
+}()
 
 //go:embed model_prices.json
 var bundledPricing []byte
@@ -238,7 +248,7 @@ func FetchLatest(ctx context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
 	}

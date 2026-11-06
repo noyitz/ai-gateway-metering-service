@@ -189,6 +189,12 @@ func (k Kubernetes) Enabled() bool {
 }
 
 // Load resolves configuration from the environment.
+//
+// OpenTelemetry env vars (read directly by the SDK, not parsed here):
+//   - OTEL_EXPORTER_OTLP_ENDPOINT: enables tracing when set (e.g., http://jaeger:4318)
+//   - OTEL_SERVICE_NAME: overrides the code default service name
+//   - OTEL_EXPORTER_OTLP_PROTOCOL: defaults to http/protobuf
+//   - OTEL_RESOURCE_ATTRIBUTES: additional resource attributes
 func Load() Config {
 	return Config{
 		DatabaseURL:       os.Getenv("DATABASE_URL"),

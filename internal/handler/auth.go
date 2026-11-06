@@ -18,6 +18,8 @@ import (
 	"github.com/noyitz/ai-gateway-metering-service/internal/config"
 	"github.com/noyitz/ai-gateway-metering-service/internal/dashboard"
 	"github.com/noyitz/ai-gateway-metering-service/internal/storage"
+	"github.com/noyitz/ai-gateway-metering-service/internal/tracing"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 const (
@@ -64,10 +66,14 @@ func NewAuthHandler(cfg config.Config) *AuthHandler {
 		}
 		slog.Warn("SESSION_SECRET not set — using random secret (sessions won't survive restarts)")
 	}
+	var transport http.RoundTripper = http.DefaultTransport
+	if tracing.Enabled() {
+		transport = otelhttp.NewTransport(http.DefaultTransport)
+	}
 	return &AuthHandler{
 		cfg:        cfg,
 		secret:     secret,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{Timeout: 10 * time.Second, Transport: transport},
 	}
 }
 

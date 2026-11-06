@@ -13,6 +13,8 @@ import (
 	"github.com/noyitz/ai-gateway-metering-service/internal/config"
 	"github.com/noyitz/ai-gateway-metering-service/internal/k8s"
 	"github.com/noyitz/ai-gateway-metering-service/internal/storage"
+	"github.com/noyitz/ai-gateway-metering-service/internal/tracing"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // KeysHandler proxies API key management to an upstream key service on
@@ -32,17 +34,22 @@ type KeysHandler struct {
 }
 
 func NewKeysHandler(k8sClient *k8s.Client, cfg config.Config, store *storage.Store) *KeysHandler {
+	base := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: cfg.KeyService.InsecureSkipVerify, //nolint:gosec // opt-in for internal self-signed certificates
+		},
+	}
+	var transport http.RoundTripper = base
+	if tracing.Enabled() {
+		transport = otelhttp.NewTransport(base)
+	}
 	return &KeysHandler{
 		k8sClient: k8sClient,
 		cfg:       cfg,
 		store:     store,
 		client: &http.Client{
-			Timeout: 10 * time.Second,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: cfg.KeyService.InsecureSkipVerify, //nolint:gosec // opt-in for internal self-signed certificates
-				},
-			},
+			Timeout:   10 * time.Second,
+			Transport: transport,
 		},
 	}
 }
